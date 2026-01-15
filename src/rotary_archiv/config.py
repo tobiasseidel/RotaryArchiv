@@ -40,7 +40,11 @@ class Settings(BaseSettings):
     
     @property
     def database_url(self) -> str:
-        """PostgreSQL Connection URL"""
+        """Database Connection URL (PostgreSQL oder SQLite)"""
+        # Fallback zu SQLite wenn PostgreSQL nicht verfügbar
+        use_sqlite = self.postgres_host == "sqlite" or not self.postgres_host
+        if use_sqlite:
+            return "sqlite:///./rotary_archiv.db"
         return (
             f"postgresql://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"

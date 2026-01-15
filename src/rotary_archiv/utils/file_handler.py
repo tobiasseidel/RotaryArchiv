@@ -1,0 +1,99 @@
+"""
+File Handling Utilities
+"""
+import os
+import shutil
+from pathlib import Path
+from typing import Optional
+from datetime import datetime
+import uuid
+
+from src.rotary_archiv.config import settings
+
+
+def ensure_documents_dir() -> Path:
+    """
+    Stelle sicher, dass das Dokumente-Verzeichnis existiert
+    
+    Returns:
+        Path zum Dokumente-Verzeichnis
+    """
+    docs_path = Path(settings.documents_path)
+    docs_path.mkdir(parents=True, exist_ok=True)
+    return docs_path
+
+
+def save_uploaded_file(file_content: bytes, filename: str) -> str:
+    """
+    Speichere hochgeladene Datei
+    
+    Args:
+        file_content: Datei-Inhalt als Bytes
+        filename: Original-Dateiname
+        
+    Returns:
+        Relativer Pfad zur gespeicherten Datei
+    """
+    docs_dir = ensure_documents_dir()
+    
+    # Generiere eindeutigen Dateinamen
+    file_ext = Path(filename).suffix
+    unique_filename = f"{uuid.uuid4()}{file_ext}"
+    file_path = docs_dir / unique_filename
+    
+    # Speichere Datei
+    with open(file_path, "wb") as f:
+        f.write(file_content)
+    
+    # Relativer Pfad für Datenbank
+    relative_path = str(file_path.relative_to(Path.cwd()))
+    return relative_path
+
+
+def get_file_path(relative_path: str) -> Path:
+    """
+    Hole absoluten Pfad zur Datei
+    
+    Args:
+        relative_path: Relativer Pfad (aus Datenbank)
+        
+    Returns:
+        Absoluter Path
+    """
+    return Path.cwd() / relative_path
+
+
+def delete_file(relative_path: str) -> bool:
+    """
+    Lösche Datei
+    
+    Args:
+        relative_path: Relativer Pfad zur Datei
+        
+    Returns:
+        True wenn erfolgreich
+    """
+    try:
+        file_path = get_file_path(relative_path)
+        if file_path.exists():
+            file_path.unlink()
+            return True
+        return False
+    except Exception:
+        return False
+
+
+def get_file_size(relative_path: str) -> int:
+    """
+    Hole Dateigröße in Bytes
+    
+    Args:
+        relative_path: Relativer Pfad zur Datei
+        
+    Returns:
+        Dateigröße in Bytes
+    """
+    file_path = get_file_path(relative_path)
+    if file_path.exists():
+        return file_path.stat().st_size
+    return 0
