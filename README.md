@@ -35,9 +35,12 @@ Ein digitales Archiv-System für Rotary Club Dokumente mit OCR, semantischer Suc
 ### Voraussetzungen
 
 - Python 3.11+
-- Docker & Docker Compose
-- Tesseract OCR
-- Ollama (lokal installiert)
+- Docker & Docker Compose (optional, für PostgreSQL/Fuseki)
+- Tesseract OCR (optional, für OCR)
+- Ollama (optional, lokal installiert für OCR)
+- Poppler (optional, für PDF-zu-Bild-Konvertierung)
+  - Windows: Download von https://github.com/oschwartz10612/poppler-windows/releases
+  - Poppler in Projekt-Verzeichnis ablegen (z.B. `./poppler/`) und in `.env` konfigurieren
 
 ### Installation
 
@@ -50,34 +53,72 @@ cd RotaryArchiv
 2. Virtual Environment erstellen:
 ```bash
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
 ```
 
-3. Dependencies installieren:
+3. Virtual Environment aktivieren:
 ```bash
+# Windows PowerShell:
+.\venv\Scripts\Activate.ps1
+
+# Windows CMD:
+venv\Scripts\activate
+
+# Linux/Mac:
+source venv/bin/activate
+```
+
+4. Dependencies installieren:
+```bash
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-4. Environment-Variablen konfigurieren:
+5. Environment-Variablen konfigurieren:
 ```bash
+# Windows PowerShell:
+Copy-Item .env.example .env
+
+# Linux/Mac:
 cp .env.example .env
-# .env bearbeiten mit eigenen Werten
 ```
 
-5. Docker Services starten (PostgreSQL + Fuseki):
-```bash
-docker-compose up -d
-```
+Bearbeite `.env` mit eigenen Werten (optional - Standardwerte funktionieren für lokalen Test mit SQLite).
 
 6. Datenbank-Migrationen ausführen:
 ```bash
 alembic upgrade head
 ```
 
+**Hinweis**: Standardmäßig wird SQLite verwendet (für schnellen Start). Für PostgreSQL:
+- Ändere in `.env`: `POSTGRES_HOST=localhost` (statt `sqlite`)
+- Installiere `psycopg2-binary`: `pip install psycopg2-binary`
+- Starte Docker Services: `docker-compose up -d`
+
 7. FastAPI Server starten:
 ```bash
-uvicorn src.rotary_archiv.main:app --reload
+# Aktiviere Virtual Environment (Windows PowerShell)
+.\venv\Scripts\Activate.ps1
+
+# Starte Server
+uvicorn src.rotary_archiv.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+**Alternative (Windows CMD):**
+```bash
+venv\Scripts\activate
+uvicorn src.rotary_archiv.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**Alternative (Linux/Mac):**
+```bash
+source venv/bin/activate
+uvicorn src.rotary_archiv.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Der Server läuft dann auf:
+- **Frontend**: http://localhost:8000/
+- **API-Dokumentation**: http://localhost:8000/docs
+- **API-Endpoints**: http://localhost:8000/api/
 
 ## Projekt-Struktur
 
@@ -118,6 +159,31 @@ RotaryArchiv/
 
 ## Entwicklung
 
+### Server starten
+
+**Schnellstart (mit aktiviertem venv):**
+```bash
+uvicorn src.rotary_archiv.main:app --reload
+```
+
+**Mit expliziten Parametern:**
+```bash
+uvicorn src.rotary_archiv.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**Im Hintergrund (Windows PowerShell):**
+```bash
+Start-Process powershell -ArgumentList "-NoExit", "-Command", ".\venv\Scripts\Activate.ps1; uvicorn src.rotary_archiv.main:app --reload"
+```
+
+### Zugriff auf die Anwendung
+
+Nach dem Start sind verfügbar:
+- **Frontend**: http://localhost:8000/ (Upload-Interface)
+- **API-Dokumentation (Swagger)**: http://localhost:8000/docs
+- **Alternative API-Dokumentation (ReDoc)**: http://localhost:8000/redoc
+- **Health Check**: http://localhost:8000/health
+
 ### Tests ausführen:
 ```bash
 pytest
@@ -128,6 +194,9 @@ pytest
 alembic revision --autogenerate -m "Beschreibung"
 alembic upgrade head
 ```
+
+### Server stoppen:
+Drücke `Ctrl+C` im Terminal, in dem der Server läuft.
 
 ## Lizenz
 

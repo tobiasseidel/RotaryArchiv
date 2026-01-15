@@ -29,6 +29,10 @@ data/
 *.tiff
 *.tif
 
+# Poppler (lokal, nicht in Git)
+poppler/
+poppler-*/
+
 # Database
 *.db
 *.sqlite

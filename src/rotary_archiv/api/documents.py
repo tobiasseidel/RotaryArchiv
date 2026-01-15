@@ -39,9 +39,23 @@ async def create_document(
     """
     Lade neues Dokument hoch
     """
+    import traceback
+    
     try:
+        if not file.filename:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Kein Dateiname angegeben"
+            )
+        
         # Lese Datei-Inhalt
         file_content = await file.read()
+        
+        if len(file_content) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Datei ist leer"
+            )
         
         # Speichere Datei
         file_path = save_uploaded_file(file_content, file.filename)
@@ -53,7 +67,8 @@ async def create_document(
             file_path=file_path,
             file_type=file.content_type or "application/octet-stream",
             file_size=file_size,
-            status=DocumentStatus.UPLOADED
+            status=DocumentStatus.UPLOADED,
+            is_composite=0  # Explizit setzen
         )
         
         db.add(db_document)
@@ -62,7 +77,13 @@ async def create_document(
         
         return db_document
         
+    except HTTPException:
+        raise
     except Exception as e:
+        import logging
+        logging.error(f"Upload Fehler: {str(e)}")
+        logging.error(traceback.format_exc())
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Hochladen: {str(e)}"
@@ -138,8 +159,17 @@ def delete_document(
     db: Session = Depends(get_db)
 ):
     """
-    Lösche Dokument
+    Lösche Dokument und alle zugehörigen Daten
+    
+    Löscht:
+    - Hauptdatei
+    - Alle extrahierten Seiten (DocumentPage) und deren Dateien
+    - Alle Metadaten (automatisch durch Cascade)
+    - Alle Annotationen (automatisch durch Cascade)
+    - Alle Child-Dokumente (falls Composite-Dokument)
     """
+    import logging
+    
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(
@@ -147,14 +177,57 @@ def delete_document(
             detail="Dokument nicht gefunden"
         )
     
-    # Lösche Datei
-    from src.rotary_archiv.utils.file_handler import delete_file
-    delete_file(document.file_path)
-    
-    db.delete(document)
-    db.commit()
-    
-    return None
+    try:
+        # Lösche alle zugehörigen Seiten und deren Dateien
+        from src.rotary_archiv.core.models import DocumentPage
+        from src.rotary_archiv.utils.file_handler import delete_file, get_file_path
+        
+        pages = db.query(DocumentPage).filter(DocumentPage.document_id == document_id).all()
+        logging.info(f"Lösche {len(pages)} Seiten für Dokument {document_id}")
+        
+        for page in pages:
+            # Lösche Seiten-Datei
+            try:
+                delete_file(page.file_path)
+                logging.info(f"Seiten-Datei gelöscht: {page.file_path}")
+            except Exception as e:
+                logging.warning(f"Konnte Seiten-Datei nicht löschen {page.file_path}: {e}")
+        
+        # Lösche Child-Dokumente (falls Composite-Dokument)
+        if document.is_composite:
+            child_docs = db.query(Document).filter(Document.parent_document_id == document_id).all()
+            logging.info(f"Lösche {len(child_docs)} Child-Dokumente für Composite-Dokument {document_id}")
+            
+            for child_doc in child_docs:
+                # Lösche Child-Dokument Datei
+                try:
+                    delete_file(child_doc.file_path)
+                except Exception as e:
+                    logging.warning(f"Konnte Child-Dokument-Datei nicht löschen {child_doc.file_path}: {e}")
+        
+        # Lösche Hauptdatei
+        try:
+            delete_file(document.file_path)
+            logging.info(f"Hauptdatei gelöscht: {document.file_path}")
+        except Exception as e:
+            logging.warning(f"Konnte Hauptdatei nicht löschen {document.file_path}: {e}")
+        
+        # Lösche Dokument aus Datenbank (Cascade löscht automatisch Metadaten, Annotationen, Pages)
+        db.delete(document)
+        db.commit()
+        
+        logging.info(f"Dokument {document_id} '{document.filename}' erfolgreich gelöscht")
+        return None
+        
+    except Exception as e:
+        logging.error(f"Fehler beim Löschen von Dokument {document_id}: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Löschen des Dokuments: {str(e)}"
+        )
 
 
 @router.post("/{document_id}/ocr", response_model=DocumentResponse)

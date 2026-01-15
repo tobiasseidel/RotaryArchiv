@@ -37,16 +37,25 @@ def save_uploaded_file(file_content: bytes, filename: str) -> str:
     docs_dir = ensure_documents_dir()
     
     # Generiere eindeutigen Dateinamen
-    file_ext = Path(filename).suffix
+    file_ext = Path(filename).suffix if filename else ".bin"
     unique_filename = f"{uuid.uuid4()}{file_ext}"
     file_path = docs_dir / unique_filename
     
     # Speichere Datei
-    with open(file_path, "wb") as f:
-        f.write(file_content)
+    try:
+        with open(file_path, "wb") as f:
+            f.write(file_content)
+    except Exception as e:
+        raise Exception(f"Fehler beim Speichern der Datei: {e}")
     
-    # Relativer Pfad für Datenbank
-    relative_path = str(file_path.relative_to(Path.cwd()))
+    # Relativer Pfad für Datenbank - verwende absoluten Pfad relativ zum Projekt-Root
+    try:
+        # Versuche relativ zu cwd
+        relative_path = str(file_path.relative_to(Path.cwd()))
+    except ValueError:
+        # Falls nicht möglich, verwende absoluten Pfad
+        relative_path = str(file_path)
+    
     return relative_path
 
 

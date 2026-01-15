@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     
     # OCR
     tesseract_cmd: str = "tesseract"
+    poppler_path: Optional[str] = None  # Pfad zu Poppler (z.B. "./poppler/bin" oder "C:/poppler/bin")
+    pdf_extraction_dpi: int = 200  # DPI für PDF-zu-Bild-Konvertierung (niedriger = schneller, weniger Speicher)
+    pdf_extraction_batch_size: int = 50  # Anzahl Seiten pro Batch für große PDFs
     ollama_base_url: str = "http://localhost:11434"
     ollama_vision_model: str = "llava"
     ollama_gpt_model: str = "llama3"

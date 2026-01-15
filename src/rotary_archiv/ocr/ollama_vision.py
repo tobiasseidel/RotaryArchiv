@@ -48,7 +48,14 @@ class OllamaVisionOCR:
         """
         try:
             from pdf2image import convert_from_path
-            return convert_from_path(str(pdf_path))
+            # Verwende benutzerdefinierten Poppler-Pfad falls konfiguriert
+            convert_kwargs = {}
+            if settings.poppler_path:
+                poppler_path = Path(settings.poppler_path)
+                if poppler_path.exists():
+                    convert_kwargs["poppler_path"] = str(poppler_path)
+            
+            return convert_from_path(str(pdf_path), **convert_kwargs)
         except Exception:
             return []
     

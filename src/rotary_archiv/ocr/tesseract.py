@@ -38,7 +38,14 @@ class TesseractOCR:
         try:
             if file_path_obj.suffix.lower() == ".pdf":
                 # PDF zu Bilder konvertieren
-                images = convert_from_path(str(file_path_obj))
+                # Verwende benutzerdefinierten Poppler-Pfad falls konfiguriert
+                convert_kwargs = {}
+                if settings.poppler_path:
+                    poppler_path = Path(settings.poppler_path)
+                    if poppler_path.exists():
+                        convert_kwargs["poppler_path"] = str(poppler_path)
+                
+                images = convert_from_path(str(file_path_obj), **convert_kwargs)
                 texts = []
                 confidences = []
                 

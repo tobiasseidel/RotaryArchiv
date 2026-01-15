@@ -51,9 +51,14 @@ class Document(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String(255), nullable=False, index=True)
-    file_path = Column(String(512), nullable=False, unique=True)
+    file_path = Column(String(512), nullable=False, index=True)  # unique entfernt, da zusammengefügte Docs gleichen Pfad haben können
     file_type = Column(String(50), nullable=False)  # pdf, jpg, png, etc.
     file_size = Column(Integer)  # in bytes
+    
+    # Für zusammengefügte Dokumente
+    parent_document_id = Column(Integer, ForeignKey("documents.id"), nullable=True, index=True)
+    is_composite = Column(Integer, default=0, server_default='0', nullable=False)  # 0 = Einzeldokument, 1 = Zusammengesetzt
+    page_number = Column(Integer, nullable=True)  # Seitenzahl in zusammengesetztem Dokument
     
     # OCR
     ocr_text = Column(Text, nullable=True)
@@ -82,6 +87,8 @@ class Document(Base):
     # Relationships
     metadata_entries = relationship("DocumentMetadata", back_populates="document", cascade="all, delete-orphan")
     annotations = relationship("Annotation", back_populates="document", cascade="all, delete-orphan")
+    pages = relationship("DocumentPage", back_populates="document", cascade="all, delete-orphan")
+    parent_document = relationship("Document", remote_side=[id], backref="child_documents")
     
     def __repr__(self) -> str:
         return f"<Document(id={self.id}, filename='{self.filename}', status='{self.status}')>"
@@ -130,6 +137,30 @@ class Entity(Base):
     
     def __repr__(self) -> str:
         return f"<Entity(id={self.id}, name='{self.name}', type='{self.entity_type}')>"
+
+
+class DocumentPage(Base):
+    """Einzelne Seite eines PDF-Dokuments"""
+    __tablename__ = "document_pages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
+    page_number = Column(Integer, nullable=False)  # Seitenzahl (1-basiert)
+    file_path = Column(String(512), nullable=False)  # Pfad zur extrahierten Seite (PDF oder Bild)
+    file_type = Column(String(50), nullable=False)  # pdf, png, jpg
+    
+    # OCR für einzelne Seite
+    ocr_text = Column(Text, nullable=True)
+    ocr_confidence = Column(String(50), nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    
+    # Relationships
+    document = relationship("Document", back_populates="pages")
+    
+    def __repr__(self) -> str:
+        return f"<DocumentPage(id={self.id}, document_id={self.document_id}, page={self.page_number})>"
 
 
 class Annotation(Base):
