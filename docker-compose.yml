@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: rotary_postgres
+    environment:
+      POSTGRES_DB: rotary_archiv
+      POSTGRES_USER: rotary_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rotary_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  fuseki:
+    image: apache/jena-fuseki:latest
+    container_name: rotary_fuseki
+    ports:
+      - "3030:3030"
+    volumes:
+      - fuseki_data:/fuseki
+    environment:
+      FUSEKI_DATASET: rotary_archiv
+    command: ["--mem", "--update", "/fuseki/rotary_archiv"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3030/$/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  fuseki_data:

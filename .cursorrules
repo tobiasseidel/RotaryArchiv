@@ -1,0 +1,66 @@
+# RotaryArchiv - Cursor AI Rules
+
+## Projekt-Übersicht
+Dieses Projekt ist ein digitales Archiv für Rotary Club Dokumente mit OCR, Triple-Store (RDF), Wikidata-Integration und Export-Funktionen.
+
+## Architektur-Prinzipien
+
+### Backend
+- FastAPI für REST API
+- PostgreSQL für Dokumente, Metadaten, OCR-Text
+- Apache Jena/Fuseki (Docker) für Triple Store (RDF)
+- Hybrid-Ansatz: SQL für Dokumente, Triples für Relationen
+- Alembic für Datenbank-Migrationen
+
+### Code-Struktur
+- Modular: `src/rotary_archiv/` mit klarer Trennung (api/, core/, ocr/, nlp/, wikidata/)
+- Type Hints: Immer verwenden (Python 3.11+)
+- Async: FastAPI Endpoints sollten async sein wo möglich
+- Error Handling: Explizite Exception-Handling, keine stummen Fehler
+
+### Datenmodell
+- Entitäten-Typen: Personen, Orte, Organisationen, Themen, Treffen/Events, Vortragsthemen/Vortragende, Zeitgeschehen, Stadtgeschichte
+- Triple-Struktur: Subjekt-Prädikat-Objekt (RDF-kompatibel)
+- Wikidata-Integration: Referenzierung, Import, optional Export (nur mit Bestätigung)
+
+### OCR-Pipeline
+- Parallel: Tesseract UND Ollama Vision gleichzeitig ausführen
+- Vergleich: Ergebnisse vergleichen/kombinieren für bessere Qualität
+- Korrektur: Ollama GPT zur Fehlersuche und Verbesserung
+- Annotation-Support: Ollama GPT für Annotation-Suche
+
+### Sicherheit & Workflow
+- KEINE automatischen Wikidata-Pushes ohne explizite User-Bestätigung
+- Halb-automatische Vorschläge: System schlägt vor, User wählt aus (Multi-Select)
+- Workflow-States: Dokumente haben Status (uploaded → ocr_pending → ocr_done → classified → annotated)
+- Datei-Storage: Dateisystem (`data/documents/`), nicht in Git
+
+### Code-Style
+- PEP 8 konform
+- Black-Formatierung (falls verwendet)
+- Docstrings: Google-Style für Funktionen/Klassen
+- Tests: pytest, Tests für kritische Funktionen
+
+### API-Design
+- REST API für CRUD-Operationen
+- SPARQL Endpoint für komplexe Graph-Queries
+- Endpoints: `/api/documents`, `/api/entities`, `/api/triples`, `/api/search`, `/sparql`
+- Response-Format: JSON, konsistentes Error-Format
+
+### Dependencies
+- Python 3.11+
+- FastAPI, SQLAlchemy, Alembic
+- RDFLib (später Fuseki)
+- Tesseract, Ollama API
+- Wikidata API Client
+
+### Testing
+- pytest für Unit-Tests
+- Test-Coverage für kritische Pfade (OCR, Wikidata, Triple-Store)
+
+## Wichtige Regeln
+- Immer Type Hints verwenden
+- Keine hardcodierten Pfade, Config verwenden
+- Dokumentation: README.md aktuell halten
+- Git: `.env`, `data/` nicht committen
+- Docker: docker-compose.yml für Services (PostgreSQL, Fuseki)
