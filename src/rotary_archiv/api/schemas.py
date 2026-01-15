@@ -36,6 +36,9 @@ class DocumentResponse(DocumentBase):
     file_path: str
     file_type: str
     file_size: Optional[int] = None
+    parent_document_id: Optional[int] = None
+    is_composite: Optional[int] = None
+    page_number: Optional[int] = None
     ocr_text: Optional[str] = None
     status: DocumentStatus
     created_at: datetime

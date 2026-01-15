@@ -14,7 +14,8 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: #f5f5f5;
-            padding: 20px;
+            padding: 0;
+            margin: 0;
         }
         
         .container {
@@ -24,6 +25,8 @@
             border-radius: 8px;
             padding: 30px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-top: 20px;
+            margin-bottom: 20px;
         }
         
         h1 {
@@ -151,6 +154,43 @@
         
         .btn-secondary:hover {
             background: #e68900;
+        }
+        
+        .document-item.composite {
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .document-item.new-document {
+            border-left: 4px solid #FF9800;
+            background: #fff8e1;
+            animation: highlightNew 2s ease-out;
+        }
+        
+        @keyframes highlightNew {
+            0% { background: #fff3cd; }
+            100% { background: #fff8e1; }
+        }
+        
+        .new-badge {
+            display: inline-block;
+            background: #FF9800;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        
+        .document-link {
+            color: #2196F3;
+            text-decoration: none;
+            font-weight: 500;
+            margin-left: 10px;
+        }
+        
+        .document-link:hover {
+            text-decoration: underline;
         }
         
         .status-badge {
@@ -368,41 +408,150 @@
             border-radius: 4px;
             margin: 10px 0;
         }
+        
+        .section-header {
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        .section-header h2 {
+            margin: 0 0 8px 0;
+            color: #333;
+            font-size: 28px;
+        }
+        
+        .section-description {
+            margin: 0;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        /* Navigation Menu */
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 0;
+            margin: 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .navbar-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px 20px;
+        }
+        
+        .navbar-brand {
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .navbar-brand:hover {
+            opacity: 0.9;
+        }
+        
+        .navbar-menu {
+            display: flex;
+            gap: 5px;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .navbar-item {
+            margin: 0;
+        }
+        
+        .navbar-link {
+            display: block;
+            padding: 12px 24px;
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            border-radius: 6px;
+            transition: all 0.3s;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .navbar-link:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+        
+        .navbar-link.active {
+            background: rgba(255, 255, 255, 0.25);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
     </style>
 </head>
 <body>
+    <!-- Navigation Menu -->
+    <nav class="navbar">
+        <div class="navbar-content">
+            <a href="#" class="navbar-brand">📚 RotaryArchiv</a>
+            <ul class="navbar-menu">
+                <li class="navbar-item">
+                    <a href="#" class="navbar-link active" onclick="showTab('imports'); return false;" id="nav-imports">
+                        📥 Imports
+                    </a>
+                </li>
+                <li class="navbar-item">
+                    <a href="#" class="navbar-link" onclick="showTab('documents'); return false;" id="nav-documents">
+                        📄 Dokumente
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+    
     <div class="container">
-        <h1>RotaryArchiv</h1>
-        <p class="subtitle">Import-Verwaltung und Dokumenten-Erstellung</p>
-        
-        <div class="upload-section" id="uploadSection">
-            <p>Ziehen Sie eine PDF-Datei hierher oder klicken Sie zum Auswählen</p>
-            <input type="file" id="fileInput" accept=".pdf" multiple>
-            <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
-                Datei auswählen
-            </button>
-        </div>
-        
         <div id="messageArea"></div>
-        
-        <!-- Tabs für Imports und Dokumente -->
-        <div class="tabs">
-            <button class="tab-btn active" onclick="showTab('imports')" id="tab-imports">Imports</button>
-            <button class="tab-btn" onclick="showTab('documents')" id="tab-documents">Dokumente</button>
-        </div>
         
         <!-- Imports Tab -->
         <div class="tab-content active" id="tab-content-imports">
+            <div class="section-header">
+                <h2>📥 Imports</h2>
+                <p class="section-description">Hochgeladene PDF-Dateien - Extrahieren Sie Seiten und gruppieren Sie sie zu Dokumenten</p>
+            </div>
+            
+            <div class="upload-section" id="uploadSection">
+                <p>Ziehen Sie eine PDF-Datei hierher oder klicken Sie zum Auswählen</p>
+                <input type="file" id="fileInput" accept=".pdf" multiple>
+                <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+                    📤 Datei auswählen
+                </button>
+            </div>
+            
             <div class="documents-list" id="importsList">
-                <h2>Hochgeladene Imports</h2>
                 <div id="importsContainer"></div>
             </div>
         </div>
         
         <!-- Dokumente Tab -->
         <div class="tab-content" id="tab-content-documents">
+            <div class="section-header">
+                <h2>📄 Dokumente</h2>
+                <p class="section-description">Gruppierte Dokumente aus Seiten - Führen Sie OCR durch und verarbeiten Sie den Inhalt</p>
+            </div>
+            
             <div class="documents-list" id="documentsList">
-                <h2>Dokumente (aus gruppierten Seiten)</h2>
                 <div id="documentsContainer"></div>
             </div>
         </div>
@@ -497,11 +646,12 @@
         }
         
         function showTab(tabName) {
-            // Tabs wechseln
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            // Navigation Links aktualisieren
+            document.querySelectorAll('.navbar-link').forEach(link => link.classList.remove('active'));
+            document.getElementById(`nav-${tabName}`).classList.add('active');
             
-            document.getElementById(`tab-${tabName}`).classList.add('active');
+            // Tab-Content wechseln
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             document.getElementById(`tab-content-${tabName}`).classList.add('active');
             
             // Daten laden
@@ -537,8 +687,28 @@
                 const response = await fetch(`${API_BASE}/api/documents/`);
                 const allDocs = await response.json();
                 
-                // Nur Composite-Dokumente anzeigen
-                const documents = allDocs.filter(doc => doc.is_composite && doc.is_composite === 1);
+                console.log('Alle Dokumente:', allDocs);
+                
+                // Nur Composite-Dokumente anzeigen (is_composite kann 1, true, oder "1" sein)
+                // Debug: Zeige erstes Dokument vollständig
+                if (allDocs.length > 0) {
+                    console.log('Erstes Dokument vollständig:', JSON.stringify(allDocs[0], null, 2));
+                }
+                
+                const documents = allDocs.filter(doc => {
+                    // Prüfe verschiedene Formate
+                    const isComposite = doc.is_composite === 1 || 
+                                       doc.is_composite === true || 
+                                       doc.is_composite === "1" ||
+                                       (typeof doc.is_composite === 'number' && doc.is_composite !== 0);
+                    console.log(`Dokument ${doc.id}: is_composite=${doc.is_composite} (Typ: ${typeof doc.is_composite}), gefiltert=${isComposite}`);
+                    return isComposite;
+                });
+                
+                console.log('Gefilterte Composite-Dokumente:', documents);
+                
+                // Sortiere: Neueste zuletzt (hinten an die Liste)
+                documents.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
                 
                 const container = document.getElementById('documentsContainer');
                 container.innerHTML = '';
@@ -554,6 +724,7 @@
                 }
             } catch (error) {
                 showMessage('Fehler beim Laden der Dokumente: ' + error.message, 'error');
+                console.error('Load documents error:', error);
             }
         }
         
@@ -590,16 +761,19 @@
         
         function createDocumentElement(doc) {
             const div = document.createElement('div');
-            div.className = 'document-item composite';
+            const isNew = !doc.title && doc.status === 'uploaded'; // Markiere als neu wenn kein Titel und Status uploaded
+            div.className = 'document-item composite' + (isNew ? ' new-document' : '');
             div.innerHTML = `
                 <div class="document-info" style="flex: 1;">
                     <div class="document-name">
-                        ${doc.title || doc.filename}
+                        ${isNew ? '<span class="new-badge">NEU</span> ' : ''}
+                        ${doc.title || `Dokument #${doc.id}`}
                         <span class="status-badge status-${doc.status}">${doc.status}</span>
                     </div>
                     <div class="document-meta">
                         Dokument aus gruppierten Seiten | 
                         Erstellt: ${new Date(doc.created_at).toLocaleString('de-DE')}
+                        ${isNew ? ' | <a href="#" onclick="viewDocumentPages(${doc.id}); return false;" class="document-link">📄 Seiten anzeigen</a>' : ''}
                     </div>
                     <div class="document-actions" style="margin-top: 10px;">
                         <button class="btn btn-primary" onclick="processOCR(${doc.id})" id="ocr-btn-${doc.id}">
@@ -608,7 +782,7 @@
                         <button class="btn btn-secondary" onclick="viewDocumentPages(${doc.id})" id="view-pages-btn-${doc.id}">
                             Seiten anzeigen
                         </button>
-                        <button class="btn btn-danger" onclick="deleteDocument(${doc.id}, '${(doc.title || doc.filename).replace(/'/g, "\\'")}')" title="Dokument löschen">
+                        <button class="btn btn-danger" onclick="deleteDocument(${doc.id}, '${(doc.title || `Dokument #${doc.id}`).replace(/'/g, "\\'")}')" title="Dokument löschen">
                             Löschen
                         </button>
                     </div>
@@ -897,6 +1071,143 @@
             // Update Group-Button
             updateGroupButton(documentId);
             updateMergeSection();
+        }
+        
+        function updateGroupButton(documentId) {
+            // Zähle ausgewählte Seiten dieses Dokuments direkt aus dem DOM
+            const grid = document.getElementById(`pages-grid-${documentId}`);
+            if (!grid) return;
+            
+            const checkboxes = grid.querySelectorAll('input[type="checkbox"]');
+            let selectedCount = 0;
+            checkboxes.forEach(cb => {
+                if (cb.checked) selectedCount++;
+            });
+            
+            const groupBtn = document.getElementById(`group-btn-${documentId}`);
+            if (groupBtn) {
+                groupBtn.disabled = selectedCount === 0;
+                if (selectedCount > 0) {
+                    groupBtn.textContent = `${selectedCount} ausgewählte zu Dokument gruppieren`;
+                } else {
+                    groupBtn.textContent = 'Ausgewählte zu Dokument gruppieren';
+                }
+            }
+        }
+        
+        function selectAllPages(documentId) {
+            // Hole alle Seiten dieses Dokuments
+            fetch(`${API_BASE}/api/pages/document/${documentId}`)
+                .then(r => r.json())
+                .then(data => {
+                    data.pages.forEach(page => {
+                        selectedPages.add(page.id);
+                        // Update Checkbox
+                        const checkbox = document.querySelector(`input[type="checkbox"][onchange*="${page.id}"]`);
+                        if (checkbox) {
+                            checkbox.checked = true;
+                            checkbox.closest('.page-item')?.classList.add('selected');
+                        }
+                    });
+                    updateGroupButton(documentId);
+                    updateMergeSection();
+                })
+                .catch(error => {
+                    console.error('Fehler beim Laden der Seiten:', error);
+                });
+        }
+        
+        async function groupSelectedPagesToDocument(documentId) {
+            console.log('groupSelectedPagesToDocument aufgerufen für documentId:', documentId);
+            
+            // Hole alle Seiten dieses Dokuments
+            try {
+                const response = await fetch(`${API_BASE}/api/pages/document/${documentId}`);
+                if (!response.ok) {
+                    throw new Error('Fehler beim Laden der Seiten');
+                }
+                
+                const data = await response.json();
+                const pageIds = data.pages.map(p => p.id);
+                
+                // Filtere nur die ausgewählten Seiten
+                const checkboxes = document.querySelectorAll(`#pages-grid-${documentId} input[type="checkbox"]:checked`);
+                const selectedFromThisDoc = [];
+                
+                checkboxes.forEach(cb => {
+                    // Extrahiere pageId aus dem onchange-Attribut
+                    const onchangeAttr = cb.getAttribute('onchange');
+                    if (onchangeAttr) {
+                        const match = onchangeAttr.match(/togglePageSelection\((\d+),/);
+                        if (match) {
+                            const pageId = parseInt(match[1]);
+                            if (pageIds.includes(pageId)) {
+                                selectedFromThisDoc.push(pageId);
+                            }
+                        }
+                    }
+                });
+                
+                if (selectedFromThisDoc.length === 0) {
+                    showMessage('Bitte wählen Sie mindestens eine Seite aus', 'error');
+                    return;
+                }
+                
+                showMessage('Gruppiere Seiten zu Dokument...', 'info');
+                
+                const mergeResponse = await fetch(`${API_BASE}/api/pages/merge`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        page_ids: selectedFromThisDoc,
+                        title: null  // Kein Titel beim Anlegen
+                    })
+                });
+                
+                if (!mergeResponse.ok) {
+                    let errorMessage = 'Gruppierung fehlgeschlagen';
+                    try {
+                        const errorData = await mergeResponse.json();
+                        errorMessage = errorData.detail || errorData.message || errorMessage;
+                    } catch (e) {
+                        errorMessage = `HTTP ${mergeResponse.status}: ${mergeResponse.statusText}`;
+                    }
+                    throw new Error(errorMessage);
+                }
+                
+                const result = await mergeResponse.json();
+                console.log('Gruppierungs-Ergebnis:', result);
+                showMessage(`${selectedFromThisDoc.length} Seiten erfolgreich zu Dokument gruppiert!`, 'success');
+                
+                // Entferne Auswahl: Checkboxes zurücksetzen
+                selectedFromThisDoc.forEach(pageId => {
+                    selectedPages.delete(pageId);
+                    // Finde und deaktiviere Checkbox
+                    const checkboxes = document.querySelectorAll(`input[type="checkbox"]`);
+                    checkboxes.forEach(cb => {
+                        const onchangeAttr = cb.getAttribute('onchange');
+                        if (onchangeAttr && onchangeAttr.includes(`togglePageSelection(${pageId},`)) {
+                            cb.checked = false;
+                            cb.closest('.page-item')?.classList.remove('selected');
+                        }
+                    });
+                });
+                
+                // Update Group-Button
+                updateGroupButton(documentId);
+                updateMergeSection();
+                
+                // Warte kurz, damit das Backend die Änderungen committed hat
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Wechsle zu Dokumente-Tab und lade neu
+                showTab('documents');
+            } catch (error) {
+                showMessage('Fehler beim Gruppieren: ' + error.message, 'error');
+                console.error('Group error:', error);
+            }
         }
         
         function showPageZoom(pageId, pageNumber, documentId) {

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from pathlib import Path
 
 from src.rotary_archiv.core.database import get_db
-from src.rotary_archiv.core.models import Document, DocumentPage
+from src.rotary_archiv.core.models import Document, DocumentPage, DocumentStatus
 from src.rotary_archiv.api.schemas import DocumentResponse
 from src.rotary_archiv.utils.pdf_splitter import PDFSplitter, PDF2IMAGE_AVAILABLE
 from src.rotary_archiv.utils.file_handler import get_file_path
@@ -318,11 +318,12 @@ def merge_pages(
     
     # Erstelle neues Dokument (Platzhalter)
     composite_doc = Document(
-        filename=request.title or f"Zusammengefügtes_Dokument_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+        filename=f"Zusammengefügtes_Dokument_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
         file_path=f"composite/{uuid.uuid4()}.pdf",  # Platzhalter
         file_type="application/pdf",
         is_composite=1,
-        title=request.title
+        title=request.title,  # Kann None sein
+        status=DocumentStatus.UPLOADED  # Setze Status explizit
     )
     
     db.add(composite_doc)
