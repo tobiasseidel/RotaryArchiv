@@ -37,9 +37,11 @@ Dieses Projekt ist ein digitales Archiv für Rotary Club Dokumente mit OCR, Trip
 
 ### Code-Style
 - PEP 8 konform
-- Black-Formatierung (falls verwendet)
+- Ruff für Linting und Formatting (ersetzt Flake8 + Black + isort)
+- Line Length: 100 Zeichen
 - Docstrings: Google-Style für Funktionen/Klassen
 - Tests: pytest, Tests für kritische Funktionen
+- Pre-commit Hooks: Automatische Code-Qualitäts-Checks vor Commits
 
 ### API-Design
 - REST API für CRUD-Operationen
@@ -56,6 +58,9 @@ Dieses Projekt ist ein digitales Archiv für Rotary Club Dokumente mit OCR, Trip
 
 ### Testing
 - pytest für Unit-Tests
+- pytest.ini für Test-Konfiguration
+- Coverage: pytest-cov für Coverage-Reports
+- Test-Markierungen: @pytest.mark.slow, @pytest.mark.integration, etc.
 - Test-Coverage für kritische Pfade (OCR, Wikidata, Triple-Store)
 
 ## Wichtige Regeln
@@ -64,3 +69,5 @@ Dieses Projekt ist ein digitales Archiv für Rotary Club Dokumente mit OCR, Trip
 - Dokumentation: README.md aktuell halten
 - Git: `.env`, `data/` nicht committen
 - Docker: docker-compose.yml für Services (PostgreSQL, Fuseki)
+- Development-Tools: Makefile für häufige Tasks, Ruff für Linting/Formatting
+- Pre-commit: Hooks installieren mit `make pre-commit-install`

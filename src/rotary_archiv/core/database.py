@@ -1,10 +1,12 @@
 """
 Database Setup und Session Management
 """
+
+from collections.abc import Generator
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from typing import Generator
 
 from src.rotary_archiv.config import settings
 
@@ -16,9 +18,9 @@ if settings.database_url.startswith("sqlite"):
 
 engine = create_engine(
     settings.database_url,
-    pool_pre_ping=True if not settings.database_url.startswith("sqlite") else False,
+    pool_pre_ping=bool(not settings.database_url.startswith("sqlite")),
     echo=settings.debug,
-    connect_args=connect_args
+    connect_args=connect_args,
 )
 
 # Session Factory
@@ -31,7 +33,7 @@ Base = declarative_base()
 def get_db() -> Generator:
     """
     Dependency für FastAPI: Datenbank-Session bereitstellen
-    
+
     Yields:
         Database session
     """

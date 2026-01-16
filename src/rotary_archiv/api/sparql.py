@@ -1,6 +1,7 @@
 """
 SPARQL Endpoint
 """
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
@@ -11,6 +12,7 @@ router = APIRouter(prefix="/sparql", tags=["sparql"])
 
 class SPARQLQuery(BaseModel):
     """SPARQL Query Request"""
+
     query: str
 
 
@@ -22,9 +24,9 @@ def execute_sparql(query: SPARQLQuery):
     if not query.query.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="SPARQL Query darf nicht leer sein"
+            detail="SPARQL Query darf nicht leer sein",
         )
-    
+
     try:
         triplestore = get_triplestore()
         results = triplestore.query(query.query)
@@ -32,5 +34,5 @@ def execute_sparql(query: SPARQLQuery):
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"SPARQL Query Fehler: {str(e)}"
-        )
+            detail=f"SPARQL Query Fehler: {e!s}",
+        ) from e

@@ -1,0 +1,51 @@
+# Ruff Configuration für RotaryArchiv
+# Ruff ist ein schneller Python Linter und Formatter
+
+[lint]
+# Aktivierte Regel-Sets
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort (import sorting)
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "SIM",    # flake8-simplify
+    "RUF",    # Ruff-spezifische Regeln
+]
+
+# Deaktivierte Regeln
+ignore = [
+    "E501",   # Line too long (wird durch formatter gehandhabt)
+    "B008",   # Function calls in argument defaults (manchmal notwendig)
+    "C901",   # Too complex (wird später angegangen)
+]
+
+[lint.per-file-ignores]
+# Ignoriere bestimmte Regeln in bestimmten Dateien
+"__init__.py" = ["F401"]  # Unused imports in __init__.py sind OK
+"tests/**/*.py" = ["E501"]  # Tests können längere Zeilen haben
+
+[lint.isort]
+# Import-Sortierung
+known-first-party = ["rotary_archiv"]
+force-single-line = false
+force-sort-within-sections = true
+
+[lint.mccabe]
+# Maximal erlaubte Komplexität
+max-complexity = 15
+
+[lint.pycodestyle]
+# Zeilenlänge (wird auch für Formatting verwendet)
+max-line-length = 100
+
+[format]
+# Formatierung-Einstellungen
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true

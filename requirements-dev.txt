@@ -1,0 +1,20 @@
+# Development Dependencies für RotaryArchiv
+# Installieren: pip install -r requirements-dev.txt
+
+# Linting & Formatting
+ruff>=0.1.8
+
+# Pre-commit Hooks
+pre-commit>=3.5.0
+
+# Testing
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+# pytest-asyncio ist bereits in requirements.txt
+
+# Code Quality
+coverage>=7.3.0
+
+# Type Checking (optional, für später)
+# mypy>=1.7.0
+# types-requests>=2.31.0

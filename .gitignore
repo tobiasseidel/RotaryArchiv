@@ -45,6 +45,10 @@ logs/
 .pytest_cache/
 .coverage
 htmlcov/
+.coverage.*
+
+# Ruff
+.ruff_cache/
 
 # Build
 dist/

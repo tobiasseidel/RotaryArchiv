@@ -1,17 +1,28 @@
 """
 FastAPI Hauptanwendung
 """
+
 from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from src.rotary_archiv.api import documents, entities, triples, search, wikidata, sparql, pages
+from src.rotary_archiv.api import (
+    documents,
+    entities,
+    pages,
+    search,
+    sparql,
+    triples,
+    wikidata,
+)
+from src.rotary_archiv.config import settings
 
 app = FastAPI(
     title="RotaryArchiv API",
     description="Digitales Archiv-System für Rotary Club Dokumente",
-    version="0.1.0"
+    version="0.1.0",
 )
 
 # CORS Middleware
@@ -29,7 +40,6 @@ if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 # Static Files für Dokumente und Seiten (für Vorschau)
-from src.rotary_archiv.config import settings
 data_dir = Path(settings.documents_path)
 if data_dir.exists():
     app.mount("/data", StaticFiles(directory=str(data_dir.resolve())), name="data")
@@ -48,6 +58,7 @@ app.include_router(pages.router)
 async def root():
     """Root Endpoint - Redirect zu Frontend"""
     from fastapi.responses import FileResponse
+
     static_file = static_dir / "index.html"
     if static_file.exists():
         return FileResponse(str(static_file))
@@ -62,8 +73,8 @@ async def root():
             "triples": "/api/triples",
             "search": "/api/search",
             "wikidata": "/api/wikidata",
-            "sparql": "/sparql"
-        }
+            "sparql": "/sparql",
+        },
     }
 
 

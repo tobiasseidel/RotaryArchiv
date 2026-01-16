@@ -159,21 +159,169 @@ RotaryArchiv/
 
 ## Entwicklung
 
-### Server starten
+### Quick Start für Entwickler
 
-**Schnellstart (mit aktiviertem venv):**
-```bash
-uvicorn src.rotary_archiv.main:app --reload
+**Windows PowerShell (empfohlen):**
+```powershell
+# Falls Execution Policy Fehler auftreten, führe aus:
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+# 1. Development-Dependencies installieren
+.\dev.ps1 install-dev
+
+# 2. Pre-commit Hooks installieren
+.\dev.ps1 pre-commit-install
+
+# 3. Server starten
+.\dev.ps1 run
 ```
 
-**Mit expliziten Parametern:**
+**Linux/Mac (mit Make):**
 ```bash
+# 1. Development-Dependencies installieren
+make install-dev
+
+# 2. Pre-commit Hooks installieren
+make pre-commit-install
+
+# 3. Server starten
+make run
+```
+
+**Manuell (alle Plattformen):**
+```bash
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+pre-commit install
 uvicorn src.rotary_archiv.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**Im Hintergrund (Windows PowerShell):**
+### Verfügbare Commands
+
+**Windows PowerShell:**
+```powershell
+.\dev.ps1 help              # Zeige alle verfügbaren Commands
+.\dev.ps1 install           # Installiere Production-Dependencies
+.\dev.ps1 install-dev       # Installiere Development-Dependencies
+.\dev.ps1 lint              # Führe Linting aus (Ruff)
+.\dev.ps1 format            # Formatiere Code (Ruff)
+.\dev.ps1 lint-fix          # Linting mit Auto-Fix
+.\dev.ps1 test              # Führe Tests aus
+.\dev.ps1 test-verbose      # Tests mit Verbose-Output
+.\dev.ps1 coverage          # Führe Tests mit Coverage-Report aus
+.\dev.ps1 run               # Starte FastAPI Server
+.\dev.ps1 run-prod          # Starte Server (Production-Mode)
+.\dev.ps1 migrate           # Führe Datenbank-Migrationen aus
+.\dev.ps1 migrate-create "Beschreibung"  # Erstelle neue Migration
+.\dev.ps1 clean             # Entferne temporäre Dateien
+.\dev.ps1 pre-commit-install # Installiere Pre-commit Hooks
+.\dev.ps1 pre-commit-run    # Führe Pre-commit Hooks aus
+```
+
+**Linux/Mac (Make):**
 ```bash
-Start-Process powershell -ArgumentList "-NoExit", "-Command", ".\venv\Scripts\Activate.ps1; uvicorn src.rotary_archiv.main:app --reload"
+make help              # Zeige alle verfügbaren Commands
+make install           # Installiere Production-Dependencies
+make install-dev       # Installiere Development-Dependencies
+make lint              # Führe Linting aus (Ruff)
+make format            # Formatiere Code (Ruff)
+make test              # Führe Tests aus
+make coverage          # Führe Tests mit Coverage-Report aus
+make run               # Starte FastAPI Server
+make migrate           # Führe Datenbank-Migrationen aus
+make clean             # Entferne temporäre Dateien
+make pre-commit-install # Installiere Pre-commit Hooks
+```
+
+### Code-Qualität
+
+**Linting & Formatting:**
+
+Windows PowerShell:
+```powershell
+.\dev.ps1 lint              # Code prüfen
+.\dev.ps1 format            # Code formatieren
+.\dev.ps1 lint-fix          # Code prüfen und automatisch fixen
+```
+
+Linux/Mac:
+```bash
+make lint              # Code prüfen
+make format            # Code formatieren
+make lint-fix          # Code prüfen und automatisch fixen
+```
+
+Wir verwenden **Ruff** für Linting und Formatting (ersetzt Flake8 + Black + isort).
+
+**Pre-commit Hooks:**
+Pre-commit Hooks führen automatisch Checks vor jedem Commit aus:
+- Ruff Linting (Python)
+- Ruff Formatting (Python)
+- PowerShell Syntax-Check (falls `.ps1` Dateien geändert wurden)
+- PowerShell Script Analyzer (optional, falls PSScriptAnalyzer installiert)
+- Trailing Whitespace entfernen
+- YAML/JSON Validierung
+
+**PowerShell-Skripte prüfen:**
+Falls PSScriptAnalyzer installiert ist, werden PowerShell-Skripte zusätzlich analysiert:
+```powershell
+# Optional: PSScriptAnalyzer installieren (für erweiterte PowerShell-Checks)
+Install-Module -Name PSScriptAnalyzer -Scope CurrentUser
+```
+
+### Testing
+
+**Tests ausführen:**
+
+Windows PowerShell:
+```powershell
+.\dev.ps1 test              # Alle Tests
+.\dev.ps1 test-verbose      # Mit Verbose-Output
+.\dev.ps1 coverage          # Mit Coverage-Report
+```
+
+Linux/Mac:
+```bash
+make test              # Alle Tests
+make test-verbose      # Mit Verbose-Output
+make coverage          # Mit Coverage-Report
+```
+
+**Coverage-Report ansehen:**
+Nach `make coverage` öffne `htmlcov/index.html` im Browser.
+
+### Datenbank-Migrationen
+
+**Migration erstellen:**
+
+Windows PowerShell:
+```powershell
+.\dev.ps1 migrate-create "Beschreibung der Änderung"
+# Oder:
+alembic revision --autogenerate -m "Beschreibung"
+```
+
+Linux/Mac:
+```bash
+make migrate-create MESSAGE="Beschreibung der Änderung"
+# Oder:
+alembic revision --autogenerate -m "Beschreibung"
+```
+
+**Migration ausführen:**
+
+Windows PowerShell:
+```powershell
+.\dev.ps1 migrate
+# Oder:
+alembic upgrade head
+```
+
+Linux/Mac:
+```bash
+make migrate
+# Oder:
+alembic upgrade head
 ```
 
 ### Zugriff auf die Anwendung
@@ -184,20 +332,12 @@ Nach dem Start sind verfügbar:
 - **Alternative API-Dokumentation (ReDoc)**: http://localhost:8000/redoc
 - **Health Check**: http://localhost:8000/health
 
-### Tests ausführen:
-```bash
-pytest
-```
+### Weitere Informationen
 
-### Datenbank-Migration erstellen:
-```bash
-alembic revision --autogenerate -m "Beschreibung"
-alembic upgrade head
-```
-
-### Server stoppen:
-Drücke `Ctrl+C` im Terminal, in dem der Server läuft.
+- **Code-Style**: Siehe [CONTRIBUTING.md](CONTRIBUTING.md)
+- **Projekt-Management**: Siehe [TODO.md](TODO.md), [BACKLOG.md](BACKLOG.md), [WORKLOG.md](WORKLOG.md)
+- **Changelog**: Siehe [CHANGELOG.md](CHANGELOG.md)
 
 ## Lizenz
 
-[Lizenz hier einfügen]
+Siehe [LICENSE](LICENSE) für Details.

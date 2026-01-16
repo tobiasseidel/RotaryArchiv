@@ -1,0 +1,53 @@
+# Pre-commit Hooks für RotaryArchiv
+# Installieren: pre-commit install
+# Manuell ausführen: pre-commit run --all-files
+
+repos:
+  # Ruff für Linting und Formatting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.8
+    hooks:
+      # Ruff Linting
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      # Ruff Formatting
+      - id: ruff-format
+
+  # Allgemeine File-Checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--unsafe]  # Erlaubt custom YAML tags
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  # Python-spezifische Checks
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      - id: python-check-blanket-noqa
+      - id: python-check-mock-methods
+      - id: python-no-eval
+      - id: python-no-log-warn
+
+  # PowerShell-Skripte prüfen
+  - repo: local
+    hooks:
+      # PowerShell Syntax-Check und Analyse
+      - id: powershell-check
+        name: PowerShell Script Check
+        entry: powershell -ExecutionPolicy RemoteSigned -NoProfile -NonInteractive -File .pre-commit-hooks.ps1
+        language: script
+        types: [text]
+        files: \.ps1$
+        pass_filenames: true
+        always_run: false
