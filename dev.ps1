@@ -18,8 +18,10 @@ function Show-Help {
     Write-Host "  .\dev.ps1 test             - Führe Tests aus" -ForegroundColor Green
     Write-Host "  .\dev.ps1 test-verbose     - Tests mit Verbose-Output" -ForegroundColor Green
     Write-Host "  .\dev.ps1 coverage        - Führe Tests mit Coverage-Report aus" -ForegroundColor Green
-    Write-Host "  .\dev.ps1 run              - Starte FastAPI Server" -ForegroundColor Green
+    Write-Host "  .\dev.ps1 run              - Starte FastAPI Server (ohne Auto-Reload, empfohlen)" -ForegroundColor Green
+    Write-Host "  .\dev.ps1 run-reload       - Starte Server mit Auto-Reload (kann Probleme verursachen)" -ForegroundColor Yellow
     Write-Host "  .\dev.ps1 run-prod        - Starte Server (Production-Mode)" -ForegroundColor Green
+    Write-Host "  .\dev.ps1 stop             - Beende alle Backend-Prozesse" -ForegroundColor Green
     Write-Host "  .\dev.ps1 migrate         - Führe Datenbank-Migrationen aus" -ForegroundColor Green
     Write-Host "  .\dev.ps1 migrate-create   - Erstelle neue Migration (MESSAGE='Beschreibung')" -ForegroundColor Green
     Write-Host "  .\dev.ps1 pre-commit-install - Installiere Pre-commit Hooks" -ForegroundColor Green
@@ -93,10 +95,22 @@ function Invoke-Coverage {
 }
 
 function Start-Server {
+    param(
+        [switch]$Reload
+    )
+
     Write-Host "Starte FastAPI Server..." -ForegroundColor Yellow
     Write-Host "Server läuft auf: http://localhost:8000" -ForegroundColor Cyan
     Write-Host "Drücke Ctrl+C zum Beenden" -ForegroundColor Yellow
-    uvicorn src.rotary_archiv.main:app --reload --host 0.0.0.0 --port 8000
+
+    if ($Reload) {
+        Write-Host "Hinweis: Auto-Reload aktiviert (kann auf Windows Probleme verursachen)" -ForegroundColor Yellow
+        uvicorn src.rotary_archiv.main:app --reload --host 0.0.0.0 --port 8000
+    } else {
+        Write-Host "Hinweis: Auto-Reload deaktiviert (stabiler auf Windows)" -ForegroundColor Green
+        Write-Host "Bei Code-Aenderungen: Ctrl+C und erneut starten" -ForegroundColor Gray
+        uvicorn src.rotary_archiv.main:app --host 0.0.0.0 --port 8000
+    }
 }
 
 function Start-ServerProd {
@@ -191,7 +205,16 @@ switch ($Command.ToLower()) {
     "test-verbose" { Invoke-TestVerbose }
     "coverage" { Invoke-Coverage }
     "run" { Start-Server }
+    "run-reload" { Start-Server -Reload }
     "run-prod" { Start-ServerProd }
+    "stop" {
+        Write-Host "Beende alle Backend-Prozesse..." -ForegroundColor Yellow
+        if (Test-Path ".\stop-backend.ps1") {
+            .\stop-backend.ps1
+        } else {
+            Write-Host "[FEHLER] stop-backend.ps1 nicht gefunden!" -ForegroundColor Red
+        }
+    }
     "migrate" { Invoke-Migrate }
     "migrate-create" {
         if ($args.Count -gt 0) {

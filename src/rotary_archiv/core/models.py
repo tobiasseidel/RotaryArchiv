@@ -80,6 +80,16 @@ class OCRReviewStatus(str, Enum):
     NEEDS_REVISION = "needs_revision"
 
 
+class OCRJobStatus(str, Enum):
+    """Status für OCR-Jobs"""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 class Document(Base):
     """Dokument-Model"""
 
@@ -153,6 +163,9 @@ class Document(Base):
     )
     ocr_reviews = relationship(
         "OCRReview", back_populates="document", cascade="all, delete-orphan"
+    )
+    ocr_jobs = relationship(
+        "OCRJob", back_populates="document", cascade="all, delete-orphan"
     )
     entity_occurrences = relationship(
         "EntityOccurrence", back_populates="document", cascade="all, delete-orphan"
@@ -233,9 +246,12 @@ class DocumentPage(Base):
     )
     page_number = Column(Integer, nullable=False)  # Seitenzahl (1-basiert)
     file_path = Column(
-        String(512), nullable=False
-    )  # Pfad zur extrahierten Seite (PDF oder Bild)
+        String(512), nullable=True
+    )  # Pfad zur extrahierten Seite (PDF oder Bild) - optional, None für virtuelle Seiten
     file_type = Column(String(50), nullable=False)  # pdf, png, jpg
+    is_extracted = Column(
+        Boolean, default=False, nullable=False, server_default="0"
+    )  # True wenn Seite als Datei extrahiert wurde
 
     # OCR für einzelne Seite - Legacy (deprecated)
     ocr_text = Column(Text, nullable=True)  # Deprecated: Verwende OCRResult
@@ -441,3 +457,46 @@ class Annotation(Base):
 
     def __repr__(self) -> str:
         return f"<Annotation(id={self.id}, document_id={self.document_id})>"
+
+
+class OCRJob(Base):
+    """OCR-Job für asynchrone Verarbeitung"""
+
+    __tablename__ = "ocr_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(
+        Integer, ForeignKey("documents.id"), nullable=False, index=True
+    )
+    document_page_id = Column(
+        Integer, ForeignKey("document_pages.id"), nullable=True, index=True
+    )  # Optional: für seitenweise OCR-Jobs
+    status = Column(
+        SQLEnum(OCRJobStatus),
+        default=OCRJobStatus.PENDING,
+        nullable=False,
+        index=True,
+    )
+
+    # Job-Parameter
+    language = Column(String(50), default="deu+eng", nullable=False)
+    use_correction = Column(Boolean, default=True, nullable=False)
+
+    # Fortschritt und Ergebnisse
+    progress = Column(Float, default=0.0, nullable=False)  # 0.0-100.0
+    current_step = Column(
+        String(255), nullable=True
+    )  # z.B. "Tesseract OCR", "Ollama Vision", "GPT Correction"
+    error_message = Column(Text, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    document = relationship("Document", back_populates="ocr_jobs")
+    document_page = relationship("DocumentPage", backref="ocr_jobs")
+
+    def __repr__(self) -> str:
+        return f"<OCRJob(id={self.id}, document_id={self.document_id}, document_page_id={self.document_page_id}, status={self.status})>"

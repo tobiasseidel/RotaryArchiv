@@ -31,8 +31,11 @@ class Settings(BaseSettings):
     pdf_extraction_dpi: int = 200  # DPI für PDF-zu-Bild-Konvertierung (niedriger = schneller, weniger Speicher)
     pdf_extraction_batch_size: int = 50  # Anzahl Seiten pro Batch für große PDFs
     ollama_base_url: str = "http://localhost:11434"
-    ollama_vision_model: str = "llava"
-    ollama_gpt_model: str = "llama3"
+    ollama_vision_model: str = "deepseek-ocr:latest"  # Standard: deepseek-ocr:latest, kann über .env überschrieben werden
+    ollama_gpt_model: str = (
+        "gpt-oss:20b"  # Standard: gpt-oss:20b, kann über .env überschrieben werden
+    )
+    ollama_timeout_seconds: int = 3600  # Timeout für Ollama-Requests in Sekunden (Standard: 60 Minuten, für Background-Jobs)
 
     # Wikidata
     wikidata_api_url: str = "https://www.wikidata.org/w/api.php"

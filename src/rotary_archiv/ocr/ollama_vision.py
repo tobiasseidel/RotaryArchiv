@@ -5,6 +5,7 @@ Ollama Vision OCR Implementation
 import base64
 import io
 from pathlib import Path
+import time
 from typing import Any
 
 import httpx
@@ -75,8 +76,9 @@ class OllamaVisionOCR:
             prompt: Prompt für Vision Model
 
         Returns:
-            Dict mit 'text' und Metadaten
+            Dict mit 'text', 'engine_version', 'processing_time_ms' und Metadaten
         """
+        start_time = time.time()
         file_path_obj = Path(file_path)
 
         try:
@@ -104,19 +106,24 @@ class OllamaVisionOCR:
 
                 full_text = self._process_image(image_b64, prompt)
 
+            processing_time_ms = int((time.time() - start_time) * 1000)
+
             return {
                 "text": full_text.strip(),
                 "confidence": None,  # Ollama Vision gibt keine Confidence
                 "engine": "ollama_vision",
-                "model": self.model,
+                "engine_version": self.model,  # Model-Name als engine_version
+                "processing_time_ms": processing_time_ms,
             }
 
         except Exception as e:
+            processing_time_ms = int((time.time() - start_time) * 1000)
             return {
                 "text": "",
                 "confidence": None,
                 "engine": "ollama_vision",
                 "error": str(e),
+                "processing_time_ms": processing_time_ms,
             }
 
     def _process_image(self, image_b64: str, prompt: str) -> str:
@@ -131,7 +138,14 @@ class OllamaVisionOCR:
             Extrahierter Text
         """
         try:
-            with httpx.Client(timeout=120.0) as client:
+            # Timeout konfigurierbar: connect=10s, read/write=konfigurierbar (Standard: 10 Min)
+            timeout = httpx.Timeout(
+                connect=10.0,
+                read=settings.ollama_timeout_seconds,
+                write=settings.ollama_timeout_seconds,
+                pool=10.0,
+            )
+            with httpx.Client(timeout=timeout) as client:
                 response = client.post(
                     f"{self.base_url}/api/generate",
                     json={
@@ -144,5 +158,9 @@ class OllamaVisionOCR:
                 response.raise_for_status()
                 data = response.json()
                 return data.get("response", "")
+        except httpx.TimeoutException as e:
+            raise Exception(
+                f"Ollama Vision Timeout nach {settings.ollama_timeout_seconds}s: {e}"
+            ) from e
         except Exception as e:
             raise Exception(f"Ollama Vision Fehler: {e}") from e

@@ -2,7 +2,15 @@
 API Endpoints für Dokumente
 """
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from src.rotary_archiv.api.schemas import (
@@ -10,8 +18,15 @@ from src.rotary_archiv.api.schemas import (
     DocumentUpdate,
 )
 from src.rotary_archiv.core.database import get_db
-from src.rotary_archiv.core.models import Document, DocumentStatus
+from src.rotary_archiv.core.models import (
+    Document,
+    DocumentPage,
+    DocumentStatus,
+    OCRJob,
+    OCRJobStatus,
+)
 from src.rotary_archiv.utils.file_handler import get_file_size, save_uploaded_file
+from src.rotary_archiv.utils.pdf_utils import get_pdf_page_count
 
 # Optional imports für OCR und NLP
 try:
@@ -34,7 +49,11 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 
 @router.post("/", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
-async def create_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def create_document(
+    file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    db: Session = Depends(get_db),
+):
     """
     Lade neues Dokument hoch
     """
@@ -72,6 +91,68 @@ async def create_document(file: UploadFile = File(...), db: Session = Depends(ge
         db.add(db_document)
         db.commit()
         db.refresh(db_document)
+
+        # Für PDFs: Erstelle virtuelle Seiten und OCR-Jobs
+        if (
+            db_document.file_type.lower() == "application/pdf"
+            or db_document.filename.lower().endswith(".pdf")
+        ):
+            try:
+                from src.rotary_archiv.ocr.job_processor import process_ocr_job
+
+                # Ermittle Seitenzahl
+                from src.rotary_archiv.utils.file_handler import get_file_path
+
+                absolute_file_path = get_file_path(db_document.file_path)
+                page_count = get_pdf_page_count(absolute_file_path)
+
+                # Erstelle virtuelle DocumentPage-Objekte
+                pages = []
+                for page_num in range(1, page_count + 1):
+                    db_page = DocumentPage(
+                        document_id=db_document.id,
+                        page_number=page_num,
+                        file_path=None,  # Virtuell, keine Datei-Extraktion
+                        file_type="pdf",
+                        is_extracted=False,
+                    )
+                    db.add(db_page)
+                    pages.append(db_page)
+
+                db.commit()
+
+                # Refresh für IDs
+                for page in pages:
+                    db.refresh(page)
+
+                # Erstelle OCR-Jobs für jede Seite
+                ocr_jobs = []
+                for page in pages:
+                    ocr_job = OCRJob(
+                        document_id=db_document.id,
+                        document_page_id=page.id,
+                        status=OCRJobStatus.PENDING,
+                        language="deu+eng",
+                        use_correction=True,
+                    )
+                    db.add(ocr_job)
+                    ocr_jobs.append(ocr_job)
+
+                db.commit()
+
+                # Refresh für IDs und starte Background-Tasks
+                for ocr_job in ocr_jobs:
+                    db.refresh(ocr_job)
+                    # Starte Background-Task für OCR-Verarbeitung
+                    background_tasks.add_task(process_ocr_job, ocr_job.id)
+
+            except Exception as e:
+                import logging
+
+                logging.warning(
+                    f"Fehler beim Erstellen von Seiten/OCR-Jobs für Dokument {db_document.id}: {e}"
+                )
+                # Fehler nicht kritisch - Dokument wurde bereits erstellt
 
         return db_document
 
@@ -235,6 +316,145 @@ def delete_document(document_id: int, db: Session = Depends(get_db)):
         ) from e
 
 
+@router.post("/{document_id}/create-page-jobs", response_model=dict)
+async def create_page_jobs(
+    document_id: int,
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    db: Session = Depends(get_db),
+):
+    """
+    Erstelle seitenweise OCR-Jobs für ein bestehendes PDF-Dokument nachträglich
+
+    Erstellt virtuelle DocumentPage-Objekte und OCR-Jobs für jede Seite,
+    falls diese noch nicht existieren.
+    """
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Dokument nicht gefunden"
+        )
+
+    # Prüfe ob es ein PDF ist
+    if (
+        document.file_type.lower() != "application/pdf"
+        and not document.filename.lower().endswith(".pdf")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nur PDF-Dateien können seitenweise verarbeitet werden",
+        )
+
+    try:
+        from src.rotary_archiv.ocr.job_processor import process_ocr_job
+
+        # Ermittle Seitenzahl
+        from src.rotary_archiv.utils.file_handler import get_file_path
+
+        absolute_file_path = get_file_path(document.file_path)
+        if not absolute_file_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Datei nicht gefunden: {absolute_file_path}",
+            )
+
+        page_count = get_pdf_page_count(absolute_file_path)
+
+        # Prüfe welche Seiten bereits existieren
+        existing_pages = (
+            db.query(DocumentPage).filter(DocumentPage.document_id == document_id).all()
+        )
+        existing_page_numbers = {page.page_number for page in existing_pages}
+
+        # Erstelle fehlende virtuelle DocumentPage-Objekte
+        new_pages = []
+        for page_num in range(1, page_count + 1):
+            if page_num not in existing_page_numbers:
+                db_page = DocumentPage(
+                    document_id=document_id,
+                    page_number=page_num,
+                    file_path=None,  # Virtuell, keine Datei-Extraktion
+                    file_type="pdf",
+                    is_extracted=False,
+                )
+                db.add(db_page)
+                new_pages.append(db_page)
+
+        if new_pages:
+            db.commit()
+            # Refresh für IDs
+            for page in new_pages:
+                db.refresh(page)
+
+        # Verwende alle Seiten (neu und bestehend)
+        all_pages = (
+            db.query(DocumentPage)
+            .filter(DocumentPage.document_id == document_id)
+            .order_by(DocumentPage.page_number)
+            .all()
+        )
+
+        # Prüfe welche Jobs bereits existieren
+        existing_jobs = (
+            db.query(OCRJob)
+            .filter(
+                OCRJob.document_id == document_id,
+                OCRJob.document_page_id.isnot(None),
+            )
+            .all()
+        )
+        existing_page_ids = {
+            job.document_page_id for job in existing_jobs if job.document_page_id
+        }
+
+        # Erstelle OCR-Jobs für Seiten ohne bestehenden Job
+        ocr_jobs = []
+        for page in all_pages:
+            if page.id not in existing_page_ids:
+                ocr_job = OCRJob(
+                    document_id=document_id,
+                    document_page_id=page.id,
+                    status=OCRJobStatus.PENDING,
+                    language="deu+eng",
+                    use_correction=True,
+                )
+                db.add(ocr_job)
+                ocr_jobs.append(ocr_job)
+
+        if ocr_jobs:
+            db.commit()
+            # Refresh für IDs und starte Background-Tasks
+            for ocr_job in ocr_jobs:
+                db.refresh(ocr_job)
+                # Starte Background-Task für OCR-Verarbeitung
+                background_tasks.add_task(process_ocr_job, ocr_job.id)
+
+        return {
+            "document_id": document_id,
+            "total_pages": page_count,
+            "existing_pages": len(existing_pages),
+            "new_pages": len(new_pages),
+            "existing_jobs": len(existing_jobs),
+            "new_jobs": len(ocr_jobs),
+            "message": f"Erstellt: {len(new_pages)} neue Seiten, {len(ocr_jobs)} neue OCR-Jobs",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import logging
+        import traceback
+
+        logging.error(
+            f"Fehler beim Erstellen von Seiten/OCR-Jobs für Dokument {document_id}: {e}"
+        )
+        logging.error(traceback.format_exc())
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Erstellen der Jobs: {e!s}",
+        ) from e
+
+
 @router.post("/{document_id}/ocr", response_model=DocumentResponse)
 async def process_ocr(
     document_id: int,
@@ -243,52 +463,44 @@ async def process_ocr(
     db: Session = Depends(get_db),
 ):
     """
-    Führe OCR auf Dokument aus
+    Führe OCR auf Dokument aus (DEPRECATED: Verwende /api/ocr/documents/{id}/process)
+
+    Dieses Endpoint verwendet das neue OCR-System mit OCRResult-Einträgen.
+    Für Rückwärtskompatibilität wird das alte Format beibehalten.
     """
+    from src.rotary_archiv.api.ocr import process_ocr as new_process_ocr
+
+    # Verwende neues OCR-System
+    ocr_results = await new_process_ocr(
+        document_id=document_id,
+        language=language,
+        use_correction=use_correction,
+        db=db,
+    )
+
+    # Hole Dokument mit aktualisiertem Status
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Dokument nicht gefunden"
         )
 
-    # Update Status
-    document.status = DocumentStatus.OCR_PENDING
-    db.commit()
+    db.refresh(document)
 
-    if not OCR_AVAILABLE:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="OCR-Pipeline nicht verfügbar. Bitte Dependencies installieren.",
+    # Für Rückwärtskompatibilität: Setze ocr_text auf bestes Ergebnis
+    if ocr_results:
+        # Verwende GPT-kombiniertes Ergebnis falls vorhanden, sonst Tesseract
+        best_result = next(
+            (r for r in ocr_results if r.source.value == "combined"), None
         )
+        if not best_result:
+            best_result = next(
+                (r for r in ocr_results if r.source.value == "tesseract"), None
+            )
+        if best_result:
+            document.ocr_text = best_result.text
 
-    try:
-        # OCR Pipeline
-        pipeline = OCRPipeline()
-        ocr_result = await pipeline.process_document(
-            document.file_path, language=language, use_correction=use_correction
-        )
-
-        # Speichere Ergebnisse
-        document.ocr_text = ocr_result["text"]
-        document.ocr_text_tesseract = ocr_result["tesseract"].get("text")
-        document.ocr_text_ollama = ocr_result["ollama_vision"].get("text")
-        document.ocr_confidence = str(
-            ocr_result.get("tesseract", {}).get("confidence", 0)
-        )
-        document.status = DocumentStatus.OCR_DONE
-
-        db.commit()
-        db.refresh(document)
-
-        return document
-
-    except Exception as e:
-        document.status = DocumentStatus.UPLOADED  # Rollback
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"OCR Fehler: {e!s}",
-        ) from e
+    return document
 
 
 @router.post("/{document_id}/classify", response_model=DocumentResponse)

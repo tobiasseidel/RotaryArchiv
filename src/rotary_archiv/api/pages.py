@@ -229,7 +229,14 @@ def get_page_preview(
 
                     # Wenn Thumbnail gewünscht
                     if thumbnail and PIL_AVAILABLE:
-                        img.thumbnail((400, 400), Image.Resampling.LANCZOS)
+                        from src.rotary_archiv.utils.pdf_utils import (
+                            create_page_thumbnail,
+                        )
+
+                        thumbnail_size = 200
+                        img = create_page_thumbnail(
+                            img, size=(thumbnail_size, thumbnail_size)
+                        )
 
                     # Speichere temporär
                     with tempfile.NamedTemporaryFile(
@@ -260,8 +267,11 @@ def get_page_preview(
         if thumbnail and PIL_AVAILABLE:
             try:
                 img = Image.open(file_path)
-                # Erstelle Thumbnail (max 400px)
-                img.thumbnail((400, 400), Image.Resampling.LANCZOS)
+                # Erstelle Thumbnail (200x200px)
+                from src.rotary_archiv.utils.pdf_utils import create_page_thumbnail
+
+                thumbnail_size = 200
+                img = create_page_thumbnail(img, size=(thumbnail_size, thumbnail_size))
 
                 # Speichere Thumbnail temporär
                 with tempfile.NamedTemporaryFile(

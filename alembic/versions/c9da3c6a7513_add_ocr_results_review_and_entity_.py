@@ -196,7 +196,6 @@ def upgrade() -> None:
                 )
                 batch_op.create_index(
                     op.f("ix_annotations_entity_occurrence_id"),
-                    "annotations",
                     ["entity_occurrence_id"],
                     unique=False,
                 )

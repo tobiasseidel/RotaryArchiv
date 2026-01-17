@@ -142,7 +142,14 @@ Text:
             Generierter Text
         """
         try:
-            with httpx.Client(timeout=120.0) as client:
+            # Timeout konfigurierbar: connect=10s, read/write=konfigurierbar (Standard: 10 Min)
+            timeout = httpx.Timeout(
+                connect=10.0,
+                read=settings.ollama_timeout_seconds,
+                write=settings.ollama_timeout_seconds,
+                pool=10.0,
+            )
+            with httpx.Client(timeout=timeout) as client:
                 response = client.post(
                     f"{self.base_url}/api/generate",
                     json={"model": self.model, "prompt": prompt, "stream": False},
@@ -150,5 +157,9 @@ Text:
                 response.raise_for_status()
                 data = response.json()
                 return data.get("response", "")
+        except httpx.TimeoutException as e:
+            raise Exception(
+                f"Ollama GPT Timeout nach {settings.ollama_timeout_seconds}s: {e}"
+            ) from e
         except Exception as e:
             raise Exception(f"Ollama GPT Fehler: {e}") from e

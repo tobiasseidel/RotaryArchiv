@@ -2,12 +2,115 @@
 Pydantic Schemas für API Requests/Responses
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from src.rotary_archiv.core.models import DocumentStatus, DocumentType, EntityType
+from src.rotary_archiv.core.models import (
+    DocumentStatus,
+    DocumentType,
+    EntityType,
+    OCRJobStatus,
+    OCRReviewStatus,
+    OCRSource,
+)
+
+
+# OCR Schemas (müssen vor DocumentResponse definiert werden)
+class OCRResultResponse(BaseModel):
+    """Schema für OCRResult-Response"""
+
+    id: int
+    document_id: int
+    document_page_id: int | None = None
+    source: OCRSource
+    engine_version: str | None = None
+    text: str
+    confidence: float | None = None
+    confidence_details: dict[str, Any] | None = None
+    processing_time_ms: int | None = None
+    language: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class OCRReviewCreate(BaseModel):
+    """Schema für OCR-Review-Erstellung"""
+
+    reviewed_ocr_result_id: int | None = Field(
+        None, description="ID des zu reviewenden OCRResult (optional)"
+    )
+    final_text: str | None = Field(
+        None, description="Manuell korrigierter Text (optional)"
+    )
+    review_notes: str | None = Field(None, description="Notizen zum Review (optional)")
+    reviewer_name: str | None = Field(None, description="Name des Reviewers (optional)")
+
+
+class OCRReviewResponse(BaseModel):
+    """Schema für OCRReview-Response"""
+
+    id: int
+    document_id: int
+    status: OCRReviewStatus
+    reviewed_ocr_result_id: int | None = None
+    final_text: str | None = None
+    reviewer_id: int | None = None
+    reviewer_name: str | None = None
+    review_notes: str | None = None
+    review_round: int
+    previous_review_id: int | None = None
+    reviewed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class OCRComparisonResponse(BaseModel):
+    """Schema für OCR-Vergleichs-Response"""
+
+    results: list[dict[str, Any]] = Field(
+        ..., description="Liste der verglichenen Ergebnisse"
+    )
+    metrics: dict[str, Any] = Field(..., description="Gesamt-Metriken")
+    suggested_best: int | None = Field(
+        None, description="ID des vorgeschlagenen besten Ergebnisses"
+    )
+
+
+class OCRJobResponse(BaseModel):
+    """Schema für OCRJob-Response"""
+
+    id: int
+    document_id: int
+    document_page_id: int | None = None
+    status: OCRJobStatus
+    language: str
+    use_correction: bool
+    progress: float
+    current_step: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class OCRJobCreate(BaseModel):
+    """Schema für OCRJob-Erstellung"""
+
+    language: str = Field(default="deu+eng", description="Sprache für Tesseract")
+    use_correction: bool = Field(default=True, description="GPT-Korrektur verwenden")
 
 
 # Document Schemas
@@ -45,10 +148,14 @@ class DocumentResponse(DocumentBase):
     parent_document_id: int | None = None
     is_composite: int | None = None
     page_number: int | None = None
-    ocr_text: str | None = None
+    ocr_text: str | None = None  # Legacy, deprecated
+    ocr_text_final: str | None = None  # Finales, reviewtes OCR-Ergebnis
     status: DocumentStatus
     created_at: datetime
     updated_at: datetime
+    # Relationships werden optional hinzugefügt wenn benötigt
+    ocr_results: list[OCRResultResponse] | None = None
+    ocr_review: OCRReviewResponse | None = None
 
     class Config:
         from_attributes = True
@@ -138,9 +245,9 @@ class TripleResponse(BaseModel):
     object_type: str
 
 
-# OCR Schemas
-class OCRResult(BaseModel):
-    """Schema für OCR-Ergebnis"""
+# OCR Legacy Schema
+class OCRResultLegacy(BaseModel):
+    """Schema für OCR-Ergebnis (Legacy, für Rückwärtskompatibilität)"""
 
     text: str
     tesseract: dict[str, Any]

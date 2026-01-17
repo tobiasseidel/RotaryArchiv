@@ -10,14 +10,14 @@
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: #f5f5f5;
             padding: 0;
             margin: 0;
         }
-        
+
         .container {
             max-width: 1200px;
             margin: 0 auto;
@@ -28,17 +28,17 @@
             margin-top: 20px;
             margin-bottom: 20px;
         }
-        
+
         h1 {
             color: #333;
             margin-bottom: 10px;
         }
-        
+
         .subtitle {
             color: #666;
             margin-bottom: 30px;
         }
-        
+
         .upload-section {
             border: 2px dashed #ddd;
             border-radius: 8px;
@@ -47,16 +47,16 @@
             margin-bottom: 30px;
             transition: all 0.3s;
         }
-        
+
         .upload-section.dragover {
             border-color: #4CAF50;
             background: #f0f8f0;
         }
-        
+
         .upload-section input[type="file"] {
             display: none;
         }
-        
+
         .upload-btn {
             background: #4CAF50;
             color: white;
@@ -67,20 +67,20 @@
             font-size: 16px;
             margin: 10px;
         }
-        
+
         .upload-btn:hover {
             background: #45a049;
         }
-        
+
         .upload-btn:disabled {
             background: #ccc;
             cursor: not-allowed;
         }
-        
+
         .documents-list {
             margin-top: 30px;
         }
-        
+
         .document-item {
             border: 1px solid #ddd;
             border-radius: 4px;
@@ -90,27 +90,27 @@
             justify-content: space-between;
             align-items: center;
         }
-        
+
         .document-info {
             flex: 1;
         }
-        
+
         .document-name {
             font-weight: bold;
             color: #333;
             margin-bottom: 5px;
         }
-        
+
         .document-meta {
             color: #666;
             font-size: 14px;
         }
-        
+
         .document-actions {
             display: flex;
             gap: 10px;
         }
-        
+
         .btn-danger {
             background: #f44336;
             color: white;
@@ -120,16 +120,16 @@
             cursor: pointer;
             font-size: 14px;
         }
-        
+
         .btn-danger:hover {
             background: #d32f2f;
         }
-        
+
         .btn-danger:disabled {
             background: #ccc;
             cursor: not-allowed;
         }
-        
+
         .btn {
             padding: 8px 16px;
             border: none;
@@ -137,40 +137,40 @@
             cursor: pointer;
             font-size: 14px;
         }
-        
+
         .btn-primary {
             background: #2196F3;
             color: white;
         }
-        
+
         .btn-primary:hover {
             background: #0b7dda;
         }
-        
+
         .btn-secondary {
             background: #ff9800;
             color: white;
         }
-        
+
         .btn-secondary:hover {
             background: #e68900;
         }
-        
+
         .document-item.composite {
             border-left: 4px solid #4CAF50;
         }
-        
+
         .document-item.new-document {
             border-left: 4px solid #FF9800;
             background: #fff8e1;
             animation: highlightNew 2s ease-out;
         }
-        
+
         @keyframes highlightNew {
             0% { background: #fff3cd; }
             100% { background: #fff8e1; }
         }
-        
+
         .new-badge {
             display: inline-block;
             background: #FF9800;
@@ -181,18 +181,68 @@
             font-weight: bold;
             margin-right: 8px;
         }
-        
+
         .document-link {
             color: #2196F3;
             text-decoration: none;
             font-weight: 500;
             margin-left: 10px;
         }
-        
+
         .document-link:hover {
             text-decoration: underline;
         }
-        
+
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .btn-info:hover {
+            background: #138496;
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+
+        .spinner {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .ocr-result-card {
+            transition: box-shadow 0.3s;
+        }
+
+        .ocr-result-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .ocr-source-badge, .confidence-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-right: 4px;
+        }
+
         .status-badge {
             display: inline-block;
             padding: 4px 8px;
@@ -201,23 +251,38 @@
             font-weight: bold;
             margin-left: 10px;
         }
-        
+
         .status-uploaded {
             background: #e3f2fd;
             color: #1976d2;
         }
-        
-        .status-ocr-done {
+
+        .status-ocr-done, .status-ocr_done {
             background: #e8f5e9;
             color: #388e3c;
         }
-        
+
+        .status-ocr_pending {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .status-review_pending {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+
+        .status-reviewed {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
         .pages-section {
             margin-top: 20px;
             padding-top: 20px;
             border-top: 1px solid #ddd;
         }
-        
+
         .pages-header {
             display: flex;
             justify-content: space-between;
@@ -226,24 +291,24 @@
             padding-bottom: 10px;
             border-bottom: 2px solid #ddd;
         }
-        
+
         .pages-header-title {
             font-weight: bold;
             font-size: 16px;
         }
-        
+
         .pages-header-actions {
             display: flex;
             gap: 10px;
         }
-        
+
         .pages-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 15px;
             margin-top: 15px;
         }
-        
+
         .page-item {
             position: relative;
             border: 2px solid #ddd;
@@ -254,17 +319,17 @@
             transition: all 0.3s;
             overflow: hidden;
         }
-        
+
         .page-item:hover {
             border-color: #2196F3;
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
-        
+
         .page-item.selected {
             border-color: #4CAF50;
             background: #f0f8f0;
         }
-        
+
         .page-thumbnail {
             width: 100%;
             height: 200px;
@@ -273,12 +338,12 @@
             border-radius: 4px;
             margin-bottom: 10px;
         }
-        
+
         .page-thumbnail.pdf-preview {
             /* Für PDF-Vorschau mit PDF.js */
             border: 1px solid #ddd;
         }
-        
+
         .pdf-container {
             width: 100%;
             height: 200px;
@@ -288,18 +353,18 @@
             margin-bottom: 10px;
             position: relative;
         }
-        
+
         .page-info {
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
-        
+
         .page-number {
             font-weight: bold;
             color: #666;
         }
-        
+
         .page-zoom-overlay {
             position: fixed;
             top: 0;
@@ -314,11 +379,11 @@
             cursor: zoom-out;
             padding: 20px;
         }
-        
+
         .page-zoom-overlay.active {
             display: flex;
         }
-        
+
         .page-zoom-image {
             max-width: 95%;
             max-height: 95%;
@@ -328,7 +393,7 @@
             box-shadow: 0 8px 32px rgba(0,0,0,0.5);
             background: white;
         }
-        
+
         .page-zoom-overlay::before {
             content: 'Klicken zum Schließen (ESC)';
             position: absolute;
@@ -339,27 +404,27 @@
             font-size: 14px;
             opacity: 0.7;
         }
-        
+
         .page-checkbox {
             width: 20px;
             height: 20px;
             cursor: pointer;
         }
-        
+
         .merge-section {
             margin-top: 30px;
             padding: 20px;
             background: #f0f0f0;
             border-radius: 4px;
         }
-        
+
         .selected-pages {
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
             margin-top: 10px;
         }
-        
+
         .selected-page {
             background: #2196F3;
             color: white;
@@ -369,7 +434,7 @@
             align-items: center;
             gap: 5px;
         }
-        
+
         .selected-page button {
             background: none;
             border: none;
@@ -377,7 +442,7 @@
             cursor: pointer;
             font-weight: bold;
         }
-        
+
         .loading {
             display: inline-block;
             width: 20px;
@@ -387,12 +452,12 @@
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
-        
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        
+
         .error {
             background: #ffebee;
             color: #c62828;
@@ -400,7 +465,7 @@
             border-radius: 4px;
             margin: 10px 0;
         }
-        
+
         .success {
             background: #e8f5e9;
             color: #2e7d32;
@@ -408,25 +473,25 @@
             border-radius: 4px;
             margin: 10px 0;
         }
-        
+
         .section-header {
             margin-bottom: 25px;
             padding-bottom: 15px;
             border-bottom: 2px solid #e0e0e0;
         }
-        
+
         .section-header h2 {
             margin: 0 0 8px 0;
             color: #333;
             font-size: 28px;
         }
-        
+
         .section-description {
             margin: 0;
             color: #666;
             font-size: 14px;
         }
-        
+
         /* Navigation Menu */
         .navbar {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -434,7 +499,7 @@
             margin: 0;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-        
+
         .navbar-content {
             max-width: 1200px;
             margin: 0 auto;
@@ -443,7 +508,7 @@
             justify-content: space-between;
             padding: 15px 20px;
         }
-        
+
         .navbar-brand {
             color: white;
             font-size: 24px;
@@ -453,11 +518,11 @@
             align-items: center;
             gap: 10px;
         }
-        
+
         .navbar-brand:hover {
             opacity: 0.9;
         }
-        
+
         .navbar-menu {
             display: flex;
             gap: 5px;
@@ -465,11 +530,11 @@
             margin: 0;
             padding: 0;
         }
-        
+
         .navbar-item {
             margin: 0;
         }
-        
+
         .navbar-link {
             display: block;
             padding: 12px 24px;
@@ -481,21 +546,21 @@
             cursor: pointer;
             background: rgba(255, 255, 255, 0.1);
         }
-        
+
         .navbar-link:hover {
             background: rgba(255, 255, 255, 0.2);
             transform: translateY(-2px);
         }
-        
+
         .navbar-link.active {
             background: rgba(255, 255, 255, 0.25);
             box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
-        
+
         .tab-content {
             display: none;
         }
-        
+
         .tab-content.active {
             display: block;
         }
@@ -520,17 +585,17 @@
             </ul>
         </div>
     </nav>
-    
+
     <div class="container">
         <div id="messageArea"></div>
-        
+
         <!-- Imports Tab -->
         <div class="tab-content active" id="tab-content-imports">
             <div class="section-header">
                 <h2>📥 Imports</h2>
                 <p class="section-description">Hochgeladene PDF-Dateien - Extrahieren Sie Seiten und gruppieren Sie sie zu Dokumenten</p>
             </div>
-            
+
             <div class="upload-section" id="uploadSection">
                 <p>Ziehen Sie eine PDF-Datei hierher oder klicken Sie zum Auswählen</p>
                 <input type="file" id="fileInput" accept=".pdf" multiple>
@@ -538,24 +603,62 @@
                     📤 Datei auswählen
                 </button>
             </div>
-            
+
             <div class="documents-list" id="importsList">
                 <div id="importsContainer"></div>
             </div>
         </div>
-        
+
         <!-- Dokumente Tab -->
         <div class="tab-content" id="tab-content-documents">
             <div class="section-header">
                 <h2>📄 Dokumente</h2>
                 <p class="section-description">Gruppierte Dokumente aus Seiten - Führen Sie OCR durch und verarbeiten Sie den Inhalt</p>
             </div>
-            
+
+            <div style="margin-bottom: 20px;">
+                <button class="btn btn-primary" onclick="showOCRQueue()" id="show-queue-btn">
+                    📋 OCR Queue anzeigen
+                </button>
+                <button class="btn btn-secondary" onclick="loadDocuments()" style="margin-left: 10px;">
+                    🔄 Aktualisieren
+                </button>
+                <select id="status-filter" onchange="filterDocuments()" style="margin-left: 10px; padding: 5px; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="">Alle Status</option>
+                    <option value="uploaded">Uploaded</option>
+                    <option value="ocr_pending">OCR Pending</option>
+                    <option value="ocr_done">OCR Done</option>
+                    <option value="review_pending">Review Pending</option>
+                    <option value="reviewed">Reviewed</option>
+                </select>
+            </div>
+
+            <div id="ocr-queue-section" style="display: none; margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 4px; border: 1px solid #ddd;">
+                <h3 style="margin-bottom: 15px;">OCR Job-Queue</h3>
+                <div style="margin-bottom: 15px;">
+                    <button class="btn btn-primary" onclick="startBulkOCR()" id="start-bulk-ocr-btn">
+                        Ausgewählte OCR starten
+                    </button>
+                    <button class="btn btn-secondary" onclick="selectAllDocuments()" style="margin-left: 10px;">
+                        Alle auswählen
+                    </button>
+                    <button class="btn btn-secondary" onclick="deselectAllDocuments()" style="margin-left: 10px;">
+                        Auswahl aufheben
+                    </button>
+                    <button class="btn btn-sm" onclick="hideOCRQueue()" style="margin-left: 10px;">
+                        Queue ausblenden
+                    </button>
+                </div>
+                <div id="ocr-queue-list">
+                    <!-- Wird dynamisch gefüllt -->
+                </div>
+            </div>
+
             <div class="documents-list" id="documentsList">
                 <div id="documentsContainer"></div>
             </div>
         </div>
-        
+
         <div class="merge-section" id="mergeSection" style="display: none;">
             <h3>Seiten zusammenführen</h3>
             <p>Wählen Sie Seiten aus verschiedenen Dokumenten aus, um sie zu einem Dokument zusammenzufügen:</p>
@@ -565,31 +668,31 @@
                 Seiten zusammenführen
             </button>
         </div>
-        
+
         <!-- Zoom Overlay -->
         <div class="page-zoom-overlay" id="zoomOverlay" onclick="hidePageZoom()">
             <img id="zoomImage" class="page-zoom-image" src="" alt="Zoom">
         </div>
     </div>
-    
+
     <script>
         const API_BASE = 'http://localhost:8000';
         let selectedPages = new Set();
-        
+
         // File Input Handler
         document.getElementById('fileInput').addEventListener('change', handleFileSelect);
-        
+
         // Drag and Drop
         const uploadSection = document.getElementById('uploadSection');
         uploadSection.addEventListener('dragover', (e) => {
             e.preventDefault();
             uploadSection.classList.add('dragover');
         });
-        
+
         uploadSection.addEventListener('dragleave', () => {
             uploadSection.classList.remove('dragover');
         });
-        
+
         uploadSection.addEventListener('drop', (e) => {
             e.preventDefault();
             uploadSection.classList.remove('dragover');
@@ -598,32 +701,32 @@
                 uploadFiles(files);
             }
         });
-        
+
         function handleFileSelect(e) {
             const files = Array.from(e.target.files);
             if (files.length > 0) {
                 uploadFiles(files);
             }
         }
-        
+
         async function uploadFiles(files) {
             for (const file of files) {
                 await uploadFile(file);
             }
         }
-        
+
         async function uploadFile(file) {
             const formData = new FormData();
             formData.append('file', file);
-            
+
             showMessage('Lade ' + file.name + ' hoch...', 'info');
-            
+
             try {
                 const response = await fetch(`${API_BASE}/api/documents/`, {
                     method: 'POST',
                     body: formData
                 });
-                
+
                 if (!response.ok) {
                     // Versuche Fehler-Details aus Response zu lesen
                     let errorMessage = 'Upload fehlgeschlagen';
@@ -635,25 +738,74 @@
                     }
                     throw new Error(errorMessage);
                 }
-                
+
                 const document = await response.json();
                 showMessage('Import ' + file.name + ' erfolgreich hochgeladen!', 'success');
                 loadImports();
+
+                // Für PDFs: Lade OCR-Jobs und aktualisiere Queue
+                if (document.file_type && (document.file_type.toLowerCase() === 'application/pdf' || document.filename.toLowerCase().endsWith('.pdf'))) {
+                    try {
+                        // Warte kurz, damit Backend Jobs erstellt hat
+                        await new Promise(resolve => setTimeout(resolve, 500));
+
+                        // Hole OCR-Jobs für das Dokument
+                        const jobsResponse = await fetch(`${API_BASE}/api/ocr/documents/${document.id}/jobs`);
+                        if (jobsResponse.ok) {
+                            const jobs = await jobsResponse.json();
+
+                            // Füge Jobs zur Queue hinzu
+                            for (const job of jobs) {
+                                const existingJob = ocrQueueJobs.find(j => j.jobId === job.id);
+                                if (!existingJob) {
+                                    ocrQueueJobs.push({
+                                        jobId: job.id,
+                                        documentId: job.document_id,
+                                        documentPageId: job.document_page_id || null,
+                                        pageNumber: null, // Wird später aus Seiten-API geladen
+                                        status: job.status === 'pending' ? 'pending' : job.status === 'running' ? 'running' : job.status === 'completed' ? 'completed' : 'waiting',
+                                        progress: job.progress || 0,
+                                        currentStep: job.current_step || ''
+                                    });
+                                }
+                            }
+
+                            // Starte Polling für die Jobs
+                            if (jobs.length > 0) {
+                                const jobsToPoll = jobs.map(job => ({
+                                    docId: document.id,
+                                    jobId: job.id,
+                                    job: ocrQueueJobs.find(j => j.jobId === job.id)
+                                })).filter(j => j.job);
+
+                                if (jobsToPoll.length > 0) {
+                                    startJobPolling(jobsToPoll);
+                                }
+                            }
+
+                            // Aktualisiere Queue-Anzeige
+                            updateOCRQueue();
+                        }
+                    } catch (error) {
+                        console.error('Fehler beim Laden der OCR-Jobs:', error);
+                        // Nicht kritisch - Jobs laufen trotzdem im Hintergrund
+                    }
+                }
             } catch (error) {
                 showMessage('Fehler beim Hochladen: ' + error.message, 'error');
                 console.error('Upload Fehler:', error);
             }
         }
-        
+
         function showTab(tabName) {
             // Navigation Links aktualisieren
             document.querySelectorAll('.navbar-link').forEach(link => link.classList.remove('active'));
             document.getElementById(`nav-${tabName}`).classList.add('active');
-            
+
             // Tab-Content wechseln
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             document.getElementById(`tab-content-${tabName}`).classList.add('active');
-            
+
             // Daten laden
             if (tabName === 'imports') {
                 loadImports();
@@ -661,18 +813,18 @@
                 loadDocuments();
             }
         }
-        
+
         async function loadImports() {
             try {
                 const response = await fetch(`${API_BASE}/api/documents/`);
                 const imports = await response.json();
-                
+
                 // Nur Imports anzeigen (nicht Composite-Dokumente)
                 const importsOnly = imports.filter(imp => !imp.is_composite || imp.is_composite === 0);
-                
+
                 const container = document.getElementById('importsContainer');
                 container.innerHTML = '';
-                
+
                 for (const imp of importsOnly) {
                     const importElement = createImportElement(imp);
                     container.appendChild(importElement);
@@ -681,43 +833,55 @@
                 showMessage('Fehler beim Laden der Imports: ' + error.message, 'error');
             }
         }
-        
+
+        let ocrQueueInterval = null;
+        let ocrQueueJobs = [];
+
         async function loadDocuments() {
             try {
                 const response = await fetch(`${API_BASE}/api/documents/`);
                 const allDocs = await response.json();
-                
+
                 console.log('Alle Dokumente:', allDocs);
-                
+
                 // Nur Composite-Dokumente anzeigen (is_composite kann 1, true, oder "1" sein)
                 // Debug: Zeige erstes Dokument vollständig
                 if (allDocs.length > 0) {
                     console.log('Erstes Dokument vollständig:', JSON.stringify(allDocs[0], null, 2));
                 }
-                
-                const documents = allDocs.filter(doc => {
+
+                // Filter nach Status falls gesetzt
+                const statusFilter = document.getElementById('status-filter')?.value;
+
+                let documents = allDocs.filter(doc => {
                     // Prüfe verschiedene Formate
-                    const isComposite = doc.is_composite === 1 || 
-                                       doc.is_composite === true || 
+                    const isComposite = doc.is_composite === 1 ||
+                                       doc.is_composite === true ||
                                        doc.is_composite === "1" ||
                                        (typeof doc.is_composite === 'number' && doc.is_composite !== 0);
                     console.log(`Dokument ${doc.id}: is_composite=${doc.is_composite} (Typ: ${typeof doc.is_composite}), gefiltert=${isComposite}`);
+
+                    // Status-Filter
+                    if (statusFilter && doc.status !== statusFilter) {
+                        return false;
+                    }
+
                     return isComposite;
                 });
-                
+
                 console.log('Gefilterte Composite-Dokumente:', documents);
-                
+
                 // Sortiere: Neueste zuletzt (hinten an die Liste)
                 documents.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-                
+
                 const container = document.getElementById('documentsContainer');
                 container.innerHTML = '';
-                
+
                 if (documents.length === 0) {
                     container.innerHTML = '<p style="color: #666; padding: 20px; text-align: center;">Noch keine Dokumente erstellt. Gruppieren Sie Seiten aus Imports, um Dokumente zu erstellen.</p>';
                     return;
                 }
-                
+
                 for (const doc of documents) {
                     const docElement = createDocumentElement(doc);
                     container.appendChild(docElement);
@@ -727,10 +891,478 @@
                 console.error('Load documents error:', error);
             }
         }
-        
+
+        function filterDocuments() {
+            loadDocuments();
+        }
+
+        function showOCRQueue() {
+            const queueSection = document.getElementById('ocr-queue-section');
+            if (!queueSection) return;
+
+            queueSection.style.display = 'block';
+            updateOCRQueue();
+        }
+
+        function hideOCRQueue() {
+            const queueSection = document.getElementById('ocr-queue-section');
+            if (queueSection) {
+                queueSection.style.display = 'none';
+            }
+        }
+
+        async function updateOCRQueue() {
+            const queueList = document.getElementById('ocr-queue-list');
+            if (!queueList) return;
+
+            try {
+                // Hole alle Dokumente
+                const response = await fetch(`${API_BASE}/api/documents/`);
+                const allDocs = await response.json();
+
+                // Filtere Dokumente die OCR benötigen (Uploads und Composite)
+                const queueDocs = allDocs.filter(doc => {
+                    const isComposite = doc.is_composite === 1 || doc.is_composite === true || doc.is_composite === "1";
+                    const isUpload = !isComposite && doc.file_type && (doc.file_type.toLowerCase() === 'application/pdf' || doc.filename.toLowerCase().endsWith('.pdf'));
+                    return (isComposite && (doc.status === 'uploaded' || doc.status === 'ocr_pending')) ||
+                           (isUpload && (doc.status === 'uploaded' || doc.status === 'ocr_pending'));
+                });
+
+                if (queueDocs.length === 0) {
+                    queueList.innerHTML = '<p style="color: #666;">Keine Dokumente in der Queue</p>';
+                    return;
+                }
+
+                // Sammle alle Jobs mit Seiteninformationen
+                const queueItems = [];
+
+                for (const doc of queueDocs) {
+                    try {
+                        // Hole OCR-Jobs für das Dokument
+                        const jobsResponse = await fetch(`${API_BASE}/api/ocr/documents/${doc.id}/jobs`);
+                        if (jobsResponse.ok) {
+                            const jobs = await jobsResponse.json();
+
+                            // Filtere nur aktive Jobs (pending, running)
+                            const activeJobs = jobs.filter(job =>
+                                job.status === 'pending' || job.status === 'running' || job.status === 'failed'
+                            );
+
+                            if (activeJobs.length === 0) {
+                                // Keine aktiven Jobs, aber Dokument könnte noch OCR benötigen
+                                continue;
+                            }
+
+                            // Für seitenweise Jobs: Hole Seiteninformationen
+                            for (const job of activeJobs) {
+                                let pageNumber = null;
+
+                                if (job.document_page_id) {
+                                    // Hole Seiteninformationen
+                                    try {
+                                        const pagesResponse = await fetch(`${API_BASE}/api/pages/document/${doc.id}`);
+                                        if (pagesResponse.ok) {
+                                            const pagesData = await pagesResponse.json();
+                                            const page = pagesData.pages.find(p => p.id === job.document_page_id);
+                                            if (page) {
+                                                pageNumber = page.page_number;
+                                            }
+                                        }
+                                    } catch (e) {
+                                        console.error(`Fehler beim Laden der Seite für Job ${job.id}:`, e);
+                                    }
+                                }
+
+                                // Finde oder erstelle Job-Eintrag
+                                let queueJob = ocrQueueJobs.find(j => j.jobId === job.id);
+                                if (!queueJob) {
+                                    queueJob = {
+                                        jobId: job.id,
+                                        documentId: job.document_id,
+                                        documentPageId: job.document_page_id || null,
+                                        pageNumber: pageNumber,
+                                        status: job.status === 'pending' ? 'pending' : job.status === 'running' ? 'running' : job.status === 'completed' ? 'completed' : job.status === 'failed' ? 'failed' : 'waiting',
+                                        progress: job.progress || 0,
+                                        currentStep: job.current_step || ''
+                                    };
+                                    ocrQueueJobs.push(queueJob);
+                                } else {
+                                    // Update bestehenden Job
+                                    queueJob.status = job.status === 'pending' ? 'pending' : job.status === 'running' ? 'running' : job.status === 'completed' ? 'completed' : job.status === 'failed' ? 'failed' : queueJob.status;
+                                    queueJob.progress = job.progress || queueJob.progress;
+                                    queueJob.currentStep = job.current_step || queueJob.currentStep;
+                                    if (pageNumber !== null) {
+                                        queueJob.pageNumber = pageNumber;
+                                    }
+                                }
+
+                                queueItems.push({
+                                    doc: doc,
+                                    job: queueJob,
+                                    backendJob: job
+                                });
+                            }
+                        }
+                    } catch (error) {
+                        console.error(`Fehler beim Laden der Jobs für Dokument ${doc.id}:`, error);
+                    }
+                }
+
+                if (queueItems.length === 0) {
+                    queueList.innerHTML = '<p style="color: #666;">Keine aktiven OCR-Jobs in der Queue</p>';
+                    return;
+                }
+
+                // Sortiere: Nach Dokument-ID, dann nach Seitenzahl
+                queueItems.sort((a, b) => {
+                    if (a.doc.id !== b.doc.id) {
+                        return a.doc.id - b.doc.id;
+                    }
+                    if (a.job.pageNumber !== null && b.job.pageNumber !== null) {
+                        return a.job.pageNumber - b.job.pageNumber;
+                    }
+                    return 0;
+                });
+
+                let html = '<table style="width: 100%; border-collapse: collapse;"><thead><tr style="background: #f0f0f0;"><th style="padding: 8px; text-align: left; border: 1px solid #ddd;">Dokument</th><th style="padding: 8px; text-align: left; border: 1px solid #ddd;">Seite</th><th style="padding: 8px; text-align: left; border: 1px solid #ddd;">Status</th><th style="padding: 8px; text-align: left; border: 1px solid #ddd;">Fortschritt</th></tr></thead><tbody>';
+
+                queueItems.forEach(({ doc, job, backendJob }) => {
+                    const status = job.status;
+                    const progress = job.progress || 0;
+                    const currentStep = job.currentStep || '';
+                    const docName = doc.title || doc.filename || `Dokument #${doc.id}`;
+                    const pageLabel = job.pageNumber !== null ? `Seite ${job.pageNumber}` : 'Gesamtes Dokument';
+
+                    let statusBadge = '';
+                    let statusText = '';
+                    switch (status) {
+                        case 'pending':
+                            statusBadge = '<span class="status-badge status-pending">Wartend</span>';
+                            statusText = 'Wartet auf Verarbeitung';
+                            break;
+                        case 'running':
+                            statusBadge = '<span class="status-badge status-running">Läuft</span>';
+                            statusText = currentStep || 'Verarbeitung...';
+                            break;
+                        case 'completed':
+                            statusBadge = '<span class="status-badge status-completed">Abgeschlossen</span>';
+                            statusText = '✓ Fertig';
+                            break;
+                        case 'failed':
+                            statusBadge = '<span class="status-badge status-failed">Fehler</span>';
+                            statusText = backendJob.error_message || 'Fehler aufgetreten';
+                            break;
+                        default:
+                            statusBadge = '<span class="status-badge status-waiting">Wartend</span>';
+                            statusText = 'Wartet';
+                    }
+
+                    html += `
+                        <tr style="border-bottom: 1px solid #ddd;">
+                            <td style="padding: 8px; border: 1px solid #ddd;">
+                                ${docName}
+                            </td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">
+                                ${pageLabel}
+                            </td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">
+                                ${statusBadge}
+                                ${statusText ? `<br><small style="color: #666;">${statusText}</small>` : ''}
+                            </td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">
+                                ${status === 'running' || status === 'pending' ? `
+                                    <div style="background: #e0e0e0; border-radius: 4px; height: 20px; width: 100%; position: relative;">
+                                        <div style="background: #2196F3; height: 100%; width: ${Math.min(progress, 100)}%; border-radius: 4px; transition: width 0.3s;"></div>
+                                        <span style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 11px; color: #333;">${Math.round(progress)}%</span>
+                                    </div>
+                                ` : status === 'completed' ? '<span style="color: #4CAF50;">✓ 100%</span>' : status === 'failed' ? '<span style="color: #F44336;">✗ Fehler</span>' : '<span style="color: #666;">-</span>'}
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += '</tbody></table>';
+                queueList.innerHTML = html;
+
+            } catch (error) {
+                queueList.innerHTML = `<p style="color: red;">Fehler: ${error.message}</p>`;
+                console.error('Error updating OCR queue:', error);
+            }
+        }
+
+        function selectAllDocuments() {
+            const checkboxes = document.querySelectorAll('input[id^="queue-check-"]:not(:disabled)');
+            checkboxes.forEach(cb => cb.checked = true);
+        }
+
+        function deselectAllDocuments() {
+            const checkboxes = document.querySelectorAll('input[id^="queue-check-"]');
+            checkboxes.forEach(cb => cb.checked = false);
+        }
+
+        async function startBulkOCR() {
+            const checkboxes = document.querySelectorAll('input[id^="queue-check-"]:checked:not(:disabled)');
+            const selectedIds = Array.from(checkboxes).map(cb => parseInt(cb.id.replace('queue-check-', '')));
+
+            if (selectedIds.length === 0) {
+                showMessage('Bitte wählen Sie mindestens ein Dokument aus', 'error');
+                return;
+            }
+
+            showMessage(`Starte OCR für ${selectedIds.length} Dokument(e)...`, 'info');
+
+            // Initialisiere Jobs
+            selectedIds.forEach(id => {
+                if (!ocrQueueJobs.find(j => j.documentId === id)) {
+                    ocrQueueJobs.push({
+                        documentId: id,
+                        status: 'waiting',
+                        progress: 0
+                    });
+                }
+            });
+
+            // Starte sequenzielle Verarbeitung
+            await processOCRQueue(selectedIds);
+        }
+
+        async function processOCRQueue(documentIds) {
+            // Starte alle Jobs im Hintergrund
+            const startedJobs = [];
+
+            for (const docId of documentIds) {
+                const job = ocrQueueJobs.find(j => j.documentId === docId);
+
+                if (job) {
+                    job.status = 'pending';
+                    job.progress = 0;
+                }
+
+                try {
+                    // Erstelle Job im Backend
+                    const response = await fetch(`${API_BASE}/api/ocr/documents/${docId}/jobs`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            language: 'deu+eng',
+                            use_correction: true
+                        })
+                    });
+
+                    if (response.ok) {
+                        const jobData = await response.json();
+                        if (job) {
+                            job.jobId = jobData.id;
+                            job.status = 'running';
+                            job.progress = 0;
+                        }
+                        startedJobs.push({ docId, jobId: jobData.id, job });
+                        showMessage(`OCR-Job für Dokument #${docId} gestartet (Job #${jobData.id})`, 'info');
+                    } else {
+                        const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+                        throw new Error(errorData.detail || `HTTP ${response.status}`);
+                    }
+                } catch (error) {
+                    if (job) {
+                        job.status = 'error';
+                        job.progress = 0;
+                    }
+                    showMessage(`Fehler beim Starten von Dokument #${docId}: ${error.message}`, 'error');
+                    console.error(`OCR Job Start Error für Doc ${docId}:`, error);
+                }
+
+                updateOCRQueue();
+
+                // Kurze Pause zwischen Job-Starts
+                await new Promise(resolve => setTimeout(resolve, 200));
+            }
+
+            // Starte Polling für alle gestarteten Jobs
+            if (startedJobs.length > 0) {
+                startJobPolling(startedJobs);
+            }
+        }
+
+        function startJobPolling(jobs) {
+            // Polling-Intervall: alle 2 Sekunden
+            const pollInterval = setInterval(async () => {
+                let allCompleted = true;
+
+                for (const { docId, jobId, job } of jobs) {
+                    if (!job || (job.status !== 'completed' && job.status !== 'error' && job.status !== 'failed')) {
+                        allCompleted = false;
+
+                        try {
+                            // Hole Job-Status
+                            const response = await fetch(`${API_BASE}/api/ocr/jobs/${jobId}`);
+                            if (response.ok) {
+                                const jobData = await response.json();
+
+                                if (job) {
+                                    job.progress = jobData.progress || 0;
+                                    job.currentStep = jobData.current_step || '';
+
+                                    // Update Seitenzahl falls noch nicht gesetzt und Job seitenweise ist
+                                    if (jobData.document_page_id && job.pageNumber === null) {
+                                        try {
+                                            const pagesResponse = await fetch(`${API_BASE}/api/pages/document/${docId}`);
+                                            if (pagesResponse.ok) {
+                                                const pagesData = await pagesResponse.json();
+                                                const page = pagesData.pages.find(p => p.id === jobData.document_page_id);
+                                                if (page) {
+                                                    job.pageNumber = page.page_number;
+                                                }
+                                            }
+                                        } catch (e) {
+                                            // Seitenzahl kann später aktualisiert werden
+                                        }
+                                    }
+
+                                    // Update Status basierend auf Backend-Status
+                                    const oldStatus = job.status;
+                                    switch (jobData.status) {
+                                        case 'pending':
+                                            job.status = 'pending';
+                                            break;
+                                        case 'running':
+                                            job.status = 'running';
+                                            break;
+                                        case 'completed':
+                                            job.status = 'completed';
+                                            job.progress = 100;
+                                            if (oldStatus !== 'completed') {
+                                                const pageLabel = job.pageNumber !== null ? `Seite ${job.pageNumber}` : '';
+                                                const message = pageLabel
+                                                    ? `OCR für Dokument #${docId}, ${pageLabel} abgeschlossen`
+                                                    : `OCR für Dokument #${docId} abgeschlossen`;
+                                                showMessage(message, 'success');
+                                            }
+                                            break;
+                                        case 'failed':
+                                        case 'cancelled':
+                                            job.status = 'failed';
+                                            job.errorMessage = jobData.error_message || 'Unbekannter Fehler';
+                                            if (oldStatus !== 'failed' && oldStatus !== 'error') {
+                                                const pageLabel = job.pageNumber !== null ? `Seite ${job.pageNumber}` : '';
+                                                const message = pageLabel
+                                                    ? `OCR für Dokument #${docId}, ${pageLabel} fehlgeschlagen: ${jobData.error_message || 'Unbekannter Fehler'}`
+                                                    : `OCR für Dokument #${docId} fehlgeschlagen: ${jobData.error_message || 'Unbekannter Fehler'}`;
+                                                showMessage(message, 'error');
+                                            }
+                                            break;
+                                    }
+                                }
+                            }
+                        } catch (error) {
+                            console.error(`Error polling job ${jobId}:`, error);
+                        }
+                    }
+                }
+
+                updateOCRQueue();
+
+                // Stoppe Polling wenn alle Jobs abgeschlossen sind
+                if (allCompleted) {
+                    clearInterval(pollInterval);
+                    loadDocuments(); // Aktualisiere Dokumente-Liste
+                    loadImports(); // Aktualisiere auch Imports
+                }
+            }, 2000); // Poll alle 2 Sekunden
+
+            // Cleanup nach 1 Stunde (falls Jobs hängen bleiben)
+            setTimeout(() => {
+                clearInterval(pollInterval);
+            }, 60 * 60 * 1000);
+        }
+
+        async function createPageJobsForDocument(documentId) {
+            const btn = document.getElementById(`create-jobs-btn-${documentId}`);
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Erstelle Jobs...';
+            }
+
+            showMessage('Erstelle seitenweise OCR-Jobs...', 'info');
+
+            try {
+                const response = await fetch(`${API_BASE}/api/documents/${documentId}/create-page-jobs`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    let errorMessage = 'Fehler beim Erstellen der Jobs';
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.detail || errorData.message || errorMessage;
+                    } catch (e) {
+                        errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                    }
+                    throw new Error(errorMessage);
+                }
+
+                const result = await response.json();
+                showMessage(result.message || `${result.new_jobs} OCR-Jobs erstellt!`, 'success');
+
+                // Warte kurz, damit Backend Jobs erstellt hat
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                // Hole OCR-Jobs für das Dokument
+                const jobsResponse = await fetch(`${API_BASE}/api/ocr/documents/${documentId}/jobs`);
+                if (jobsResponse.ok) {
+                    const jobs = await jobsResponse.json();
+
+                    // Füge Jobs zur Queue hinzu
+                    for (const job of jobs) {
+                        const existingJob = ocrQueueJobs.find(j => j.jobId === job.id);
+                        if (!existingJob) {
+                            ocrQueueJobs.push({
+                                jobId: job.id,
+                                documentId: job.document_id,
+                                documentPageId: job.document_page_id || null,
+                                pageNumber: null, // Wird später aus DocumentPage geladen
+                                status: job.status === 'pending' ? 'pending' : job.status === 'running' ? 'running' : job.status === 'completed' ? 'completed' : 'waiting',
+                                progress: job.progress || 0,
+                                currentStep: job.current_step || ''
+                            });
+                        }
+                    }
+
+                    // Starte Polling für die Jobs
+                    if (jobs.length > 0) {
+                        const jobsToPoll = jobs.map(job => ({
+                            docId: documentId,
+                            jobId: job.id,
+                            job: ocrQueueJobs.find(j => j.jobId === job.id)
+                        })).filter(j => j.job);
+
+                        if (jobsToPoll.length > 0) {
+                            startJobPolling(jobsToPoll);
+                        }
+                    }
+
+                    // Aktualisiere Queue-Anzeige
+                    updateOCRQueue();
+                }
+
+                // Aktualisiere Imports-Ansicht
+                loadImports();
+            } catch (error) {
+                showMessage('Fehler: ' + error.message, 'error');
+                console.error('Create page jobs error:', error);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'OCR-Jobs erstellen';
+                }
+            }
+        }
+
         function createImportElement(imp) {
             const div = document.createElement('div');
             div.className = 'document-item';
+            const isPdf = imp.file_type && (imp.file_type.toLowerCase() === 'application/pdf' || imp.filename.toLowerCase().endsWith('.pdf'));
             div.innerHTML = `
                 <div class="document-info">
                     <div class="document-name">
@@ -738,12 +1370,15 @@
                         <span class="status-badge status-${imp.status}">${imp.status}</span>
                     </div>
                     <div class="document-meta">
-                        Typ: ${imp.file_type} | 
+                        Typ: ${imp.file_type} |
                         Erstellt: ${new Date(imp.created_at).toLocaleString('de-DE')}
                     </div>
                     <div class="document-actions">
-                        <button class="btn btn-secondary" onclick="extractPages(${imp.id})" id="extract-btn-${imp.id}">
-                            Seiten extrahieren
+                        ${isPdf ? `<button class="btn btn-primary" onclick="createPageJobsForDocument(${imp.id})" id="create-jobs-btn-${imp.id}" title="Erstellt seitenweise OCR-Jobs für dieses Dokument">
+                            OCR-Jobs erstellen
+                        </button>` : ''}
+                        <button class="btn btn-secondary" onclick="extractPages(${imp.id})" id="extract-btn-${imp.id}" title="Extrahiert Seiten als Bilder für Vorschau (nicht für OCR erforderlich)">
+                            Seiten für Vorschau extrahieren
                         </button>
                         <button class="btn btn-danger" onclick="deleteDocument(${imp.id}, '${imp.filename.replace(/'/g, "\\'")}')" title="Import löschen">
                             Löschen
@@ -752,17 +1387,38 @@
                     <div class="pages-section" id="pages-${imp.id}"></div>
                 </div>
             `;
-            
+
             // Lade Seiten wenn vorhanden
             loadDocumentPages(imp.id);
-            
+
             return div;
         }
-        
+
         function createDocumentElement(doc) {
             const div = document.createElement('div');
             const isNew = !doc.title && doc.status === 'uploaded'; // Markiere als neu wenn kein Titel und Status uploaded
             div.className = 'document-item composite' + (isNew ? ' new-document' : '');
+            div.id = `document-${doc.id}`;
+
+            // Bestimme OCR-Button-Text basierend auf Status
+            let ocrButtonText = 'OCR durchführen';
+            let ocrButtonDisabled = false;
+            if (doc.status === 'ocr_pending') {
+                ocrButtonText = '<span class="spinner">⏳</span> OCR läuft...';
+                ocrButtonDisabled = true;
+            } else if (doc.status === 'ocr_done') {
+                ocrButtonText = 'OCR erneut durchführen';
+            }
+
+            // Bestimme zusätzliche Buttons basierend auf Status
+            let additionalButtons = '';
+            if (doc.status === 'ocr_done') {
+                additionalButtons += `<button class="btn btn-info" onclick="showOCRResults(${doc.id})" id="show-results-btn-${doc.id}">Ergebnisse anzeigen</button>`;
+            }
+            if (doc.status === 'review_pending') {
+                additionalButtons += `<button class="btn btn-warning" onclick="showOCRReview(${doc.id})" id="review-btn-${doc.id}">Review starten</button>`;
+            }
+
             div.innerHTML = `
                 <div class="document-info" style="flex: 1;">
                     <div class="document-name">
@@ -771,14 +1427,15 @@
                         <span class="status-badge status-${doc.status}">${doc.status}</span>
                     </div>
                     <div class="document-meta">
-                        Dokument aus gruppierten Seiten | 
+                        Dokument aus gruppierten Seiten |
                         Erstellt: ${new Date(doc.created_at).toLocaleString('de-DE')}
                         ${isNew ? ' | <a href="#" onclick="viewDocumentPages(${doc.id}); return false;" class="document-link">📄 Seiten anzeigen</a>' : ''}
                     </div>
                     <div class="document-actions" style="margin-top: 10px;">
-                        <button class="btn btn-primary" onclick="processOCR(${doc.id})" id="ocr-btn-${doc.id}">
-                            OCR durchführen
+                        <button class="btn btn-primary" onclick="processOCR(${doc.id})" id="ocr-btn-${doc.id}" ${ocrButtonDisabled ? 'disabled' : ''}>
+                            ${ocrButtonText}
                         </button>
+                        ${additionalButtons}
                         <button class="btn btn-secondary" onclick="viewDocumentPages(${doc.id})" id="view-pages-btn-${doc.id}">
                             Seiten anzeigen
                         </button>
@@ -786,52 +1443,76 @@
                             Löschen
                         </button>
                     </div>
+                    <div class="ocr-results-section" id="ocr-results-${doc.id}" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+                        <!-- OCR-Ergebnisse werden hier eingefügt -->
+                    </div>
+                    <div class="ocr-review-section" id="ocr-review-${doc.id}" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+                        <!-- Review-Interface wird hier eingefügt -->
+                    </div>
+                    <div class="pages-section" id="pages-${doc.id}" style="display: none; margin-top: 20px;"></div>
                 </div>
             `;
-            
+
             return div;
         }
-        
+
         async function viewDocumentPages(documentId) {
             // Zeige Seiten des Dokuments
             try {
-                const response = await fetch(`${API_BASE}/api/pages/document/${documentId}`);
-                const data = await response.json();
-                
-                if (data.pages.length === 0) {
-                    showMessage('Dieses Dokument hat noch keine Seiten', 'info');
-                    return;
+                // Prüfe ob Container existiert, sonst erstelle ihn
+                let pagesContainer = document.getElementById(`pages-${documentId}`);
+                if (!pagesContainer) {
+                    // Finde das Dokument-Element
+                    const docElement = document.getElementById(`document-${documentId}`);
+                    if (!docElement) {
+                        showMessage('Dokument nicht gefunden', 'error');
+                        return;
+                    }
+
+                    // Erstelle Container für Seiten
+                    pagesContainer = document.createElement('div');
+                    pagesContainer.id = `pages-${documentId}`;
+                    pagesContainer.className = 'pages-section';
+                    pagesContainer.style.cssText = 'margin-top: 20px; padding: 20px; background: #f9f9f9; border-radius: 8px; border: 1px solid #ddd;';
+
+                    // Füge nach den Actions ein
+                    const actionsDiv = docElement.querySelector('.document-actions');
+                    if (actionsDiv && actionsDiv.parentNode) {
+                        actionsDiv.parentNode.insertBefore(pagesContainer, actionsDiv.nextSibling);
+                    } else {
+                        docElement.querySelector('.document-info').appendChild(pagesContainer);
+                    }
                 }
-                
-                // Öffne Modal oder zeige Seiten
-                showMessage(`Dokument hat ${data.pages.length} Seiten`, 'info');
-                // TODO: Modal oder Detail-Ansicht für Dokument-Seiten
+
+                // Zeige Container
+                pagesContainer.style.display = 'block';
+
+                // Lade Seiten direkt (werden automatisch beim Upload erstellt)
+                await loadDocumentPages(documentId);
+
             } catch (error) {
                 showMessage('Fehler beim Laden der Seiten: ' + error.message, 'error');
+                console.error('Error loading pages:', error);
             }
         }
-        
+
         async function processOCR(documentId) {
             const btn = document.getElementById(`ocr-btn-${documentId}`);
             if (btn) {
                 btn.disabled = true;
-                btn.textContent = 'OCR läuft...';
+                btn.innerHTML = '<span class="spinner">⏳</span> OCR läuft...';
             }
-            
+
             showMessage('Starte OCR-Verarbeitung...', 'info');
-            
+
             try {
-                const response = await fetch(`${API_BASE}/api/documents/${documentId}/ocr`, {
+                const response = await fetch(`${API_BASE}/api/ocr/documents/${documentId}/process?language=deu+eng&use_correction=true`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        language: 'deu+eng',
-                        use_correction: true
-                    })
+                    }
                 });
-                
+
                 if (!response.ok) {
                     let errorMessage = 'OCR fehlgeschlagen';
                     try {
@@ -842,10 +1523,18 @@
                     }
                     throw new Error(errorMessage);
                 }
-                
-                const result = await response.json();
-                showMessage('OCR erfolgreich abgeschlossen!', 'success');
-                loadDocuments(); // Aktualisiere Liste
+
+                const ocrResults = await response.json();
+                showMessage(`OCR erfolgreich abgeschlossen! ${ocrResults.length} Ergebnis(e) erstellt.`, 'success');
+
+                // Zeige OCR-Ergebnisse inline an
+                await showOCRResults(documentId);
+
+                // Prüfe auf automatisches Review
+                await checkAutoReview(documentId);
+
+                // Aktualisiere Dokument-Liste
+                loadDocuments();
             } catch (error) {
                 showMessage('Fehler bei OCR: ' + error.message, 'error');
                 console.error('OCR error:', error);
@@ -856,47 +1545,670 @@
                 }
             }
         }
-        
-        async function viewDocumentPages(documentId) {
-            // Zeige Seiten des Dokuments
+
+        async function showOCRResults(documentId) {
+            const resultsSection = document.getElementById(`ocr-results-${documentId}`);
+            if (!resultsSection) {
+                console.error('OCR results section not found for document', documentId);
+                return;
+            }
+
             try {
-                const response = await fetch(`${API_BASE}/api/pages/document/${documentId}`);
-                const data = await response.json();
-                
-                if (data.pages.length === 0) {
-                    showMessage('Dieses Dokument hat noch keine Seiten', 'info');
+                const response = await fetch(`${API_BASE}/api/ocr/documents/${documentId}/results`);
+                if (!response.ok) {
+                    throw new Error('Fehler beim Laden der OCR-Ergebnisse');
+                }
+
+                const ocrResults = await response.json();
+
+                if (ocrResults.length === 0) {
+                    resultsSection.innerHTML = '<p>Keine OCR-Ergebnisse gefunden.</p>';
+                    resultsSection.style.display = 'block';
                     return;
                 }
-                
-                // Öffne Modal oder zeige Seiten
-                showMessage(`Dokument hat ${data.pages.length} Seiten`, 'info');
-                // TODO: Modal oder Detail-Ansicht für Dokument-Seiten
+
+                // Erstelle HTML für OCR-Ergebnisse
+                let html = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h4 style="margin: 0;">OCR-Ergebnisse (${ocrResults.length})</h4>
+                        <button class="btn btn-sm" onclick="toggleOCRResults(${documentId})" id="toggle-ocr-${documentId}">
+                            Ausblenden
+                        </button>
+                    </div>
+                    <div id="ocr-results-content-${documentId}">
+                `;
+
+                ocrResults.forEach((result, index) => {
+                    const sourceColors = {
+                        'tesseract': '#2196F3',
+                        'ollama_vision': '#4CAF50',
+                        'gpt_corrected': '#FF9800',
+                        'combined': '#9C27B0',
+                        'manual': '#757575'
+                    };
+                    const sourceColor = sourceColors[result.source] || '#757575';
+
+                    const confidence = result.confidence !== null ? (result.confidence * 100).toFixed(1) : 'N/A';
+                    const confidenceColor = result.confidence !== null
+                        ? (result.confidence > 0.8 ? '#4CAF50' : result.confidence > 0.5 ? '#FF9800' : '#F44336')
+                        : '#757575';
+
+                    const textPreview = result.text ? (result.text.substring(0, 200) + (result.text.length > 200 ? '...' : '')) : 'Kein Text';
+                    const processingTime = result.processing_time_ms ? `${result.processing_time_ms}ms` : 'N/A';
+
+                    html += `
+                        <div class="ocr-result-card" style="border: 1px solid #ddd; border-radius: 4px; padding: 15px; margin-bottom: 15px; background: #f9f9f9;">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                                <div>
+                                    <span class="ocr-source-badge" style="background: ${sourceColor}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
+                                        ${result.source.toUpperCase()}
+                                    </span>
+                                    ${result.confidence !== null ? `
+                                        <span class="confidence-badge" style="background: ${confidenceColor}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin-left: 8px;">
+                                            ${confidence}%
+                                        </span>
+                                    ` : ''}
+                                    ${result.engine_version ? `<span style="font-size: 11px; color: #666; margin-left: 8px;">${result.engine_version}</span>` : ''}
+                                </div>
+                                <div style="font-size: 11px; color: #666;">
+                                    ${processingTime}
+                                </div>
+                            </div>
+                            <div class="ocr-text-preview" style="margin-bottom: 10px; padding: 10px; background: white; border-radius: 4px; font-family: monospace; font-size: 12px; max-height: 150px; overflow-y: auto;">
+                                ${textPreview.replace(/\n/g, '<br>')}
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn btn-sm" onclick="showFullOCRText(${documentId}, ${result.id})" id="show-full-${result.id}">
+                                    Vollständigen Text anzeigen
+                                </button>
+                                <button class="btn btn-sm" onclick="selectOCRResult(${documentId}, ${result.id})" id="select-result-${result.id}">
+                                    Als beste wählen
+                                </button>
+                                <button class="btn btn-sm" onclick="compareOCRResults(${documentId}, ${result.id})" id="compare-${result.id}">
+                                    Mit anderen vergleichen
+                                </button>
+                            </div>
+                            <div id="full-text-${result.id}" style="display: none; margin-top: 10px; padding: 10px; background: white; border-radius: 4px; font-family: monospace; font-size: 12px; max-height: 400px; overflow-y: auto;">
+                                ${result.text ? result.text.replace(/\n/g, '<br>') : 'Kein Text'}
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += '</div>';
+                resultsSection.innerHTML = html;
+                resultsSection.style.display = 'block';
+
             } catch (error) {
-                showMessage('Fehler beim Laden der Seiten: ' + error.message, 'error');
+                resultsSection.innerHTML = `<p style="color: red;">Fehler beim Laden der OCR-Ergebnisse: ${error.message}</p>`;
+                resultsSection.style.display = 'block';
+                console.error('Error loading OCR results:', error);
             }
         }
-        
-        async function processOCR(documentId) {
-            const btn = document.getElementById(`ocr-btn-${documentId}`);
-            if (btn) {
-                btn.disabled = true;
-                btn.textContent = 'OCR läuft...';
+
+        function toggleOCRResults(documentId) {
+            const content = document.getElementById(`ocr-results-content-${documentId}`);
+            const toggleBtn = document.getElementById(`toggle-ocr-${documentId}`);
+            if (content && toggleBtn) {
+                if (content.style.display === 'none') {
+                    content.style.display = 'block';
+                    toggleBtn.textContent = 'Ausblenden';
+                } else {
+                    content.style.display = 'none';
+                    toggleBtn.textContent = 'Anzeigen';
+                }
             }
-            
-            showMessage('Starte OCR-Verarbeitung...', 'info');
-            
+        }
+
+        function showFullOCRText(documentId, resultId) {
+            const fullTextDiv = document.getElementById(`full-text-${resultId}`);
+            const showBtn = document.getElementById(`show-full-${resultId}`);
+            if (fullTextDiv && showBtn) {
+                if (fullTextDiv.style.display === 'none') {
+                    fullTextDiv.style.display = 'block';
+                    showBtn.textContent = 'Text ausblenden';
+                } else {
+                    fullTextDiv.style.display = 'none';
+                    showBtn.textContent = 'Vollständigen Text anzeigen';
+                }
+            }
+        }
+
+        async function selectOCRResult(documentId, resultId) {
+            // Erstelle Review mit diesem OCRResult
             try {
-                const response = await fetch(`${API_BASE}/api/documents/${documentId}/ocr`, {
+                const response = await fetch(`${API_BASE}/api/ocr/documents/${documentId}/review`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        language: 'deu+eng',
-                        use_correction: true
+                        reviewed_ocr_result_id: resultId
                     })
                 });
-                
+
+                if (!response.ok) {
+                    throw new Error('Fehler beim Erstellen des Reviews');
+                }
+
+                showMessage('OCR-Ergebnis als beste gewählt und Review erstellt!', 'success');
+                loadDocuments();
+            } catch (error) {
+                showMessage('Fehler: ' + error.message, 'error');
+                console.error('Error selecting OCR result:', error);
+            }
+        }
+
+        // Einfache Diff-Funktion für Text-Vergleich
+        function calculateDiff(text1, text2) {
+            // Einfache Implementierung: Zeilenweise Vergleich
+            const lines1 = text1.split('\n');
+            const lines2 = text2.split('\n');
+            const maxLines = Math.max(lines1.length, lines2.length);
+            const diff = [];
+
+            for (let i = 0; i < maxLines; i++) {
+                const line1 = lines1[i] || '';
+                const line2 = lines2[i] || '';
+
+                if (line1 === line2) {
+                    diff.push({ type: 'equal', text: line1 });
+                } else {
+                    diff.push({ type: 'diff', text1: line1, text2: line2 });
+                }
+            }
+
+            return diff;
+        }
+
+        function renderDiffHTML(diff, side) {
+            let html = '';
+            diff.forEach(item => {
+                if (item.type === 'equal') {
+                    html += `<div style="color: #333; background: #f0f0f0; padding: 2px 0; white-space: pre-wrap;">${escapeHtml(item.text)}</div>`;
+                } else if (item.type === 'diff') {
+                    if (side === 'left') {
+                        html += `<div style="color: #c62828; background: #ffebee; padding: 2px 0; white-space: pre-wrap;">${escapeHtml(item.text1)}</div>`;
+                    } else {
+                        html += `<div style="color: #2e7d32; background: #e8f5e9; padding: 2px 0; white-space: pre-wrap;">${escapeHtml(item.text2)}</div>`;
+                    }
+                }
+            });
+            return html;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function compareOCRResults(documentId, resultId) {
+            // Lade alle OCRResults
+            try {
+                const response = await fetch(`${API_BASE}/api/ocr/documents/${documentId}/results`);
+                if (!response.ok) {
+                    throw new Error('Fehler beim Laden der OCR-Ergebnisse');
+                }
+
+                const ocrResults = await response.json();
+                const selectedResult = ocrResults.find(r => r.id === resultId);
+
+                if (!selectedResult) {
+                    showMessage('OCR-Ergebnis nicht gefunden', 'error');
+                    return;
+                }
+
+                // Erstelle Vergleichs-Ansicht
+                const resultsSection = document.getElementById(`ocr-results-${documentId}`);
+                if (!resultsSection) {
+                    showMessage('OCR-Ergebnisse-Bereich nicht gefunden', 'error');
+                    return;
+                }
+
+                // Entferne bestehende Vergleichs-Ansicht
+                const existingComparison = document.getElementById(`ocr-comparison-${documentId}`);
+                if (existingComparison) {
+                    existingComparison.remove();
+                }
+
+                // Erstelle Vergleichs-Modal oder inline-Bereich
+                let comparisonHTML = `
+                    <div id="ocr-comparison-${documentId}" style="margin-top: 20px; padding: 20px; background: #f9f9f9; border-radius: 4px; border: 2px solid #2196F3;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h4 style="margin: 0;">OCR-Vergleich</h4>
+                            <button class="btn btn-sm" onclick="closeComparison(${documentId})">Schließen</button>
+                        </div>
+                        <div style="display: flex; gap: 15px;">
+                            <div style="flex: 1;">
+                                <h5 style="margin-bottom: 10px;">Ausgewähltes Ergebnis (${selectedResult.source.toUpperCase()})</h5>
+                                <div id="comparison-left-${documentId}" style="background: white; padding: 10px; border-radius: 4px; max-height: 500px; overflow-y: auto; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">
+                                </div>
+                            </div>
+                            <div style="flex: 1;">
+                                <h5 style="margin-bottom: 10px;">Vergleichen mit:</h5>
+                                <select id="compare-select-${documentId}" onchange="updateComparison(${documentId}, ${resultId})" style="width: 100%; padding: 5px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <option value="">-- Wählen Sie ein Ergebnis --</option>
+                                    ${ocrResults.filter(r => r.id !== resultId).map(r =>
+                                        `<option value="${r.id}">${r.source.toUpperCase()} (${r.confidence !== null ? (r.confidence * 100).toFixed(1) + '%' : 'N/A'})</option>`
+                                    ).join('')}
+                                </select>
+                                <div id="comparison-right-${documentId}" style="background: white; padding: 10px; border-radius: 4px; max-height: 500px; overflow-y: auto; font-family: monospace; font-size: 12px; border: 1px solid #ddd;">
+                                    <p style="color: #666;">Wählen Sie ein Ergebnis zum Vergleichen</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 4px;">
+                            <strong>Hinweis:</strong> Rot = Unterschiede, Grün = Übereinstimmungen. Beide Ansichten scrollen synchron.
+                        </div>
+                    </div>
+                `;
+
+                // Füge Vergleichs-Ansicht hinzu
+                resultsSection.insertAdjacentHTML('beforeend', comparisonHTML);
+
+                // Zeige ausgewähltes Ergebnis
+                const leftDiv = document.getElementById(`comparison-left-${documentId}`);
+                if (leftDiv && selectedResult.text) {
+                    leftDiv.innerHTML = `<div style="white-space: pre-wrap;">${escapeHtml(selectedResult.text)}</div>`;
+                }
+
+                // Scroll-Synchronisation
+                setupScrollSync(documentId);
+
+            } catch (error) {
+                showMessage('Fehler beim Vergleich: ' + error.message, 'error');
+                console.error('Error comparing OCR results:', error);
+            }
+        }
+
+        function setupScrollSync(documentId) {
+            const leftScroll = document.getElementById(`comparison-left-${documentId}`);
+            const rightScroll = document.getElementById(`comparison-right-${documentId}`);
+            let isScrolling = false;
+
+            if (leftScroll && rightScroll) {
+                leftScroll.addEventListener('scroll', () => {
+                    if (!isScrolling) {
+                        isScrolling = true;
+                        rightScroll.scrollTop = leftScroll.scrollTop;
+                        setTimeout(() => { isScrolling = false; }, 10);
+                    }
+                });
+
+                rightScroll.addEventListener('scroll', () => {
+                    if (!isScrolling) {
+                        isScrolling = true;
+                        leftScroll.scrollTop = rightScroll.scrollTop;
+                        setTimeout(() => { isScrolling = false; }, 10);
+                    }
+                });
+            }
+        }
+
+        async function updateComparison(documentId, selectedResultId) {
+            const select = document.getElementById(`compare-select-${documentId}`);
+            const rightDiv = document.getElementById(`comparison-right-${documentId}`);
+
+            if (!select || !rightDiv || !select.value) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/ocr/documents/${documentId}/results`);
+                if (!response.ok) {
+                    throw new Error('Fehler beim Laden der OCR-Ergebnisse');
+                }
+
+                const ocrResults = await response.json();
+                const selectedResult = ocrResults.find(r => r.id === selectedResultId);
+                const compareResult = ocrResults.find(r => r.id === parseInt(select.value));
+
+                if (!selectedResult || !compareResult) {
+                    return;
+                }
+
+                // Berechne Diff
+                const diff = calculateDiff(selectedResult.text || '', compareResult.text || '');
+
+                // Zeige Vergleich
+                rightDiv.innerHTML = renderDiffHTML(diff, 'right');
+
+                // Aktualisiere auch linke Seite mit Diff
+                const leftDiv = document.getElementById(`comparison-left-${documentId}`);
+                if (leftDiv) {
+                    leftDiv.innerHTML = renderDiffHTML(diff, 'left');
+                }
+
+                // Setup Scroll-Sync erneut
+                setupScrollSync(documentId);
+
+            } catch (error) {
+                showMessage('Fehler beim Aktualisieren des Vergleichs: ' + error.message, 'error');
+                console.error('Error updating comparison:', error);
+            }
+        }
+
+        function closeComparison(documentId) {
+            const comparison = document.getElementById(`ocr-comparison-${documentId}`);
+            if (comparison) {
+                comparison.remove();
+            }
+        }
+
+        async function checkAutoReview(documentId) {
+            try {
+                const response = await fetch(`${API_BASE}/api/ocr/documents/${documentId}/auto-review`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    return; // Kein automatisches Review möglich
+                }
+
+                const result = await response.json();
+                if (result.auto_reviewed) {
+                    showMessage('Automatisches Review erstellt! Ergebnisse waren übereinstimmend.', 'success');
+                    loadDocuments();
+                }
+            } catch (error) {
+                // Fehler ignorieren, ist nicht kritisch
+                console.log('Auto-review check failed:', error);
+            }
+        }
+
+        async function showOCRReview(documentId) {
+            const reviewSection = document.getElementById(`ocr-review-${documentId}`);
+            if (!reviewSection) {
+                console.error('OCR review section not found for document', documentId);
+                return;
+            }
+
+            // Prüfe ob bereits ein Review existiert
+            try {
+                const reviewResponse = await fetch(`${API_BASE}/api/ocr/documents/${documentId}/review`);
+                if (reviewResponse.ok) {
+                    const existingReview = await reviewResponse.json();
+                    if (existingReview) {
+                        reviewSection.innerHTML = `
+                            <div style="padding: 15px; background: #e8f5e9; border-radius: 4px; border: 1px solid #4CAF50;">
+                                <h4 style="margin: 0 0 10px 0;">Review bereits vorhanden</h4>
+                                <p style="margin: 0;">Status: ${existingReview.status}</p>
+                                <p style="margin: 5px 0;">Review-Runde: ${existingReview.review_round}</p>
+                                ${existingReview.reviewer_name ? `<p style="margin: 5px 0;">Reviewer: ${existingReview.reviewer_name}</p>` : ''}
+                                <div style="margin-top: 10px; padding: 10px; background: white; border-radius: 4px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px;">
+                                    ${existingReview.final_text ? escapeHtml(existingReview.final_text).replace(/\n/g, '<br>') : 'Kein Text'}
+                                </div>
+                            </div>
+                        `;
+                        reviewSection.style.display = 'block';
+                        return;
+                    }
+                }
+            } catch (error) {
+                console.log('No existing review found');
+            }
+
+            // Lade OCRResults für Auswahl
+            try {
+                const response = await fetch(`${API_BASE}/api/ocr/documents/${documentId}/results`);
+                if (!response.ok) {
+                    throw new Error('Fehler beim Laden der OCR-Ergebnisse');
+                }
+
+                const ocrResults = await response.json();
+
+                if (ocrResults.length === 0) {
+                    reviewSection.innerHTML = '<p>Keine OCR-Ergebnisse gefunden. Bitte führen Sie zuerst OCR durch.</p>';
+                    reviewSection.style.display = 'block';
+                    return;
+                }
+
+                // Erstelle Review-Interface
+                let html = `
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h4 style="margin: 0;">OCR Review</h4>
+                        <button class="btn btn-sm" onclick="toggleOCRReview(${documentId})" id="toggle-review-${documentId}">
+                            Ausblenden
+                        </button>
+                    </div>
+                    <div id="review-content-${documentId}">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: bold;">Review-Modus:</label>
+                            <div style="display: flex; gap: 10px;">
+                                <button class="btn btn-sm" onclick="setReviewMode(${documentId}, 'select')" id="review-mode-select-${documentId}" style="background: #2196F3; color: white;">
+                                    Aus OCRResult wählen
+                                </button>
+                                <button class="btn btn-sm" onclick="setReviewMode(${documentId}, 'manual')" id="review-mode-manual-${documentId}">
+                                    Manuell eingeben
+                                </button>
+                            </div>
+                        </div>
+                        <div id="review-mode-content-${documentId}">
+                            <!-- Wird je nach Modus gefüllt -->
+                        </div>
+                    </div>
+                `;
+
+                reviewSection.innerHTML = html;
+                reviewSection.style.display = 'block';
+
+                // Setze Standard-Modus: Aus OCRResult wählen
+                setReviewMode(documentId, 'select', ocrResults);
+
+            } catch (error) {
+                reviewSection.innerHTML = `<p style="color: red;">Fehler beim Laden: ${error.message}</p>`;
+                reviewSection.style.display = 'block';
+                console.error('Error loading OCR review:', error);
+            }
+        }
+
+        function setReviewMode(documentId, mode, ocrResults = null) {
+            const contentDiv = document.getElementById(`review-mode-content-${documentId}`);
+            const selectBtn = document.getElementById(`review-mode-select-${documentId}`);
+            const manualBtn = document.getElementById(`review-mode-manual-${documentId}`);
+
+            if (!contentDiv) return;
+
+            // Update Button-Styles
+            if (selectBtn && manualBtn) {
+                if (mode === 'select') {
+                    selectBtn.style.background = '#2196F3';
+                    selectBtn.style.color = 'white';
+                    manualBtn.style.background = '';
+                    manualBtn.style.color = '';
+                } else {
+                    manualBtn.style.background = '#2196F3';
+                    manualBtn.style.color = 'white';
+                    selectBtn.style.background = '';
+                    selectBtn.style.color = '';
+                }
+            }
+
+            if (mode === 'select') {
+                // Lade OCRResults falls nicht übergeben
+                if (!ocrResults) {
+                    fetch(`${API_BASE}/api/ocr/documents/${documentId}/results`)
+                        .then(r => r.json())
+                        .then(results => {
+                            renderSelectMode(documentId, results);
+                        })
+                        .catch(err => {
+                            contentDiv.innerHTML = `<p style="color: red;">Fehler: ${err.message}</p>`;
+                        });
+                } else {
+                    renderSelectMode(documentId, ocrResults);
+                }
+            } else {
+                renderManualMode(documentId);
+            }
+        }
+
+        function renderSelectMode(documentId, ocrResults) {
+            const contentDiv = document.getElementById(`review-mode-content-${documentId}`);
+            if (!contentDiv) return;
+
+            let html = `
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">OCR-Ergebnis auswählen:</label>
+                    <select id="review-select-result-${documentId}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px;" onchange="previewSelectedResult(${documentId})">
+                        <option value="">-- Wählen Sie ein Ergebnis --</option>
+                        ${ocrResults.map(r => `
+                            <option value="${r.id}" data-text="${escapeHtml(r.text).replace(/"/g, '&quot;')}">
+                                ${r.source.toUpperCase()} ${r.confidence !== null ? `(${(r.confidence * 100).toFixed(1)}%)` : ''}
+                            </option>
+                        `).join('')}
+                    </select>
+                </div>
+                <div id="review-preview-${documentId}" style="display: none; margin-bottom: 15px; padding: 10px; background: #f5f5f5; border-radius: 4px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px;">
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px;">Notizen (optional):</label>
+                    <textarea id="review-notes-${documentId}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-height: 60px;" placeholder="Optional: Notizen zum Review..."></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="submitReview(${documentId}, 'select')">
+                    Review abschließen
+                </button>
+            `;
+
+            contentDiv.innerHTML = html;
+        }
+
+        function renderManualMode(documentId) {
+            const contentDiv = document.getElementById(`review-mode-content-${documentId}`);
+            if (!contentDiv) return;
+
+            let html = `
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px; font-weight: bold;">Text eingeben:</label>
+                    <textarea id="review-manual-text-${documentId}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-height: 300px; font-family: monospace; font-size: 12px;" placeholder="Geben Sie hier den korrigierten Text ein..."></textarea>
+                    <div style="margin-top: 5px; font-size: 11px; color: #666;">
+                        <span id="review-char-count-${documentId}">0 Zeichen</span>
+                    </div>
+                </div>
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 5px;">Notizen (optional):</label>
+                    <textarea id="review-notes-manual-${documentId}" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; min-height: 60px;" placeholder="Optional: Notizen zum Review..."></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="submitReview(${documentId}, 'manual')">
+                    Review abschließen
+                </button>
+            `;
+
+            contentDiv.innerHTML = html;
+
+            // Zeichenzähler
+            const textarea = document.getElementById(`review-manual-text-${documentId}`);
+            const counter = document.getElementById(`review-char-count-${documentId}`);
+            if (textarea && counter) {
+                textarea.addEventListener('input', () => {
+                    counter.textContent = `${textarea.value.length} Zeichen`;
+                });
+            }
+        }
+
+        function previewSelectedResult(documentId) {
+            const select = document.getElementById(`review-select-result-${documentId}`);
+            const preview = document.getElementById(`review-preview-${documentId}`);
+
+            if (!select || !preview) return;
+
+            const selectedOption = select.options[select.selectedIndex];
+            if (selectedOption && selectedOption.value) {
+                const text = selectedOption.getAttribute('data-text');
+                preview.innerHTML = `<div style="white-space: pre-wrap;">${text}</div>`;
+                preview.style.display = 'block';
+            } else {
+                preview.style.display = 'none';
+            }
+        }
+
+        function toggleOCRReview(documentId) {
+            const content = document.getElementById(`review-content-${documentId}`);
+            const toggleBtn = document.getElementById(`toggle-review-${documentId}`);
+            if (content && toggleBtn) {
+                if (content.style.display === 'none') {
+                    content.style.display = 'block';
+                    toggleBtn.textContent = 'Ausblenden';
+                } else {
+                    content.style.display = 'none';
+                    toggleBtn.textContent = 'Anzeigen';
+                }
+            }
+        }
+
+        async function submitReview(documentId, mode) {
+            try {
+                let reviewData = {};
+
+                if (mode === 'select') {
+                    const select = document.getElementById(`review-select-result-${documentId}`);
+                    if (!select || !select.value) {
+                        showMessage('Bitte wählen Sie ein OCR-Ergebnis aus', 'error');
+                        return;
+                    }
+                    reviewData.reviewed_ocr_result_id = parseInt(select.value);
+
+                    const notes = document.getElementById(`review-notes-${documentId}`);
+                    if (notes && notes.value) {
+                        reviewData.review_notes = notes.value;
+                    }
+                } else {
+                    const textarea = document.getElementById(`review-manual-text-${documentId}`);
+                    if (!textarea || !textarea.value.trim()) {
+                        showMessage('Bitte geben Sie einen Text ein', 'error');
+                        return;
+                    }
+                    reviewData.final_text = textarea.value;
+
+                    const notes = document.getElementById(`review-notes-manual-${documentId}`);
+                    if (notes && notes.value) {
+                        reviewData.review_notes = notes.value;
+                    }
+                }
+
+                const response = await fetch(`${API_BASE}/api/ocr/documents/${documentId}/review`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(reviewData)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Fehler beim Erstellen des Reviews');
+                }
+
+                showMessage('Review erfolgreich erstellt!', 'success');
+                loadDocuments();
+
+            } catch (error) {
+                showMessage('Fehler: ' + error.message, 'error');
+                console.error('Error submitting review:', error);
+            }
+        }
+
+        async function processOCR(documentId) {
+            const btn = document.getElementById(`ocr-btn-${documentId}`);
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner">⏳</span> OCR läuft...';
+            }
+
+            showMessage('Starte OCR-Verarbeitung...', 'info');
+
+            try {
+                const response = await fetch(`${API_BASE}/api/ocr/documents/${documentId}/process?language=deu+eng&use_correction=true`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
                 if (!response.ok) {
                     let errorMessage = 'OCR fehlgeschlagen';
                     try {
@@ -907,10 +2219,18 @@
                     }
                     throw new Error(errorMessage);
                 }
-                
-                const result = await response.json();
-                showMessage('OCR erfolgreich abgeschlossen!', 'success');
-                loadDocuments(); // Aktualisiere Liste
+
+                const ocrResults = await response.json();
+                showMessage(`OCR erfolgreich abgeschlossen! ${ocrResults.length} Ergebnis(e) erstellt.`, 'success');
+
+                // Zeige OCR-Ergebnisse inline an
+                await showOCRResults(documentId);
+
+                // Prüfe auf automatisches Review
+                await checkAutoReview(documentId);
+
+                // Aktualisiere Dokument-Liste
+                loadDocuments();
             } catch (error) {
                 showMessage('Fehler bei OCR: ' + error.message, 'error');
                 console.error('OCR error:', error);
@@ -921,7 +2241,7 @@
                 }
             }
         }
-        
+
         async function extractPages(documentId) {
             const btn = document.getElementById(`extract-btn-${documentId}`);
             if (btn) {
@@ -929,13 +2249,13 @@
                 btn.textContent = 'Extrahiere...';
             }
             showMessage('Extrahiere Seiten als Bilder für Vorschau...', 'info');
-            
+
             try {
                 // Extrahiere als Bilder (PNG) für Vorschau
                 const response = await fetch(`${API_BASE}/api/pages/document/${documentId}/extract?output_format=image`, {
                     method: 'POST'
                 });
-                
+
                 if (!response.ok) {
                     // Versuche Fehler-Details aus Response zu lesen
                     let errorMessage = 'Seiten-Extraktion fehlgeschlagen';
@@ -947,7 +2267,7 @@
                     }
                     throw new Error(errorMessage);
                 }
-                
+
                 const result = await response.json();
                 showMessage(`${result.total_pages} Seiten erfolgreich extrahiert!`, 'success');
                 loadDocumentPages(documentId);
@@ -962,20 +2282,42 @@
                 }
             }
         }
-        
+
         async function loadDocumentPages(documentId) {
             try {
                 const response = await fetch(`${API_BASE}/api/pages/document/${documentId}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
                 const data = await response.json();
-                
-                const pagesContainer = document.getElementById(`pages-${documentId}`);
-                if (!pagesContainer) return;
-                
+
+                let pagesContainer = document.getElementById(`pages-${documentId}`);
+                if (!pagesContainer) {
+                    // Container existiert nicht, erstelle ihn
+                    const docElement = document.getElementById(`document-${documentId}`);
+                    if (!docElement) {
+                        console.error(`Dokument-Element ${documentId} nicht gefunden`);
+                        return;
+                    }
+
+                    pagesContainer = document.createElement('div');
+                    pagesContainer.id = `pages-${documentId}`;
+                    pagesContainer.className = 'pages-section';
+                    pagesContainer.style.cssText = 'margin-top: 20px; padding: 20px; background: #f9f9f9; border-radius: 8px; border: 1px solid #ddd;';
+
+                    const actionsDiv = docElement.querySelector('.document-actions');
+                    if (actionsDiv && actionsDiv.parentNode) {
+                        actionsDiv.parentNode.insertBefore(pagesContainer, actionsDiv.nextSibling);
+                    } else {
+                        docElement.querySelector('.document-info').appendChild(pagesContainer);
+                    }
+                }
+
                 if (data.pages.length === 0) {
-                    pagesContainer.innerHTML = '';
+                    pagesContainer.innerHTML = '<p>Keine Seiten gefunden. Bitte Seiten extrahieren.</p>';
                     return;
                 }
-                
+
                 // Header mit Buttons
                 pagesContainer.innerHTML = `
                     <div class="pages-header">
@@ -993,65 +2335,56 @@
                     </div>
                     <div class="pages-grid" id="pages-grid-${documentId}"></div>
                 `;
-                
+
                 const grid = document.getElementById(`pages-grid-${documentId}`);
-                
+
                 for (const page of data.pages) {
                     const pageDiv = document.createElement('div');
                     pageDiv.className = 'page-item' + (selectedPages.has(page.id) ? ' selected' : '');
                     const previewUrl = `${API_BASE}/api/pages/${page.id}/preview?thumbnail=true`;
                     const isPdf = page.file_type === 'pdf' || page.file_type === 'application/pdf';
-                    
-                    pageDiv.onclick = (e) => {
-                        // Nur zoomen wenn nicht auf Checkbox geklickt
-                        if (e.target.type !== 'checkbox' && !e.target.closest('object')) {
-                            showPageZoom(page.id, page.page_number, documentId);
-                        }
+
+                    pageDiv.onclick = () => {
+                        showPageZoom(page.id, page.page_number, documentId, fullPreviewUrl);
                     };
-                    
-                    if (isPdf) {
-                        // Für PDFs: Verwende object-Tag für Vorschau
-                        pageDiv.innerHTML = `
-                            <div class="pdf-container">
-                                <object data="${previewUrl}" type="application/pdf" style="width: 100%; height: 100%; pointer-events: none;">
-                                    <div style="padding: 20px; text-align: center; color: #666;">
-                                        PDF-Vorschau<br>
-                                        <small>Klicken zum Öffnen</small>
-                                    </div>
-                                </object>
-                            </div>
-                            <div class="page-info">
-                                <span class="page-number">Seite ${page.page_number}</span>
-                                <input type="checkbox" class="page-checkbox" 
-                                       ${selectedPages.has(page.id) ? 'checked' : ''}
-                                       onchange="togglePageSelection(${page.id}, ${documentId}, ${page.page_number})"
-                                       onclick="event.stopPropagation()">
-                            </div>
-                        `;
-                    } else {
-                        // Für Bilder: Normale img-Tag
-                        pageDiv.innerHTML = `
-                            <img src="${previewUrl}" alt="Seite ${page.page_number}" class="page-thumbnail" loading="lazy" 
-                                 onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'200\\' height=\\'200\\'%3E%3Ctext x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\'%3EVorschau nicht verfügbar%3C/text%3E%3C/svg%3E'">
-                            <div class="page-info">
-                                <span class="page-number">Seite ${page.page_number}</span>
-                                <input type="checkbox" class="page-checkbox" 
-                                       ${selectedPages.has(page.id) ? 'checked' : ''}
-                                       onchange="togglePageSelection(${page.id}, ${documentId}, ${page.page_number})"
-                                       onclick="event.stopPropagation()">
-                            </div>
-                        `;
+
+                    // Status-Badge für OCR-Job - hole Job-Status aus Queue
+                    let statusBadge = '';
+                    const pageJob = ocrQueueJobs.find(j => j.documentPageId === page.id);
+                    if (pageJob) {
+                        const jobStatus = pageJob.status;
+                        const jobProgress = pageJob.progress;
+                        if (jobStatus === 'pending') {
+                            statusBadge = '<span class="status-badge status-pending" style="font-size: 10px; padding: 2px 6px;">OCR wartet</span>';
+                        } else if (jobStatus === 'running') {
+                            statusBadge = `<span class="status-badge status-running" style="font-size: 10px; padding: 2px 6px;">OCR läuft ${jobProgress ? Math.round(jobProgress) + '%' : ''}</span>`;
+                        } else if (jobStatus === 'completed') {
+                            statusBadge = '<span class="status-badge status-completed" style="font-size: 10px; padding: 2px 6px;">✓ OCR fertig</span>';
+                        } else if (jobStatus === 'failed') {
+                            statusBadge = '<span class="status-badge status-failed" style="font-size: 10px; padding: 2px 6px;">✗ OCR fehlgeschlagen</span>';
+                        }
                     }
+
+                    // Seiten-Vorschau mit Thumbnail
+                    pageDiv.innerHTML = `
+                        <img src="${previewUrl}" alt="Seite ${page.page_number}" class="page-thumbnail" loading="lazy"
+                             style="width: 200px; height: 200px; object-fit: contain; background: white; border: 1px solid #ddd;"
+                             onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'200\\' height=\\'200\\'%3E%3Ctext x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\'%3EVorschau nicht verfügbar%3C/text%3E%3C/svg%3E'">
+                        <div class="page-info" style="margin-top: 8px; text-align: center;">
+                            <div style="font-weight: bold; margin-bottom: 4px;">Seite ${page.page_number}</div>
+                            ${statusBadge}
+                        </div>
+                    `;
                     grid.appendChild(pageDiv);
                 }
-                
+
             updateGroupButton(documentId);
             updateMergeSection();
             } catch (error) {
                 console.error('Fehler beim Laden der Seiten:', error);
             }
         }
-        
+
         function togglePageSelection(pageId, documentId, pageNumber) {
             const checkbox = event.target;
             if (checkbox.checked) {
@@ -1059,7 +2392,7 @@
             } else {
                 selectedPages.delete(pageId);
             }
-            
+
             // Update UI
             const pageItem = checkbox.closest('.page-item');
             if (checkbox.checked) {
@@ -1067,23 +2400,23 @@
             } else {
                 pageItem.classList.remove('selected');
             }
-            
+
             // Update Group-Button
             updateGroupButton(documentId);
             updateMergeSection();
         }
-        
+
         function updateGroupButton(documentId) {
             // Zähle ausgewählte Seiten dieses Dokuments direkt aus dem DOM
             const grid = document.getElementById(`pages-grid-${documentId}`);
             if (!grid) return;
-            
+
             const checkboxes = grid.querySelectorAll('input[type="checkbox"]');
             let selectedCount = 0;
             checkboxes.forEach(cb => {
                 if (cb.checked) selectedCount++;
             });
-            
+
             const groupBtn = document.getElementById(`group-btn-${documentId}`);
             if (groupBtn) {
                 groupBtn.disabled = selectedCount === 0;
@@ -1094,7 +2427,7 @@
                 }
             }
         }
-        
+
         function selectAllPages(documentId) {
             // Hole alle Seiten dieses Dokuments
             fetch(`${API_BASE}/api/pages/document/${documentId}`)
@@ -1116,24 +2449,24 @@
                     console.error('Fehler beim Laden der Seiten:', error);
                 });
         }
-        
+
         async function groupSelectedPagesToDocument(documentId) {
             console.log('groupSelectedPagesToDocument aufgerufen für documentId:', documentId);
-            
+
             // Hole alle Seiten dieses Dokuments
             try {
                 const response = await fetch(`${API_BASE}/api/pages/document/${documentId}`);
                 if (!response.ok) {
                     throw new Error('Fehler beim Laden der Seiten');
                 }
-                
+
                 const data = await response.json();
                 const pageIds = data.pages.map(p => p.id);
-                
+
                 // Filtere nur die ausgewählten Seiten
                 const checkboxes = document.querySelectorAll(`#pages-grid-${documentId} input[type="checkbox"]:checked`);
                 const selectedFromThisDoc = [];
-                
+
                 checkboxes.forEach(cb => {
                     // Extrahiere pageId aus dem onchange-Attribut
                     const onchangeAttr = cb.getAttribute('onchange');
@@ -1147,14 +2480,14 @@
                         }
                     }
                 });
-                
+
                 if (selectedFromThisDoc.length === 0) {
                     showMessage('Bitte wählen Sie mindestens eine Seite aus', 'error');
                     return;
                 }
-                
+
                 showMessage('Gruppiere Seiten zu Dokument...', 'info');
-                
+
                 const mergeResponse = await fetch(`${API_BASE}/api/pages/merge`, {
                     method: 'POST',
                     headers: {
@@ -1165,7 +2498,7 @@
                         title: null  // Kein Titel beim Anlegen
                     })
                 });
-                
+
                 if (!mergeResponse.ok) {
                     let errorMessage = 'Gruppierung fehlgeschlagen';
                     try {
@@ -1176,11 +2509,11 @@
                     }
                     throw new Error(errorMessage);
                 }
-                
+
                 const result = await mergeResponse.json();
                 console.log('Gruppierungs-Ergebnis:', result);
                 showMessage(`${selectedFromThisDoc.length} Seiten erfolgreich zu Dokument gruppiert!`, 'success');
-                
+
                 // Entferne Auswahl: Checkboxes zurücksetzen
                 selectedFromThisDoc.forEach(pageId => {
                     selectedPages.delete(pageId);
@@ -1194,14 +2527,14 @@
                         }
                     });
                 });
-                
+
                 // Update Group-Button
                 updateGroupButton(documentId);
                 updateMergeSection();
-                
+
                 // Warte kurz, damit das Backend die Änderungen committed hat
                 await new Promise(resolve => setTimeout(resolve, 500));
-                
+
                 // Wechsle zu Dokumente-Tab und lade neu
                 showTab('documents');
             } catch (error) {
@@ -1209,30 +2542,30 @@
                 console.error('Group error:', error);
             }
         }
-        
-        function showPageZoom(pageId, pageNumber, documentId) {
+
+        function showPageZoom(pageId, pageNumber, documentId, fullPreviewUrl = null) {
             const overlay = document.getElementById('zoomOverlay');
             const img = document.getElementById('zoomImage');
             const previewUrl = `${API_BASE}/api/pages/${pageId}/preview`;
-            
+
             // Prüfe ob es ein PDF ist
             fetch(`${API_BASE}/api/pages/document/${documentId}`)
                 .then(r => r.json())
                 .then(data => {
                     const page = data.pages.find(p => p.id === pageId);
                     const isPdf = page && (page.file_type === 'pdf' || page.file_type === 'application/pdf');
-                    
+
                     if (isPdf) {
                         // Für PDFs: Öffne in neuem Tab oder zeige PDF-Viewer
                         window.open(previewUrl, '_blank');
                         return;
                     }
-                    
+
                     // Für Bilder: Zeige Zoom
                     img.src = previewUrl;
                     img.alt = `Seite ${pageNumber}`;
                     overlay.classList.add('active');
-                    
+
                     // ESC-Taste zum Schließen
                     document.addEventListener('keydown', function escHandler(e) {
                         if (e.key === 'Escape') {
@@ -1248,20 +2581,20 @@
                     overlay.classList.add('active');
                 });
         }
-        
+
         function hidePageZoom() {
             const overlay = document.getElementById('zoomOverlay');
             overlay.classList.remove('active');
         }
-        
+
         function updateMergeSection() {
             const mergeSection = document.getElementById('mergeSection');
             const selectedPagesDiv = document.getElementById('selectedPages');
-            
+
             if (selectedPages.size > 0) {
                 mergeSection.style.display = 'block';
                 selectedPagesDiv.innerHTML = '';
-                
+
                 // Zeige ausgewählte Seiten (vereinfacht - würde normalerweise mehr Info laden)
                 selectedPages.forEach(pageId => {
                     const span = document.createElement('span');
@@ -1276,26 +2609,26 @@
                 mergeSection.style.display = 'none';
             }
         }
-        
+
         function removePageSelection(pageId) {
             selectedPages.delete(pageId);
             loadDocuments(); // Reload um Buttons zu aktualisieren
             updateMergeSection();
         }
-        
+
         async function deleteDocument(documentId, filename) {
             // Bestätigungsdialog
             if (!confirm(`Möchten Sie das Dokument "${filename}" wirklich löschen?\n\nDies löscht:\n- Das Dokument\n- Alle extrahierten Seiten\n- Alle Metadaten und Annotationen\n\nDiese Aktion kann nicht rückgängig gemacht werden!`)) {
                 return;
             }
-            
+
             showMessage('Lösche Dokument...', 'info');
-            
+
             try {
                 const response = await fetch(`${API_BASE}/api/documents/${documentId}`, {
                     method: 'DELETE'
                 });
-                
+
                 if (!response.ok) {
                     let errorMessage = 'Löschen fehlgeschlagen';
                     try {
@@ -1306,7 +2639,7 @@
                     }
                     throw new Error(errorMessage);
                 }
-                
+
                 showMessage(`"${filename}" erfolgreich gelöscht!`, 'success');
                 // Aktualisiere je nach Tab
                 if (document.getElementById('tab-imports').classList.contains('active')) {
@@ -1319,18 +2652,18 @@
                 console.error('Delete error:', error);
             }
         }
-        
+
         async function mergeSelectedPages() {
             if (selectedPages.size === 0) {
                 showMessage('Bitte wählen Sie mindestens eine Seite aus', 'error');
                 return;
             }
-            
+
             const title = document.getElementById('mergeTitle').value;
             const pageIds = Array.from(selectedPages);
-            
+
             showMessage('Füge Seiten zusammen...', 'info');
-            
+
             try {
                 const response = await fetch(`${API_BASE}/api/pages/merge`, {
                     method: 'POST',
@@ -1342,11 +2675,11 @@
                         title: title || null
                     })
                 });
-                
+
                 if (!response.ok) {
                     throw new Error('Zusammenführung fehlgeschlagen');
                 }
-                
+
                 const result = await response.json();
                 showMessage(`Dokument erfolgreich erstellt! ID: ${result.composite_document_id}`, 'success');
                 selectedPages.clear();
@@ -1359,7 +2692,7 @@
                 showMessage('Fehler: ' + error.message, 'error');
             }
         }
-        
+
         function showMessage(message, type) {
             const messageArea = document.getElementById('messageArea');
             messageArea.innerHTML = `<div class="${type}">${message}</div>`;
@@ -1367,7 +2700,7 @@
                 messageArea.innerHTML = '';
             }, 5000);
         }
-        
+
         // Initial Load - Zeige Imports Tab
         showTab('imports');
     </script>

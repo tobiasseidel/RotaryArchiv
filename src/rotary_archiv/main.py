@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from src.rotary_archiv.api import (
     documents,
     entities,
+    ocr,
     pages,
     search,
     sparql,
@@ -47,6 +48,7 @@ if data_dir.exists():
 # Include Routers
 app.include_router(documents.router)
 app.include_router(entities.router)
+app.include_router(ocr.router)
 app.include_router(triples.router)
 app.include_router(search.router)
 app.include_router(wikidata.router)
@@ -70,6 +72,7 @@ async def root():
             "documents": "/api/documents",
             "pages": "/api/pages",
             "entities": "/api/entities",
+            "ocr": "/api/ocr",
             "triples": "/api/triples",
             "search": "/api/search",
             "wikidata": "/api/wikidata",

@@ -61,11 +61,16 @@ def get_file_path(relative_path: str) -> Path:
     Hole absoluten Pfad zur Datei
 
     Args:
-        relative_path: Relativer Pfad (aus Datenbank)
+        relative_path: Relativer oder absoluter Pfad (aus Datenbank)
 
     Returns:
         Absoluter Path
     """
+    path = Path(relative_path)
+    # Wenn bereits absolut, verwende direkt
+    if path.is_absolute():
+        return path
+    # Sonst relativ zu cwd
     return Path.cwd() / relative_path
 
 
