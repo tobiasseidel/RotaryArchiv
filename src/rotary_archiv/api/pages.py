@@ -19,11 +19,18 @@ try:
 except ImportError:
     PIL_AVAILABLE = False
 
+from src.rotary_archiv.api.schemas import OCRResultResponse, PageInspectResponse
 from src.rotary_archiv.config import settings
 from src.rotary_archiv.core.database import get_db
-from src.rotary_archiv.core.models import Document, DocumentPage, DocumentStatus
+from src.rotary_archiv.core.models import (
+    Document,
+    DocumentPage,
+    DocumentStatus,
+    OCRResult,
+)
 from src.rotary_archiv.utils.file_handler import get_file_path
 from src.rotary_archiv.utils.pdf_splitter import PDF2IMAGE_AVAILABLE, PDFSplitter
+from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
 
 router = APIRouter(prefix="/api/pages", tags=["pages"])
 
@@ -181,6 +188,80 @@ def get_document_pages(document_id: int, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/review")
+def get_review_pages(db: Session = Depends(get_db)):
+    """
+    Hole alle verarbeiteten Seiten mit OCR-Ergebnissen für Review
+
+    Returns:
+        Liste von Seiten mit Dokument-Info und OCR-Status
+    """
+    import logging
+
+    from sqlalchemy import func
+
+    try:
+        # Vereinfachte Abfrage: Hole alle Seiten, die OCR-Ergebnisse haben
+        # Verwende eine Subquery für bessere Performance
+        pages_with_ocr = (
+            db.query(DocumentPage)
+            .join(Document, DocumentPage.document_id == Document.id)
+            .join(OCRResult, OCRResult.document_page_id == DocumentPage.id)
+            .group_by(DocumentPage.id)
+            .having(func.count(OCRResult.id) > 0)
+            .order_by(DocumentPage.created_at.desc())
+            .all()
+        )
+
+        result = []
+        for page in pages_with_ocr:
+            # Hole Dokument-Info
+            document = (
+                db.query(Document).filter(Document.id == page.document_id).first()
+            )
+            if not document:
+                continue
+
+            # Zähle OCR-Ergebnisse für diese Seite
+            ocr_results = (
+                db.query(OCRResult).filter(OCRResult.document_page_id == page.id).all()
+            )
+            ocr_count = len(ocr_results)
+
+            # Finde letztes OCR-Datum
+            last_ocr_at = None
+            if ocr_results:
+                last_ocr_at = max(r.created_at for r in ocr_results)
+
+            # Prüfe ob BBox-Daten vorhanden sind
+            has_bbox = any(r.bbox_data is not None for r in ocr_results)
+
+            result.append(
+                {
+                    "page_id": page.id,
+                    "document_id": page.document_id,
+                    "document_title": document.title or document.filename,
+                    "page_number": page.page_number,
+                    "ocr_result_count": ocr_count,
+                    "has_bbox": has_bbox,
+                    "last_ocr_at": last_ocr_at.isoformat() if last_ocr_at else None,
+                    "created_at": page.created_at.isoformat(),
+                }
+            )
+
+        logging.info(
+            f"Review-Endpoint: {len(result)} Seiten mit OCR-Ergebnissen gefunden"
+        )
+        return {"pages": result}
+
+    except Exception as e:
+        logging.error(f"Fehler im Review-Endpoint: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der Review-Seiten: {e!s}",
+        ) from None
+
+
 @router.get("/{page_id}/preview")
 def get_page_preview(
     page_id: int, thumbnail: bool = False, db: Session = Depends(get_db)
@@ -198,14 +279,81 @@ def get_page_preview(
             status_code=status.HTTP_404_NOT_FOUND, detail="Seite nicht gefunden"
         )
 
-    file_path = get_file_path(page.file_path)
-    if not file_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Seiten-Datei nicht gefunden: {file_path}",
-        )
+    # Prüfe ob Seite ein file_path hat (extrahierte Seite) oder virtuell ist
+    if page.file_path:
+        # Normale Seite mit extrahierter Datei
+        file_path = get_file_path(page.file_path)
+        if not file_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Seiten-Datei nicht gefunden: {file_path}",
+            )
 
-    # Wenn es ein PDF ist, konvertiere zu Bild für Vorschau
+        # Wenn es ein Bild ist, direkt zurückgeben
+        if page.file_type and page.file_type.lower() in [
+            "image/png",
+            "image/jpeg",
+            "image/jpg",
+        ]:
+            return FileResponse(
+                path=str(file_path),
+                media_type=page.file_type,
+                filename=f"page_{page.page_number}.{file_path.suffix[1:]}",
+            )
+    else:
+        # Virtuelle Seite - extrahiere direkt aus PDF
+        document = db.query(Document).filter(Document.id == page.document_id).first()
+        if not document:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Dokument nicht gefunden"
+            )
+
+        pdf_path = get_file_path(document.file_path)
+        if not pdf_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"PDF-Datei nicht gefunden: {pdf_path}",
+            )
+
+        # Extrahiere Seite direkt aus PDF
+        try:
+            if not PDF2IMAGE_AVAILABLE:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="pdf2image ist nicht verfügbar. Bitte installieren: pip install pdf2image",
+                )
+
+            from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
+
+            img = extract_page_as_image(str(pdf_path), page.page_number, dpi=150)
+
+            # Wenn Thumbnail gewünscht
+            if thumbnail and PIL_AVAILABLE:
+                from src.rotary_archiv.utils.pdf_utils import create_page_thumbnail
+
+                thumbnail_size = 200
+                img = create_page_thumbnail(img, size=(thumbnail_size, thumbnail_size))
+
+            # Speichere temporär
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
+                img.save(temp_file.name, "PNG")
+                temp_path = temp_file.name
+
+            return FileResponse(
+                path=temp_path,
+                media_type="image/png",
+                filename=f"page_{page.page_number}.png",
+            )
+        except Exception as e:
+            logging.error(
+                f"Fehler beim Extrahieren der Seite aus PDF: {e}", exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Fehler beim Extrahieren der Seite: {e!s}",
+            ) from None
+
+    # Wenn es ein PDF ist (extrahierte PDF-Seite), konvertiere zu Bild für Vorschau
     if page.file_type == "pdf" or str(file_path).endswith(".pdf"):
         try:
             # Versuche PDF zu Bild zu konvertieren
@@ -370,3 +518,141 @@ def merge_pages(request: MergePagesRequest, db: Session = Depends(get_db)):
         "pages_count": len(pages),
         "page_ids": request.page_ids,
     }
+
+
+@router.get("/{page_id}/inspect", response_model=PageInspectResponse)
+def get_page_inspect(page_id: int, db: Session = Depends(get_db)):
+    """
+    Hole Page Inspect Daten mit Bounding Boxes für Leaflet-View
+
+    Returns:
+        PageInspectResponse mit Bild-URL, Dimensionen und OCR-Ergebnissen mit BBoxes
+    """
+    page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+    if not page:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Seite nicht gefunden"
+        )
+
+    # Lade Dokument für PDF-Pfad falls nötig
+    document = db.query(Document).filter(Document.id == page.document_id).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Dokument nicht gefunden"
+        )
+
+    # Ermittle Bild-Dimensionen
+    image_width = 0
+    image_height = 0
+
+    try:
+        # Wenn Seite bereits ein Bild ist
+        if page.file_path and page.file_type in ["png", "jpg", "jpeg"]:
+            file_path = get_file_path(page.file_path)
+            if file_path.exists() and PIL_AVAILABLE:
+                img = Image.open(file_path)
+                image_width, image_height = img.size
+        else:
+            # Extrahiere Seite aus PDF als Bild
+            # Verwende die gleichen Dimensionen wie beim OCR (falls verfügbar)
+            pdf_path = get_file_path(document.file_path)
+            if pdf_path.exists():
+                # Prüfe ob OCR-Ergebnisse vorhanden sind und verwende deren Dimensionen
+                ocr_results = (
+                    db.query(OCRResult)
+                    .filter(OCRResult.document_page_id == page_id)
+                    .order_by(OCRResult.created_at.desc())
+                    .limit(1)
+                    .all()
+                )
+
+                if (
+                    ocr_results
+                    and ocr_results[0].image_width
+                    and ocr_results[0].image_height
+                ):
+                    # Verwende OCR-Bild-Dimensionen (wichtig für korrekte BBox-Positionierung)
+                    image_width = ocr_results[0].image_width
+                    image_height = ocr_results[0].image_height
+                    logging.info(
+                        f"Verwende OCR-Bild-Dimensionen für Preview: {image_width}x{image_height}"
+                    )
+                else:
+                    # Fallback: Extrahiere Seite und ermittle Dimensionen
+                    img = extract_page_as_image(str(pdf_path), page.page_number)
+                    image_width, image_height = img.size
+    except Exception as e:
+        logging.warning(f"Konnte Bild-Dimensionen nicht ermitteln: {e}")
+
+    # Lade OCR-Ergebnisse mit BBox-Daten
+    ocr_results = (
+        db.query(OCRResult)
+        .filter(OCRResult.document_page_id == page_id)
+        .order_by(OCRResult.created_at.desc())
+        .all()
+    )
+
+    # Konvertiere zu Response-Schemas
+    from src.rotary_archiv.api.schemas import BBoxItem
+
+    ocr_result_responses = []
+    for ocr_result in ocr_results:
+        # Konvertiere bbox_data JSON zu BBoxItem-Liste
+        bbox_items = None
+        if ocr_result.bbox_data:
+            try:
+                bbox_items = [
+                    BBoxItem(
+                        text=item.get("text", ""),
+                        bbox=item.get("bbox", []),
+                        bbox_pixel=item.get("bbox_pixel", []),
+                    )
+                    for item in ocr_result.bbox_data
+                ]
+            except Exception as e:
+                logging.warning(f"Fehler beim Konvertieren von bbox_data: {e}")
+
+        # Erstelle Response mit konvertierten BBox-Daten
+        ocr_dict = {
+            "id": ocr_result.id,
+            "document_id": ocr_result.document_id,
+            "document_page_id": ocr_result.document_page_id,
+            "source": ocr_result.source,
+            "engine_version": ocr_result.engine_version,
+            "text": ocr_result.text,
+            "confidence": ocr_result.confidence,
+            "confidence_details": ocr_result.confidence_details,
+            "processing_time_ms": ocr_result.processing_time_ms,
+            "language": ocr_result.language,
+            "error_message": ocr_result.error_message,
+            "created_at": ocr_result.created_at,
+            "bbox_data": bbox_items,
+            "image_width": ocr_result.image_width,
+            "image_height": ocr_result.image_height,
+        }
+        ocr_result_responses.append(OCRResultResponse(**ocr_dict))
+
+    # Bild-URL (verwende preview endpoint)
+    image_url = f"/api/pages/{page_id}/preview"
+
+    # Verwende OCR-Bild-Dimensionen falls verfügbar (genauer für BBox-Koordinaten)
+    # Falls keine OCR-Ergebnisse vorhanden, verwende die ermittelten Dimensionen
+    if ocr_result_responses:
+        # Verwende Dimensionen aus dem ersten OCR-Result (sollten alle gleich sein)
+        ocr_result = ocr_result_responses[0]
+        if ocr_result.image_width and ocr_result.image_height:
+            image_width = ocr_result.image_width
+            image_height = ocr_result.image_height
+            logging.info(
+                f"Verwende OCR-Bild-Dimensionen: {image_width}x{image_height} für Seite {page_id}"
+            )
+
+    return PageInspectResponse(
+        page_id=page.id,
+        document_id=page.document_id,
+        page_number=page.page_number,
+        image_url=image_url,
+        image_width=image_width,
+        image_height=image_height,
+        ocr_results=ocr_result_responses,
+    )
