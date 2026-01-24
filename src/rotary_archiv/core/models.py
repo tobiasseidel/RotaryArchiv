@@ -35,21 +35,6 @@ class DocumentStatus(str, Enum):
     PUBLISHED = "published"
 
 
-class EntityType(str, Enum):
-    """Typen von Entitäten"""
-
-    PERSON = "person"
-    PLACE = "place"
-    ORGANIZATION = "organization"
-    TOPIC = "topic"
-    EVENT = "event"
-    MEETING = "meeting"
-    SPEAKER = "speaker"
-    SPEECH_TOPIC = "speech_topic"
-    CURRENT_EVENT = "current_event"
-    CITY_HISTORY = "city_history"
-
-
 class DocumentType(str, Enum):
     """Typen von Dokumenten"""
 
@@ -71,15 +56,6 @@ class OCRSource(str, Enum):
     COMBINED = "combined"
 
 
-class OCRReviewStatus(str, Enum):
-    """Status für OCR-Review"""
-
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    NEEDS_REVISION = "needs_revision"
-
-
 class OCRJobStatus(str, Enum):
     """Status für OCR-Jobs"""
 
@@ -88,6 +64,8 @@ class OCRJobStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    PAUSED = "paused"
+    ARCHIVED = "archived"
 
 
 class Document(Base):
@@ -149,9 +127,6 @@ class Document(Base):
     metadata_entries = relationship(
         "DocumentMetadata", back_populates="document", cascade="all, delete-orphan"
     )
-    annotations = relationship(
-        "Annotation", back_populates="document", cascade="all, delete-orphan"
-    )
     pages = relationship(
         "DocumentPage", back_populates="document", cascade="all, delete-orphan"
     )
@@ -161,14 +136,8 @@ class Document(Base):
     ocr_results = relationship(
         "OCRResult", back_populates="document", cascade="all, delete-orphan"
     )
-    ocr_reviews = relationship(
-        "OCRReview", back_populates="document", cascade="all, delete-orphan"
-    )
     ocr_jobs = relationship(
         "OCRJob", back_populates="document", cascade="all, delete-orphan"
-    )
-    entity_occurrences = relationship(
-        "EntityOccurrence", back_populates="document", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
@@ -195,44 +164,6 @@ class DocumentMetadata(Base):
 
     def __repr__(self) -> str:
         return f"<DocumentMetadata(id={self.id}, key='{self.key}', document_id={self.document_id})>"
-
-
-class Entity(Base):
-    """Entitäten-Model (Personen, Orte, Organisationen, etc.)"""
-
-    __tablename__ = "entities"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(512), nullable=False, index=True)
-    entity_type = Column(SQLEnum(EntityType), nullable=False, index=True)
-
-    # Wikidata-Integration
-    wikidata_id = Column(
-        String(50), nullable=True, unique=True, index=True
-    )  # z.B. "Q123456"
-    wikidata_label = Column(String(512), nullable=True)
-    wikidata_description = Column(Text, nullable=True)
-    wikidata_data = Column(JSON, nullable=True)  # Zusätzliche Wikidata-Daten
-
-    # Weitere Metadaten
-    description = Column(Text, nullable=True)
-    extra_data = Column(
-        JSON, nullable=True
-    )  # Flexible Metadaten (metadata ist reserviert)
-
-    # Timestamps
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(
-        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
-    )
-
-    # Relationships
-    occurrences = relationship(
-        "EntityOccurrence", back_populates="entity", cascade="all, delete-orphan"
-    )
-
-    def __repr__(self) -> str:
-        return f"<Entity(id={self.id}, name='{self.name}', type='{self.entity_type}')>"
 
 
 class DocumentPage(Base):
@@ -301,6 +232,17 @@ class OCRResult(Base):
     language = Column(String(50), nullable=True)  # "deu+eng"
     error_message = Column(Text, nullable=True)  # Falls Fehler aufgetreten
 
+    # Bounding Boxes (für BBox OCR)
+    bbox_data = Column(
+        JSON, nullable=True
+    )  # Liste von BBox-Objekten: [{"text": "...", "bbox": [x1,y1,x2,y2], "bbox_pixel": [...]}, ...]
+    image_width = Column(
+        Integer, nullable=True
+    )  # Breite des verarbeiteten Bildes in Pixeln
+    image_height = Column(
+        Integer, nullable=True
+    )  # Höhe des verarbeiteten Bildes in Pixeln
+
     # Timestamps
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
@@ -310,153 +252,6 @@ class OCRResult(Base):
 
     def __repr__(self) -> str:
         return f"<OCRResult(id={self.id}, source='{self.source}', document_id={self.document_id})>"
-
-
-class OCRReview(Base):
-    """Review eines OCR-Ergebnisses (kann mehrere Runden haben)"""
-
-    __tablename__ = "ocr_reviews"
-
-    id = Column(Integer, primary_key=True, index=True)
-    document_id = Column(
-        Integer, ForeignKey("documents.id"), nullable=False, index=True
-    )
-
-    # Review-Status
-    status = Column(
-        SQLEnum(OCRReviewStatus),
-        default=OCRReviewStatus.PENDING,
-        nullable=False,
-        index=True,
-    )
-
-    # Referenz auf OCR-Ergebnis (kann None sein bei manueller Eingabe)
-    reviewed_ocr_result_id = Column(
-        Integer, ForeignKey("ocr_results.id"), nullable=True, index=True
-    )
-
-    # Finales Ergebnis (nach Review)
-    final_text = Column(Text, nullable=True)  # Manuell korrigierter Text
-
-    # Reviewer
-    reviewer_id = Column(Integer, nullable=True)  # Später ForeignKey zu User
-    reviewer_name = Column(String(255), nullable=True)
-    review_notes = Column(Text, nullable=True)  # Notizen zum Review
-
-    # Versionierung (für mehrere Review-Runden)
-    review_round = Column(Integer, default=1, nullable=False)  # 1, 2, 3, ...
-    previous_review_id = Column(
-        Integer, ForeignKey("ocr_reviews.id"), nullable=True
-    )  # Verknüpfung zur vorherigen Review-Runde
-
-    # Timestamps
-    reviewed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(
-        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
-    )
-
-    # Relationships
-    document = relationship("Document", back_populates="ocr_reviews")
-    reviewed_ocr_result = relationship(
-        "OCRResult", foreign_keys=[reviewed_ocr_result_id]
-    )
-    previous_review = relationship(
-        "OCRReview", remote_side=[id], foreign_keys=[previous_review_id]
-    )
-
-    def __repr__(self) -> str:
-        return f"<OCRReview(id={self.id}, status='{self.status}', document_id={self.document_id}, round={self.review_round})>"
-
-
-class EntityOccurrence(Base):
-    """Vorkommen einer Entität im OCR-Text mit Positionen"""
-
-    __tablename__ = "entity_occurrences"
-
-    id = Column(Integer, primary_key=True, index=True)
-    document_id = Column(
-        Integer, ForeignKey("documents.id"), nullable=False, index=True
-    )
-    entity_id = Column(Integer, ForeignKey("entities.id"), nullable=False, index=True)
-    ocr_result_id = Column(
-        Integer, ForeignKey("ocr_results.id"), nullable=True, index=True
-    )  # Optional: auf welchem OCR-Ergebnis basiert die Erkennung
-
-    # Position im Text (relativ zum finalen OCR-Text)
-    start_char = Column(Integer, nullable=False)  # Start-Position (0-basiert)
-    end_char = Column(Integer, nullable=False)  # End-Position (exklusiv)
-    text_snippet = Column(String(512), nullable=True)  # Der erkannte Text-Snippet
-
-    # Kontext
-    context_before = Column(String(255), nullable=True)  # Text vor der Entität
-    context_after = Column(String(255), nullable=True)  # Text nach der Entität
-
-    # Erkennungs-Metadaten
-    detection_method = Column(
-        String(50), nullable=False, index=True
-    )  # "ner", "manual", "wikidata_match", "regex"
-    confidence = Column(Float, nullable=True)  # 0.0-1.0
-
-    # Review
-    is_confirmed = Column(
-        Boolean, default=False, nullable=False, index=True
-    )  # User hat bestätigt
-    is_rejected = Column(Boolean, default=False, nullable=False)  # User hat abgelehnt
-
-    # Timestamps
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(
-        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
-    )
-
-    # Relationships
-    document = relationship("Document", back_populates="entity_occurrences")
-    entity = relationship("Entity", back_populates="occurrences")
-    ocr_result = relationship("OCRResult", foreign_keys=[ocr_result_id])
-
-    def __repr__(self) -> str:
-        return f"<EntityOccurrence(id={self.id}, entity_id={self.entity_id}, document_id={self.document_id}, start={self.start_char}, end={self.end_char})>"
-
-
-class Annotation(Base):
-    """User-Annotationen für Dokumente"""
-
-    __tablename__ = "annotations"
-
-    id = Column(Integer, primary_key=True, index=True)
-    document_id = Column(
-        Integer, ForeignKey("documents.id"), nullable=False, index=True
-    )
-
-    # Annotation-Inhalt
-    text = Column(Text, nullable=False)
-    start_char = Column(Integer, nullable=True)  # Start-Position im OCR-Text
-    end_char = Column(Integer, nullable=True)  # End-Position im OCR-Text
-
-    # Optional: Verknüpfung zu EntityOccurrence
-    entity_occurrence_id = Column(
-        Integer, ForeignKey("entity_occurrences.id"), nullable=True, index=True
-    )
-
-    # User (später mit Auth)
-    user_id = Column(Integer, nullable=True)  # Temporär, später ForeignKey
-    user_name = Column(String(255), nullable=True)  # Temporär
-
-    # Timestamps
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(
-        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
-    )
-
-    # Relationships
-    document = relationship("Document", back_populates="annotations")
-    entity_occurrence = relationship(
-        "EntityOccurrence", foreign_keys=[entity_occurrence_id]
-    )
-
-    def __repr__(self) -> str:
-        return f"<Annotation(id={self.id}, document_id={self.document_id})>"
 
 
 class OCRJob(Base):
@@ -479,8 +274,14 @@ class OCRJob(Base):
     )
 
     # Job-Parameter
+    job_type = Column(
+        String(50), default="ocr", nullable=False, index=True
+    )  # "ocr" oder "bbox_review"
     language = Column(String(50), default="deu+eng", nullable=False)
     use_correction = Column(Boolean, default=True, nullable=False)
+    priority = Column(
+        Integer, default=0, nullable=False, index=True
+    )  # Niedrigere Zahl = höhere Priorität
 
     # Fortschritt und Ergebnisse
     progress = Column(Float, default=0.0, nullable=False)  # 0.0-100.0

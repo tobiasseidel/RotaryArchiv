@@ -75,6 +75,12 @@
             margin-top: 40px;
         }
 
+        .selected-row {
+            background-color: #e3f2fd !important;
+        }
+        .selected-row:hover {
+            background-color: #bbdefb !important;
+        }
         .queue-table {
             width: 100%;
             border-collapse: collapse;
@@ -206,6 +212,42 @@
             background: #5a6268;
         }
 
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 0;
+        }
+
+        .tab-btn {
+            padding: 10px 20px;
+            border: none;
+            background: transparent;
+            color: #666;
+            cursor: pointer;
+            font-size: 14px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab-btn:hover {
+            color: #2196F3;
+        }
+
+        .tab-btn.active {
+            color: #2196F3;
+            border-bottom-color: #2196F3;
+            font-weight: 600;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
         #pageInspectView {
             display: none;
         }
@@ -327,6 +369,155 @@
             height: 100vh !important;
             width: 100% !important;
         }
+
+
+        /* OCR-Text in Bounding Boxes */
+        .ocr-text-overlay {
+            position: absolute;
+            pointer-events: none;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 2px 4px;
+            border: 1px solid rgba(51, 136, 255, 0.3);
+            z-index: 500;
+            font-family: 'Times New Roman', serif;
+            font-size: 12px;
+            line-height: 1.2;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            box-sizing: border-box;
+        }
+
+        #map {
+            position: relative;
+        }
+
+        /* Fadenkreuz-Cursor für Box-Zeichnen */
+        #map.drawing-mode {
+            cursor: crosshair;
+        }
+
+        /* Edit Dialog Styles */
+        .edit-dialog-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .edit-dialog-overlay.active {
+            display: flex;
+        }
+
+        .edit-dialog {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            max-width: 700px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .edit-dialog h2 {
+            margin-top: 0;
+            margin-bottom: 16px;
+            color: #333;
+        }
+
+        .edit-dialog label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .edit-dialog textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+
+        .edit-dialog .alternatives-section {
+            margin-top: 20px;
+        }
+
+        .edit-dialog .alternative-item {
+            background: #f5f5f5;
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            border-left: 3px solid #2196F3;
+        }
+
+        .edit-dialog .alternative-item strong {
+            display: block;
+            margin-bottom: 4px;
+            color: #333;
+        }
+
+        .edit-dialog .alternative-item .copy-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        .edit-dialog .alternative-item .copy-btn:hover {
+            background: #5a6268;
+        }
+
+        .edit-dialog .preview-section {
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+
+        .edit-dialog .preview-image {
+            max-width: 100%;
+            max-height: 300px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 8px;
+            background: #f5f5f5;
+            display: block;
+            margin: 8px 0;
+        }
+
+        .edit-dialog .preview-loading {
+            color: #666;
+            font-style: italic;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .edit-dialog .dialog-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            justify-content: flex-end;
+        }
+
     </style>
 </head>
 <body>
@@ -354,7 +545,15 @@
         </div>
 
         <div class="queue-section">
-            <h2>OCR Job-Queue</h2>
+            <h2>Job-Queue</h2>
+
+            <!-- Tabs für Job-Typen -->
+            <div class="tabs" style="margin-bottom: 20px; border-bottom: 2px solid #ddd;">
+                <button class="tab-btn active" onclick="switchJobTab('all')" id="tabAll">Alle</button>
+                <button class="tab-btn" onclick="switchJobTab('ocr')" id="tabOCR">OCR Jobs</button>
+                <button class="tab-btn" onclick="switchJobTab('review')" id="tabReview">Review Jobs</button>
+            </div>
+
             <div id="queueContainer">
                 <p style="color: #666;">Lade Queue...</p>
             </div>
@@ -378,16 +577,50 @@
                 <p class="subtitle" id="inspectSubtitle">Seite wird geladen...</p>
             </div>
             <div class="inspect-controls">
+                <button class="btn btn-secondary" id="prevPageBtn" style="display: none;">← Vorherige Seite</button>
+                <button class="btn btn-secondary" id="nextPageBtn" style="display: none;">Nächste Seite →</button>
+                <button class="btn btn-success" id="addBBoxBtn" title="Neue Box hinzufügen">+</button>
+                <button class="btn btn-primary" id="createReviewJobBtn" style="display: none;">Review-Job erstellen</button>
                 <button class="btn btn-primary" id="fullscreenBtn">Vollbild</button>
                 <button class="btn btn-secondary" id="backBtn">Zurück</button>
             </div>
         </div>
-        <div id="map" style="height: 600px; width: 100%;"></div>
+        <div id="map" style="height: 600px; width: 100%; position: relative;"></div>
     </div>
+
+    <!-- Edit Dialog -->
+    <div id="editDialogOverlay" class="edit-dialog-overlay" onclick="closeEditDialog(event)">
+        <div class="edit-dialog" onclick="event.stopPropagation()">
+            <h2>OCR-Text bearbeiten</h2>
+            <div class="preview-section">
+                <label>Preview der gecroppten Box:</label>
+                <div id="previewContainer">
+                    <div class="preview-loading">Lade Preview...</div>
+                </div>
+            </div>
+            <label for="editTextArea">Erkannter Text:</label>
+            <textarea id="editTextArea" placeholder="Text hier bearbeiten..."></textarea>
+            <div class="alternatives-section">
+                <label>Alternative Erkennungen (zum Kopieren):</label>
+                <div id="alternativesContainer"></div>
+            </div>
+            <div class="dialog-buttons">
+                <button class="btn btn-secondary" onclick="closeEditDialog()">Abbrechen</button>
+                <button class="btn btn-success" onclick="saveReviewedText()">Geprüft speichern</button>
+                <button class="btn btn-primary" onclick="saveReviewedTextAndNext()">& Next</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS - Muss vor dem Haupt-Script geladen werden -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
         const API_BASE = 'http://localhost:8000';
         let pollInterval = null;
+        let currentJobTab = 'all'; // 'all', 'ocr', 'review'
+        let selectedJobIds = new Set(); // Set von ausgewählten Job-IDs
+        let lastClickedIndex = -1; // Index der zuletzt angeklickten Zeile (für Shift-Range)
 
         // File Input Handler
         document.getElementById('fileInput').addEventListener('change', handleFileSelect);
@@ -470,6 +703,23 @@
             }
         }
 
+        function switchJobTab(tab) {
+            currentJobTab = tab;
+
+            // Update Tab-Buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            if (tab === 'all') {
+                document.getElementById('tabAll').classList.add('active');
+            } else if (tab === 'ocr') {
+                document.getElementById('tabOCR').classList.add('active');
+            } else if (tab === 'review') {
+                document.getElementById('tabReview').classList.add('active');
+            }
+
+            // Aktualisiere Queue
+            updateQueue();
+        }
+
         async function updateQueue() {
             // Prüfe ob Import-View sichtbar ist
             const importView = document.getElementById('importView');
@@ -478,68 +728,44 @@
             }
 
             try {
-                // Hole alle Dokumente
-                const docsResponse = await fetch(`${API_BASE}/api/documents/`);
-                const allDocs = await docsResponse.json();
+                // Ein gemeinsames Statuspaket statt vieler Einzelanfragen
+                const jobTypeParam = currentJobTab === 'all' ? 'all' : (currentJobTab === 'ocr' ? 'ocr' : 'bbox_review');
+                const response = await fetch(`${API_BASE}/api/ocr/queue-status?job_type=${jobTypeParam}`);
+                if (!response.ok) {
+                    throw new Error(`queue-status: ${response.status}`);
+                }
+                const data = await response.json();
 
-                // Filtere PDFs die OCR benötigen
-                const queueDocs = allDocs.filter(doc => {
-                    const isPdf = doc.file_type && (doc.file_type.toLowerCase() === 'application/pdf' || doc.filename.toLowerCase().endsWith('.pdf'));
-                    return isPdf && (doc.status === 'uploaded' || doc.status === 'ocr_pending');
-                });
-
-                if (queueDocs.length === 0) {
+                if (!data.documents || data.documents.length === 0) {
                     document.getElementById('queueContainer').innerHTML = '<p style="color: #666;">Keine aktiven Jobs in der Queue</p>';
                     return;
                 }
 
-                // Sammle alle Jobs
+                // queueItems aus documents/jobs flach machen (page_number kommt vom Backend)
                 const queueItems = [];
-                for (const doc of queueDocs) {
-                    try {
-                        const jobsResponse = await fetch(`${API_BASE}/api/ocr/documents/${doc.id}/jobs`);
-                        if (jobsResponse.ok) {
-                            const jobs = await jobsResponse.json();
-                            const activeJobs = jobs.filter(job =>
-                                job.status === 'pending' || job.status === 'running' || job.status === 'failed'
-                            );
-
-                            for (const job of activeJobs) {
-                                let pageNumber = null;
-                                if (job.document_page_id) {
-                                    try {
-                                        const pagesResponse = await fetch(`${API_BASE}/api/pages/document/${doc.id}`);
-                                        if (pagesResponse.ok) {
-                                            const pagesData = await pagesResponse.json();
-                                            const page = pagesData.pages.find(p => p.id === job.document_page_id);
-                                            if (page) {
-                                                pageNumber = page.page_number;
-                                            }
-                                        }
-                                    } catch (e) {
-                                        // Ignoriere Fehler
-                                    }
-                                }
-
-                                queueItems.push({
-                                    doc: doc,
-                                    job: job,
-                                    pageNumber: pageNumber
-                                });
-                            }
-                        }
-                    } catch (error) {
-                        console.error(`Fehler beim Laden der Jobs für Dokument ${doc.id}:`, error);
+                for (const doc of data.documents) {
+                    const docInfo = { id: doc.id, filename: doc.filename, title: doc.title, status: doc.status, file_type: doc.file_type };
+                    for (const job of doc.jobs || []) {
+                        queueItems.push({
+                            doc: docInfo,
+                            job: job,
+                            pageNumber: job.page_number != null ? job.page_number : null
+                        });
                     }
                 }
 
                 if (queueItems.length === 0) {
-                    document.getElementById('queueContainer').innerHTML = '<p style="color: #666;">Keine aktiven Jobs in der Queue</p>';
+                    document.getElementById('queueContainer').innerHTML = '<p style="color: #666;">Keine Jobs in der Queue</p>';
                     return;
                 }
 
-                // Sortiere: Nach Dokument-ID, dann nach Seitenzahl
+                // Sortiere: Nach Priorität, dann nach Dokument-ID, dann nach Seitenzahl
                 queueItems.sort((a, b) => {
+                    const priorityA = a.job.priority || 0;
+                    const priorityB = b.job.priority || 0;
+                    if (priorityA !== priorityB) {
+                        return priorityA - priorityB; // Niedrigere Zahl = höhere Priorität
+                    }
                     if (a.doc.id !== b.doc.id) {
                         return a.doc.id - b.doc.id;
                     }
@@ -549,14 +775,16 @@
                     return 0;
                 });
 
-                // Erstelle Tabelle
-                let html = '<table class="queue-table"><thead><tr><th>Dokument</th><th>Seite</th><th>Status</th><th>Fortschritt</th></tr></thead><tbody>';
+                // Erstelle Tabelle mit Checkbox-Spalte
+                let html = '<table class="queue-table"><thead><tr><th><input type="checkbox" id="selectAllJobs" onchange="toggleSelectAll()" title="Alle auswählen"></th><th>Typ</th><th>Dokument</th><th>Seite</th><th>Status</th><th>Fortschritt</th><th>Aktionen</th></tr></thead><tbody>';
 
-                queueItems.forEach(({ doc, job, pageNumber }) => {
+                queueItems.forEach(({ doc, job, pageNumber }, index) => {
                     const docName = doc.title || doc.filename || `Dokument #${doc.id}`;
                     const pageLabel = pageNumber !== null ? `Seite ${pageNumber}` : 'Gesamtes Dokument';
                     const status = job.status;
                     const progress = job.progress || 0;
+                    const jobType = job.job_type || 'ocr';
+                    const jobTypeLabel = jobType === 'bbox_review' ? 'Review' : 'OCR';
 
                     let statusBadge = '';
                     switch (status) {
@@ -577,32 +805,87 @@
                     // Inspect-Button für abgeschlossene Jobs mit Seiten
                     let inspectBtn = '';
                     if (status === 'completed' && pageNumber !== null) {
-                        // Finde page_id aus job
                         const pageId = job.document_page_id || null;
                         if (pageId) {
                             inspectBtn = ` <button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-left: 8px;" onclick="showPageInspect(${pageId})">Inspect</button>`;
                         }
                     }
 
+                    // Einzelaktionen-Buttons
+                    let actionButtons = '';
+                    if (status === 'pending') {
+                        actionButtons += `<button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="prioritizeJob(${job.id})">Als nächstes</button>`;
+                        actionButtons += `<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="batchJobAction([${job.id}], 'pause')">Pausieren</button>`;
+                        actionButtons += `<button class="btn btn-danger" style="padding: 4px 8px; font-size: 12px;" onclick="batchJobAction([${job.id}], 'cancel')">Abbrechen</button>`;
+                    } else if (status === 'running') {
+                        actionButtons += `<button class="btn btn-danger" style="padding: 4px 8px; font-size: 12px;" onclick="batchJobAction([${job.id}], 'cancel')">Abbrechen</button>`;
+                    } else if (status === 'paused') {
+                        actionButtons += `<button class="btn btn-success" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="batchJobAction([${job.id}], 'resume')">Fortsetzen</button>`;
+                        actionButtons += `<button class="btn btn-danger" style="padding: 4px 8px; font-size: 12px;" onclick="batchJobAction([${job.id}], 'cancel')">Abbrechen</button>`;
+                    } else if (status === 'failed' || status === 'cancelled') {
+                        actionButtons += `<button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="batchJobAction([${job.id}], 'restart')">Neustart</button>`;
+                        if (status === 'failed' || status === 'cancelled') {
+                            actionButtons += `<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" onclick="batchJobAction([${job.id}], 'archive')">Archivieren</button>`;
+                        }
+                    } else if (status === 'completed') {
+                        actionButtons += `<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" onclick="batchJobAction([${job.id}], 'archive')">Archivieren</button>`;
+                        if (inspectBtn) {
+                            actionButtons += inspectBtn;
+                        }
+                    }
+
+                    const isSelected = selectedJobIds.has(job.id);
                     html += `
-                        <tr>
+                        <tr data-job-id="${job.id}" data-row-index="${index}" class="${isSelected ? 'selected-row' : ''}" onclick="handleRowClick(event, ${index}, ${job.id})">
+                            <td onclick="event.stopPropagation()"><input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleJobSelection(${job.id}, ${index}, event)" data-job-id="${job.id}"></td>
+                            <td>${jobTypeLabel}</td>
                             <td>${docName}</td>
                             <td>${pageLabel}</td>
                             <td>${statusBadge} ${job.current_step ? '<br><small>' + job.current_step + '</small>' : ''}</td>
                             <td>
-                                ${status === 'running' || status === 'pending' ? `
+                                ${status === 'running' || status === 'pending' || status === 'paused' ? `
                                     <div class="progress-bar">
                                         <div class="progress-fill" style="width: ${Math.min(progress, 100)}%"></div>
                                         <span class="progress-text">${Math.round(progress)}%</span>
                                     </div>
-                                ` : status === 'completed' ? '<span style="color: #0f5132;">✓ 100%</span>' + inspectBtn : status === 'failed' ? '<span style="color: #842029;">✗ Fehler</span>' : '-'}
+                                ` : status === 'completed' ? '<span style="color: #0f5132;">✓ 100%</span>' : status === 'failed' ? '<span style="color: #842029;">✗ Fehler</span>' : status === 'cancelled' ? '<span style="color: #666;">Abgebrochen</span>' : '-'}
                             </td>
+                            <td>${actionButtons}</td>
                         </tr>
                     `;
                 });
 
                 html += '</tbody></table>';
-                document.getElementById('queueContainer').innerHTML = html;
+
+                // Aktionsleiste für Mehrfachauswahl
+                let batchBarHtml = '';
+                if (selectedJobIds.size > 0) {
+                    batchBarHtml = `
+                        <div id="queueBatchBar" style="margin-bottom: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; display: flex; align-items: center; gap: 10px;">
+                            <span><strong>${selectedJobIds.size} ausgewählt</strong></span>
+                            <select id="queueBatchAction" style="padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px;">
+                                <option value="">Aktion wählen...</option>
+                                <option value="cancel">Abbrechen</option>
+                                <option value="restart">Neustart</option>
+                                <option value="pause">Pausieren</option>
+                                <option value="resume">Fortsetzen</option>
+                                <option value="archive">Archivieren</option>
+                            </select>
+                            <button class="btn btn-primary" onclick="applyBatchAction()">Anwenden</button>
+                            <button class="btn btn-secondary" onclick="clearSelection()">Auswahl aufheben</button>
+                        </div>
+                    `;
+                } else {
+                    batchBarHtml = '<div id="queueBatchBar" style="display: none;"></div>';
+                }
+
+                document.getElementById('queueContainer').innerHTML = batchBarHtml + html;
+
+                // Update "Alle auswählen" Checkbox
+                const selectAllCheckbox = document.getElementById('selectAllJobs');
+                if (selectAllCheckbox) {
+                    selectAllCheckbox.checked = selectedJobIds.size > 0 && selectedJobIds.size === queueItems.length;
+                }
             } catch (error) {
                 document.getElementById('queueContainer').innerHTML = `<p style="color: red;">Fehler: ${error.message}</p>`;
                 console.error('Error updating queue:', error);
@@ -772,9 +1055,27 @@
 
         let map = null;
         let isFullscreen = false;
+        let textOverlays = [];
+        let fontSize = 12;
+        let fontFamily = "'Courier New', 'Courier', monospace";  // Schreibmaschinenschrift
+        let currentPageData = null;  // Speichert aktuelle Seiten-Daten (document_id, page_number, page_id)
+        let isAddingBBox = false;  // Modus: Box hinzufügen
+        let drawingRectangle = null;  // Aktuell gezeichnetes Rectangle
+        let drawingStartPoint = null;  // Startpunkt beim Zeichnen
 
         async function loadPageInspect(pageId) {
             try {
+                // Validiere pageId
+                if (pageId === null || pageId === undefined || isNaN(pageId)) {
+                    console.error('loadPageInspect aufgerufen mit ungültigem pageId:', pageId);
+                    throw new Error(`Ungültige Seiten-ID: ${pageId}`);
+                }
+
+                // Prüfe ob Leaflet geladen ist
+                if (typeof L === 'undefined') {
+                    throw new Error('Leaflet ist nicht geladen. Bitte Seite neu laden.');
+                }
+
                 document.getElementById('inspectSubtitle').textContent = 'Lade Seite...';
 
                 const response = await fetch(`${API_BASE}/api/pages/${pageId}/inspect`);
@@ -785,10 +1086,53 @@
                 const data = await response.json();
                 document.getElementById('inspectSubtitle').textContent = `Dokument ${data.document_id}, Seite ${data.page_number}`;
 
+                // Speichere aktuelle Seiten-Daten für Navigation
+                currentPageData = {
+                    document_id: data.document_id,
+                    page_number: data.page_number,
+                    page_id: data.page_id
+                };
+
+                // Aktualisiere Navigation-Buttons
+                await updatePageNavigationButtons(data.document_id, data.page_number);
+
+                // Zeige Review-Job-Button wenn BBoxes vorhanden sind
+                const hasBBoxes = data.ocr_results && data.ocr_results.some(r => r.bbox_data && r.bbox_data.length > 0);
+                const reviewJobBtn = document.getElementById('createReviewJobBtn');
+                if (reviewJobBtn) {
+                    if (hasBBoxes) {
+                        reviewJobBtn.style.display = 'inline-block';
+                        reviewJobBtn.onclick = () => createReviewJob(data.page_id);
+                    } else {
+                        reviewJobBtn.style.display = 'none';
+                    }
+                }
+
                 // Initialisiere Leaflet Map
                 if (map) {
                     map.remove();
                 }
+
+                // Entferne alte Text-Overlays
+                textOverlays.forEach(item => {
+                    if (item.marker) {
+                        // Entferne Event-Listener
+                        if (item.updateOnZoom) {
+                            map.off('zoom', item.updateOnZoom);
+                            map.off('zoomend', item.updateOnZoom);
+                        }
+                        // Entferne Click-Handler von Rectangle
+                        if (item.rect) {
+                            item.rect.off('click');
+                            map.removeLayer(item.rect);
+                        }
+                        map.removeLayer(item.marker);
+                    } else if (item.div && item.div.parentNode) {
+                        item.div.parentNode.removeChild(item.div);
+                    }
+                });
+                textOverlays = [];
+
 
                 map = L.map('map', {
                     crs: L.CRS.Simple,  // Verwende einfaches Koordinatensystem (keine geografischen Koordinaten)
@@ -797,18 +1141,23 @@
                     zoomControl: true    // Zeige Zoom-Controls
                 });
 
+                // Setup Box-Zeichnen Event-Handler
+                setupMapDrawingHandlers();
+
                 // Verwende Preview-Bild-Dimensionen für Map-Bounds (tatsächliche Bild-Dimensionen)
                 // Das Bild wird mit diesen Dimensionen angezeigt, daher müssen BBox-Koordinaten skaliert werden
                 const mapImageWidth = data.image_width;
                 const mapImageHeight = data.image_height;
 
-                // Bild als ImageOverlay hinzufügen
+                // Bild als ImageOverlay hinzufügen (OCR-Text Overlay - wird später mit Original überlagert)
                 // Mit CRS.Simple: Koordinaten gehen von (0,0) oben links nach (height, width) unten rechts
                 const imageUrl = `${API_BASE}${data.image_url}`;
                 const imageBounds = [
                     [0, 0],                                    // Obere linke Ecke
                     [mapImageHeight, mapImageWidth]           // Untere rechte Ecke
                 ];
+
+                // Bild als ImageOverlay hinzufügen
                 L.imageOverlay(imageUrl, imageBounds).addTo(map);
 
                 // Setze Bounds und Zoom mit Padding für bessere Ansicht
@@ -832,8 +1181,13 @@
                             const scaleX = (mapImageWidth / ocrImageWidth) * 0.7;
                             const scaleY = mapImageHeight / ocrImageHeight;
 
-                            ocrResult.bbox_data.forEach((bboxItem) => {
+                            ocrResult.bbox_data.forEach((bboxItem, bboxIndex) => {
                                 let x_min, x_max, y_min, y_max;
+
+                                // Review-Status
+                                const reviewStatus = bboxItem.review_status || 'pending';
+                                const ocrResults = bboxItem.ocr_results || {};
+                                const differences = bboxItem.differences || [];
 
                                 if (bboxItem.bbox_pixel && bboxItem.bbox_pixel.length >= 4) {
                                     const pixel = bboxItem.bbox_pixel; // [x1, y1, x2, y2]
@@ -877,17 +1231,158 @@
                                     [y_max, x_max]   // Untere rechte Ecke [y, x]
                                 ];
 
-                                L.rectangle(rectBounds, {
-                                    color: '#3388ff',
+                                // Bestimme Farbe basierend auf Review-Status
+                                let rectColor = '#3388ff'; // Standard: Blau (pending)
+                                if (reviewStatus === 'confirmed') {
+                                    rectColor = '#000000'; // Schwarz (geprüft)
+                                } else if (reviewStatus === 'rejected') {
+                                    rectColor = '#842029'; // Rot
+                                } else if (reviewStatus === 'auto_confirmed') {
+                                    rectColor = '#084298'; // Blau (dunkler)
+                                } else if (reviewStatus === 'ignored') {
+                                    rectColor = '#6c757d'; // Grau
+                                } else if (reviewStatus === 'new') {
+                                    rectColor = '#ff9800'; // Orange (neu hinzugefügt)
+                                }
+
+                                // Erstelle Popup mit Review-Informationen
+                                let popupContent = `<strong>Text:</strong> ${bboxItem.text || ''}<br>`;
+                                popupContent += `<strong>Status:</strong> `;
+
+                                let statusBadge = '';
+                                switch (reviewStatus) {
+                                    case 'confirmed':
+                                        statusBadge = '<span style="color: #000000; font-weight: bold;">✓ Geprüft</span>';
+                                        break;
+                                    case 'rejected':
+                                        statusBadge = '<span style="color: #842029; font-weight: bold;">✗ Abgelehnt</span>';
+                                        break;
+                                    case 'auto_confirmed':
+                                        statusBadge = '<span style="color: #084298; font-weight: bold;">✓ Auto-bestätigt</span>';
+                                        break;
+                                    case 'ignored':
+                                        statusBadge = '<span style="color: #6c757d; font-weight: bold;">⊘ Ignoriert</span>';
+                                        break;
+                                    case 'new':
+                                        statusBadge = '<span style="color: #ff9800; font-weight: bold;">+ Neu</span>';
+                                        break;
+                                    default:
+                                        statusBadge = '<span style="color: #856404;">⏳ Ausstehend</span>';
+                                }
+                                popupContent += statusBadge + '<br><br>';
+
+                                // OCR-Ergebnisse anzeigen
+                                if (ocrResults.tesseract || ocrResults.ollama_vision) {
+                                    popupContent += '<strong>OCR-Ergebnisse:</strong><br>';
+                                    if (ocrResults.tesseract) {
+                                        popupContent += `Tesseract: ${ocrResults.tesseract.text || ''}<br>`;
+                                    }
+                                    if (ocrResults.ollama_vision) {
+                                        popupContent += `Ollama: ${ocrResults.ollama_vision.text || ''}<br>`;
+                                    }
+                                    popupContent += '<br>';
+                                }
+
+                                // Unterschiede anzeigen
+                                if (differences.length > 0) {
+                                    popupContent += '<strong>Unterschiede:</strong><br>';
+                                    differences.slice(0, 5).forEach(diff => {
+                                        popupContent += `Position ${diff.position}: "${diff.char1 || ''}" vs "${diff.char2 || ''}"<br>`;
+                                    });
+                                    if (differences.length > 5) {
+                                        popupContent += `... und ${differences.length - 5} weitere<br>`;
+                                    }
+                                    popupContent += '<br>';
+                                }
+
+                                // Review-Buttons
+                                popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #ff9800; color: white; margin-right: 4px;" onclick="testBBoxReview(${data.page_id}, ${bboxIndex})">Test Review</button>`;
+                                popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white; margin-right: 4px;" onclick="editBBox(${data.page_id}, ${bboxIndex})">Bearbeiten</button>`;
+
+                                if (reviewStatus === 'pending') {
+                                    popupContent += `<button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="confirmBBox(${data.page_id}, ${bboxIndex})">Bestätigen</button>`;
+                                    popupContent += `<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="rejectBBox(${data.page_id}, ${bboxIndex})">Ablehnen</button>`;
+                                    popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #6c757d; color: white;" onclick="ignoreBBox(${data.page_id}, ${bboxIndex})">Ignorieren</button>`;
+                                }
+                                popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #dc3545; color: white;" onclick="deleteBBox(${data.page_id}, ${bboxIndex})">Löschen</button>`;
+
+                                // Erstelle Bounding Box Rectangle
+                                const rect = L.rectangle(rectBounds, {
+                                    color: rectColor,
                                     fillOpacity: 0.1,
                                     weight: 2,
+                                    interactive: true  // Ermöglicht Klicks
                                 })
-                                    .bindPopup(`<strong>Text:</strong> ${bboxItem.text}`)
+                                    .bindPopup(popupContent)
                                     .addTo(map);
+
+                                // Erstelle Text-Overlay für OCR-Text mit Leaflet Marker
+                                // Berechne Zentrum der Bounding Box
+                                const centerY = (y_min + y_max) / 2;
+                                const centerX = (x_min + x_max) / 2;
+                                const width = Math.abs(x_max - x_min);
+                                const height = Math.abs(y_max - y_min);
+
+                                // Funktion zum Aktualisieren der Textgröße basierend auf Zoom
+                                const updateTextIcon = () => {
+                                    const zoom = map.getZoom();
+                                    const zoomScale = Math.pow(2, zoom);
+                                    // Skaliere Schriftgröße mit Zoom-Level (bei zoom=0 ist scale=1)
+                                    const scaledFontSize = fontSize * zoomScale;
+                                    // Skaliere auch die Icon-Größe, damit die Boxen nicht schrumpfen
+                                    const scaledWidth = width * zoomScale;
+                                    const scaledHeight = height * zoomScale;
+
+                                    const textIcon = L.divIcon({
+                                        className: 'ocr-text-overlay',
+                                        html: `<div style="font-size: ${scaledFontSize}px; font-family: ${fontFamily}; width: ${scaledWidth}px; height: ${scaledHeight}px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px 4px; box-sizing: border-box;">${bboxItem.text || ''}</div>`,
+                                        iconSize: [scaledWidth, scaledHeight],
+                                        iconAnchor: [scaledWidth / 2, scaledHeight / 2]  // Zentriert den Text
+                                    });
+
+                                    return textIcon;
+                                };
+
+                                // Erstelle Marker an der Position der Bounding Box
+                                const textMarker = L.marker([centerY, centerX], {
+                                    icon: updateTextIcon(),
+                                    interactive: false,
+                                    zIndexOffset: 1000  // Über den Bounding Boxes
+                                }).addTo(map);
+
+                                // Aktualisiere Text-Icon bei Zoom-Änderungen
+                                const updateOnZoom = () => {
+                                    textMarker.setIcon(updateTextIcon());
+                                };
+
+                                map.on('zoom', updateOnZoom);
+                                map.on('zoomend', updateOnZoom);
+
+                                // Click-Handler: Blende Text aus/ein beim Klick auf die Bounding Box
+                                let textVisible = true;
+                                rect.on('click', () => {
+                                    textVisible = !textVisible;
+                                    if (textVisible) {
+                                        textMarker.addTo(map);
+                                    } else {
+                                        map.removeLayer(textMarker);
+                                    }
+                                });
+
+                                textOverlays.push({
+                                    marker: textMarker,
+                                    rect: rect,
+                                    updateIcon: updateTextIcon,
+                                    updateOnZoom: updateOnZoom,
+                                    visible: true,
+                                    bboxIndex: bboxIndex,  // Speichere Index für späteren Zugriff
+                                    pageId: data.page_id   // Speichere pageId für späteren Zugriff
+                                });
                             });
                         }
                     });
                 }
+
 
                 // Vollbild-Button
                 document.getElementById('fullscreenBtn').onclick = () => {
@@ -970,13 +1465,1057 @@
                         showImportView();
                     }
                 };
+
+                // Box hinzufügen Button
+                document.getElementById('addBBoxBtn').onclick = () => {
+                    toggleAddBBoxMode();
+                };
+
+                // Initialisiere Box-Zeichnen-Modus
+                setupBBoxDrawing();
             } catch (error) {
                 document.getElementById('inspectSubtitle').textContent = `Fehler: ${error.message}`;
                 console.error('Error loading page inspect:', error);
             }
         }
+
+        async function updatePageNavigationButtons(documentId, currentPageNumber) {
+            // Hole alle Seiten des Dokuments
+            try {
+                const response = await fetch(`${API_BASE}/api/pages/document/${documentId}`);
+                if (!response.ok) {
+                    // Wenn Fehler, verstecke Buttons
+                    document.getElementById('prevPageBtn').style.display = 'none';
+                    document.getElementById('nextPageBtn').style.display = 'none';
+                    return;
+                }
+
+                const data = await response.json();
+                const pages = data.pages || [];
+
+                // Sortiere nach page_number
+                pages.sort((a, b) => a.page_number - b.page_number);
+
+                // Finde aktuelle Seite
+                const currentIndex = pages.findIndex(p => p.page_number === currentPageNumber);
+
+                // Prüfe ob es eine vorherige/nächste Seite gibt
+                const hasPrev = currentIndex > 0;
+                const hasNext = currentIndex < pages.length - 1;
+
+                const prevBtn = document.getElementById('prevPageBtn');
+                const nextBtn = document.getElementById('nextPageBtn');
+
+                if (prevBtn) {
+                    if (hasPrev) {
+                        prevBtn.style.display = 'inline-block';
+                        prevBtn.onclick = () => {
+                            const prevPage = pages[currentIndex - 1];
+                            loadPageInspect(prevPage.id);
+                        };
+                    } else {
+                        prevBtn.style.display = 'none';
+                    }
+                }
+
+                if (nextBtn) {
+                    if (hasNext) {
+                        nextBtn.style.display = 'inline-block';
+                        nextBtn.onclick = () => {
+                            const nextPage = pages[currentIndex + 1];
+                            loadPageInspect(nextPage.id);
+                        };
+                    } else {
+                        nextBtn.style.display = 'none';
+                    }
+                }
+            } catch (error) {
+                console.error('Fehler beim Aktualisieren der Navigation-Buttons:', error);
+                // Verstecke Buttons bei Fehler
+                document.getElementById('prevPageBtn').style.display = 'none';
+                document.getElementById('nextPageBtn').style.display = 'none';
+            }
+        }
+
+        async function updateBBoxStatus(pageId, bboxIndex) {
+            // Aktualisiere nur die BBox-Status ohne Map neu zu laden
+            if (!map) return;
+
+            try {
+                // Lade aktualisierte BBox-Daten
+                const response = await fetch(`${API_BASE}/api/pages/${pageId}/inspect`);
+                if (!response.ok) return;
+
+                const data = await response.json();
+
+                // Finde die aktualisierte BBox
+                let updatedBBox = null;
+                for (const ocrResult of data.ocr_results || []) {
+                    if (ocrResult.bbox_data && ocrResult.bbox_data[bboxIndex]) {
+                        updatedBBox = ocrResult.bbox_data[bboxIndex];
+                        break;
+                    }
+                }
+
+                if (!updatedBBox) return;
+
+                // Finde das entsprechende Rectangle in textOverlays (suche nach bboxIndex)
+                const overlay = textOverlays.find(item => item.bboxIndex === bboxIndex && item.pageId === pageId);
+                if (!overlay || !overlay.rect) return;
+
+                // Aktualisiere Farbe basierend auf Review-Status
+                const reviewStatus = updatedBBox.review_status || 'pending';
+                let rectColor = '#3388ff'; // Standard: Blau (pending)
+                if (reviewStatus === 'confirmed') {
+                    rectColor = '#000000'; // Schwarz (geprüft)
+                } else if (reviewStatus === 'rejected') {
+                    rectColor = '#842029'; // Rot
+                } else if (reviewStatus === 'auto_confirmed') {
+                    rectColor = '#084298'; // Blau (dunkler)
+                } else if (reviewStatus === 'ignored') {
+                    rectColor = '#6c757d'; // Grau
+                } else if (reviewStatus === 'new') {
+                    rectColor = '#ff9800'; // Orange (neu hinzugefügt)
+                }
+
+                // Aktualisiere Rectangle-Farbe
+                overlay.rect.setStyle({ color: rectColor });
+
+                // Aktualisiere Popup-Inhalt
+                let popupContent = `<strong>Text:</strong> ${updatedBBox.text || ''}<br>`;
+                popupContent += `<strong>Status:</strong> `;
+
+                let statusBadge = '';
+                switch (reviewStatus) {
+                    case 'confirmed':
+                        statusBadge = '<span style="color: #000000; font-weight: bold;">✓ Geprüft</span>';
+                        break;
+                    case 'rejected':
+                        statusBadge = '<span style="color: #842029; font-weight: bold;">✗ Abgelehnt</span>';
+                        break;
+                    case 'auto_confirmed':
+                        statusBadge = '<span style="color: #084298; font-weight: bold;">✓ Auto-bestätigt</span>';
+                        break;
+                    case 'ignored':
+                        statusBadge = '<span style="color: #6c757d; font-weight: bold;">⊘ Ignoriert</span>';
+                        break;
+                    case 'new':
+                        statusBadge = '<span style="color: #ff9800; font-weight: bold;">+ Neu</span>';
+                        break;
+                    default:
+                        statusBadge = '<span style="color: #856404;">⏳ Ausstehend</span>';
+                }
+                popupContent += statusBadge + '<br><br>';
+
+                const ocrResults = updatedBBox.ocr_results || {};
+                if (ocrResults.tesseract || ocrResults.ollama_vision) {
+                    popupContent += '<strong>OCR-Ergebnisse:</strong><br>';
+                    if (ocrResults.tesseract) {
+                        popupContent += `Tesseract: ${ocrResults.tesseract.text || ''}<br>`;
+                    }
+                    if (ocrResults.ollama_vision) {
+                        popupContent += `Ollama: ${ocrResults.ollama_vision.text || ''}<br>`;
+                    }
+                    popupContent += '<br>';
+                }
+
+                const differences = updatedBBox.differences || [];
+                if (differences.length > 0) {
+                    popupContent += '<strong>Unterschiede:</strong><br>';
+                    differences.slice(0, 5).forEach(diff => {
+                        popupContent += `Position ${diff.position}: "${diff.char1 || ''}" vs "${diff.char2 || ''}"<br>`;
+                    });
+                    if (differences.length > 5) {
+                        popupContent += `... und ${differences.length - 5} weitere<br>`;
+                    }
+                    popupContent += '<br>';
+                }
+
+                popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #ff9800; color: white; margin-right: 4px;" onclick="testBBoxReview(${pageId}, ${bboxIndex})">Test Review</button>`;
+                popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white; margin-right: 4px;" onclick="editBBox(${pageId}, ${bboxIndex})">Bearbeiten</button>`;
+
+                if (reviewStatus === 'pending') {
+                    popupContent += `<button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="confirmBBox(${pageId}, ${bboxIndex})">Bestätigen</button>`;
+                    popupContent += `<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="rejectBBox(${pageId}, ${bboxIndex})">Ablehnen</button>`;
+                    popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #6c757d; color: white;" onclick="ignoreBBox(${pageId}, ${bboxIndex})">Ignorieren</button>`;
+                }
+                popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #dc3545; color: white;" onclick="deleteBBox(${pageId}, ${bboxIndex})">Löschen</button>`;
+
+                overlay.rect.setPopupContent(popupContent);
+
+                // Aktualisiere Text-Overlay falls Text geändert wurde
+                if (overlay.marker && updatedBBox.text) {
+                    // Erstelle neue updateTextIcon Funktion mit aktualisiertem Text
+                    const updateTextIcon = () => {
+                        const zoom = map.getZoom();
+                        const zoomScale = Math.pow(2, zoom);
+                        const scaledFontSize = fontSize * zoomScale;
+                        // Hole Breite und Höhe aus dem bestehenden Icon
+                        const currentIcon = overlay.marker.getIcon();
+                        const scaledWidth = currentIcon.options.iconSize[0] || 100;
+                        const scaledHeight = currentIcon.options.iconSize[1] || 20;
+
+                        const textIcon = L.divIcon({
+                            className: 'ocr-text-overlay',
+                            html: `<div style="font-size: ${scaledFontSize}px; font-family: ${fontFamily}; width: ${scaledWidth}px; height: ${scaledHeight}px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px 4px; box-sizing: border-box;">${updatedBBox.text || ''}</div>`,
+                            iconSize: [scaledWidth, scaledHeight],
+                            iconAnchor: [scaledWidth / 2, scaledHeight / 2]
+                        });
+
+                        return textIcon;
+                    };
+
+                    // Aktualisiere Icon
+                    overlay.marker.setIcon(updateTextIcon());
+                    overlay.updateIcon = updateTextIcon; // Speichere für zukünftige Zoom-Updates
+                }
+            } catch (error) {
+                console.error('Fehler beim Aktualisieren der BBox-Status:', error);
+            }
+        }
+
+        async function confirmBBox(pageId, bboxIndex) {
+            try {
+                const response = await fetch(`${API_BASE}/api/review/pages/${pageId}/bboxes/${bboxIndex}/confirm`, {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    showMessage('BBox bestätigt', 'success');
+                    // Aktualisiere nur Status, behalte Zoom und Position
+                    await updateBBoxStatus(pageId, bboxIndex);
+                } else {
+                    const error = await response.json();
+                    showMessage('Fehler: ' + (error.detail || 'Unbekannter Fehler'), 'error');
+                }
+            } catch (error) {
+                showMessage('Fehler beim Bestätigen: ' + error.message, 'error');
+            }
+        }
+
+        async function rejectBBox(pageId, bboxIndex) {
+            try {
+                const response = await fetch(`${API_BASE}/api/review/pages/${pageId}/bboxes/${bboxIndex}/reject`, {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    showMessage('BBox abgelehnt', 'success');
+                    // Aktualisiere nur Status, behalte Zoom und Position
+                    await updateBBoxStatus(pageId, bboxIndex);
+                } else {
+                    const error = await response.json();
+                    showMessage('Fehler: ' + (error.detail || 'Unbekannter Fehler'), 'error');
+                }
+            } catch (error) {
+                showMessage('Fehler beim Ablehnen: ' + error.message, 'error');
+            }
+        }
+
+        async function ignoreBBox(pageId, bboxIndex) {
+            try {
+                const response = await fetch(`${API_BASE}/api/review/pages/${pageId}/bboxes/${bboxIndex}/ignore`, {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    showMessage('BBox ignoriert', 'success');
+                    // Aktualisiere nur Status, behalte Zoom und Position
+                    await updateBBoxStatus(pageId, bboxIndex);
+                } else {
+                    const error = await response.json();
+                    showMessage('Fehler: ' + (error.detail || 'Unbekannter Fehler'), 'error');
+                }
+            } catch (error) {
+                showMessage('Fehler beim Ignorieren: ' + error.message, 'error');
+            }
+        }
+
+        async function deleteBBox(pageId, bboxIndex) {
+            if (!confirm('BBox wirklich löschen? Dies kann nicht rückgängig gemacht werden.')) {
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/api/review/pages/${pageId}/bboxes/${bboxIndex}`, {
+                    method: 'DELETE'
+                });
+                if (response.ok) {
+                    showMessage('BBox gelöscht', 'success');
+                    // Seite neu laden (Indizes haben sich verschoben)
+                    loadPageInspect(pageId);
+                } else {
+                    const error = await response.json();
+                    showMessage('Fehler: ' + (error.detail || 'Unbekannter Fehler'), 'error');
+                }
+            } catch (error) {
+                showMessage('Fehler beim Löschen: ' + error.message, 'error');
+            }
+        }
+
+        async function createReviewJob(pageId) {
+            try {
+                const response = await fetch(`${API_BASE}/api/review/pages/${pageId}/create-review-job`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    showMessage(result.message || 'Review-Job erstellt', 'success');
+                    // Aktualisiere Queue
+                    updateQueue();
+                } else {
+                    showMessage('Fehler: ' + (result.detail || 'Unbekannter Fehler'), 'error');
+                }
+            } catch (error) {
+                showMessage('Fehler beim Erstellen des Review-Jobs: ' + error.message, 'error');
+            }
+        }
+
+        async function prioritizeJob(jobId) {
+            try {
+                const response = await fetch(`${API_BASE}/api/ocr/jobs/${jobId}/prioritize`, {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    showMessage('Job priorisiert - wird als nächstes ausgeführt', 'success');
+                    // Aktualisiere Queue
+                    updateQueue();
+                } else {
+                    const error = await response.json();
+                    showMessage('Fehler: ' + (error.detail || 'Unbekannter Fehler'), 'error');
+                }
+            } catch (error) {
+                showMessage('Fehler beim Priorisieren: ' + error.message, 'error');
+            }
+        }
+
+        // Mehrfachauswahl-Funktionen
+        function handleRowClick(event, index, jobId) {
+            // Ignoriere Klicks auf Checkbox oder Buttons
+            if (event.target.tagName === 'INPUT' || event.target.tagName === 'BUTTON' || event.target.closest('button')) {
+                return;
+            }
+
+            const ctrlKey = event.ctrlKey || event.metaKey;
+            const shiftKey = event.shiftKey;
+
+            if (shiftKey && lastClickedIndex >= 0) {
+                // Shift-Klick: Bereich auswählen
+                const start = Math.min(lastClickedIndex, index);
+                const end = Math.max(lastClickedIndex, index);
+                const rows = document.querySelectorAll('tr[data-row-index]');
+                for (let i = start; i <= end; i++) {
+                    const row = rows[i];
+                    if (row) {
+                        const rowJobId = parseInt(row.getAttribute('data-job-id'));
+                        selectedJobIds.add(rowJobId);
+                        row.classList.add('selected-row');
+                        const checkbox = row.querySelector('input[type="checkbox"]');
+                        if (checkbox) checkbox.checked = true;
+                    }
+                }
+            } else if (ctrlKey) {
+                // Strg-Klick: Toggle
+                toggleJobSelection(jobId, index, event);
+            } else {
+                // Normaler Klick: Nur diese Zeile auswählen
+                clearSelection();
+                selectedJobIds.add(jobId);
+                const row = document.querySelector(`tr[data-job-id="${jobId}"]`);
+                if (row) {
+                    row.classList.add('selected-row');
+                    const checkbox = row.querySelector('input[type="checkbox"]');
+                    if (checkbox) checkbox.checked = true;
+                }
+                lastClickedIndex = index;
+            }
+
+            updateBatchBar();
+        }
+
+        function toggleJobSelection(jobId, index, event) {
+            if (event) event.stopPropagation();
+
+            if (selectedJobIds.has(jobId)) {
+                selectedJobIds.delete(jobId);
+                const row = document.querySelector(`tr[data-job-id="${jobId}"]`);
+                if (row) row.classList.remove('selected-row');
+            } else {
+                selectedJobIds.add(jobId);
+                const row = document.querySelector(`tr[data-job-id="${jobId}"]`);
+                if (row) row.classList.add('selected-row');
+            }
+
+            lastClickedIndex = index;
+            updateBatchBar();
+        }
+
+        function toggleSelectAll() {
+            const selectAllCheckbox = document.getElementById('selectAllJobs');
+            const allCheckboxes = document.querySelectorAll('tbody input[type="checkbox"][data-job-id]');
+
+            if (selectAllCheckbox && selectAllCheckbox.checked) {
+                // Alle auswählen
+                allCheckboxes.forEach(checkbox => {
+                    const jobId = parseInt(checkbox.getAttribute('data-job-id'));
+                    selectedJobIds.add(jobId);
+                    const row = document.querySelector(`tr[data-job-id="${jobId}"]`);
+                    if (row) row.classList.add('selected-row');
+                    checkbox.checked = true;
+                });
+            } else {
+                // Alle abwählen
+                clearSelection();
+            }
+
+            updateBatchBar();
+        }
+
+        function clearSelection() {
+            selectedJobIds.clear();
+            document.querySelectorAll('tr.selected-row').forEach(row => {
+                row.classList.remove('selected-row');
+            });
+            document.querySelectorAll('tbody input[type="checkbox"]').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+            const selectAllCheckbox = document.getElementById('selectAllJobs');
+            if (selectAllCheckbox) selectAllCheckbox.checked = false;
+            updateBatchBar();
+        }
+
+        function updateBatchBar() {
+            const batchBar = document.getElementById('queueBatchBar');
+            if (!batchBar) return;
+
+            if (selectedJobIds.size > 0) {
+                batchBar.style.display = 'flex';
+                const countSpan = batchBar.querySelector('span strong');
+                if (countSpan) countSpan.textContent = `${selectedJobIds.size} ausgewählt`;
+            } else {
+                batchBar.style.display = 'none';
+            }
+        }
+
+        async function applyBatchAction() {
+            const actionSelect = document.getElementById('queueBatchAction');
+            if (!actionSelect || !actionSelect.value) {
+                showMessage('Bitte wählen Sie eine Aktion aus', 'error');
+                return;
+            }
+
+            const action = actionSelect.value;
+            const jobIds = Array.from(selectedJobIds);
+
+            if (jobIds.length === 0) {
+                showMessage('Keine Jobs ausgewählt', 'error');
+                return;
+            }
+
+            await batchJobAction(jobIds, action);
+        }
+
+        async function batchJobAction(jobIds, action) {
+            try {
+                const response = await fetch(`${API_BASE}/api/ocr/jobs/batch`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        job_ids: jobIds,
+                        action: action
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    showMessage('Fehler: ' + (error.detail || 'Unbekannter Fehler'), 'error');
+                    return;
+                }
+
+                const result = await response.json();
+
+                let message = `${result.updated} Job(s) erfolgreich aktualisiert`;
+                if (result.errors && result.errors.length > 0) {
+                    message += `. ${result.errors.length} Fehler: ` + result.errors.map(e => `Job ${e.job_id}: ${e.reason}`).join(', ');
+                    showMessage(message, 'warning');
+                } else {
+                    showMessage(message, 'success');
+                }
+
+                // Auswahl aufheben und Queue aktualisieren
+                clearSelection();
+                updateQueue();
+            } catch (error) {
+                showMessage('Fehler bei Batch-Operation: ' + error.message, 'error');
+            }
+        }
+
+        async function testBBoxReview(pageId, bboxIndex) {
+            try {
+                showMessage('Starte Test-Review...', 'info');
+                const response = await fetch(`${API_BASE}/api/review/pages/${pageId}/bboxes/${bboxIndex}/test-review`, {
+                    method: 'POST'
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    let message = `Test-Review abgeschlossen für BBox "${result.bbox_text?.substring(0, 30)}..."\n`;
+                    message += `Tesseract: ${result.tesseract?.text?.substring(0, 50) || 'N/A'}\n`;
+                    message += `Ollama: ${result.ollama_vision?.text?.substring(0, 50) || 'N/A'}\n`;
+                    if (result.crop_path) {
+                        message += `Crop-Bild: ${result.crop_path}`;
+                    }
+                    if (result.auto_confirmed) {
+                        message += '\n✓ Auto-bestätigt (beide OCR-Modelle identisch)';
+                    } else if (result.differences && result.differences.length > 0) {
+                        message += `\n⚠ ${result.differences.length} Unterschiede gefunden`;
+                    }
+
+                    // Zeige Ergebnis in Console und als Message
+                    console.log('Test-Review Ergebnis:', result);
+                    alert(message);
+                    showMessage('Test-Review abgeschlossen - siehe Alert für Details', 'success');
+                } else {
+                    showMessage('Fehler: ' + (result.detail || 'Unbekannter Fehler'), 'error');
+                }
+            } catch (error) {
+                console.error('Fehler beim Test-Review:', error);
+                showMessage('Fehler beim Test-Review: ' + error.message, 'error');
+            }
+        }
+
+        // Globale Variablen für Edit-Dialog
+        let currentEditPageId = null;
+        let currentEditBboxIndex = null;
+        let currentBboxData = null;
+
+        async function editBBox(pageId, bboxIndex) {
+            try {
+                // Hole aktuelle BBox-Daten
+                const response = await fetch(`${API_BASE}/api/pages/${pageId}/inspect`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+
+                // Finde die richtige BBox
+                let bboxItem = null;
+                for (const ocrResult of data.ocr_results || []) {
+                    if (ocrResult.bbox_data && ocrResult.bbox_data[bboxIndex]) {
+                        bboxItem = ocrResult.bbox_data[bboxIndex];
+                        break;
+                    }
+                }
+
+                if (!bboxItem) {
+                    showMessage('BBox nicht gefunden', 'error');
+                    return;
+                }
+
+                // Speichere Kontext
+                currentEditPageId = pageId;
+                currentEditBboxIndex = bboxIndex;
+                currentBboxData = bboxItem;
+
+                // Lade Preview-Bild
+                loadBboxPreview(pageId, bboxIndex);
+
+                // Fülle Dialog
+                document.getElementById('editTextArea').value = bboxItem.text || '';
+
+                // Zeige alternative Erkennungen
+                const alternativesContainer = document.getElementById('alternativesContainer');
+                alternativesContainer.innerHTML = '';
+
+                const ocrResults = bboxItem.ocr_results || {};
+                if (ocrResults.tesseract && ocrResults.tesseract.text) {
+                    const altDiv = document.createElement('div');
+                    altDiv.className = 'alternative-item';
+                    const textDiv = document.createElement('div');
+                    textDiv.style.margin = '4px 0';
+                    textDiv.style.fontFamily = 'monospace';
+                    textDiv.style.whiteSpace = 'pre-wrap';
+                    textDiv.textContent = ocrResults.tesseract.text;
+
+                    const copyBtn = document.createElement('button');
+                    copyBtn.className = 'copy-btn';
+                    copyBtn.textContent = 'Kopieren';
+                    copyBtn.onclick = () => copyToClipboard(ocrResults.tesseract.text);
+
+                    const strong = document.createElement('strong');
+                    strong.textContent = 'Tesseract:';
+
+                    altDiv.appendChild(strong);
+                    altDiv.appendChild(textDiv);
+                    altDiv.appendChild(copyBtn);
+                    alternativesContainer.appendChild(altDiv);
+                }
+
+                if (ocrResults.ollama_vision && ocrResults.ollama_vision.text) {
+                    const altDiv = document.createElement('div');
+                    altDiv.className = 'alternative-item';
+                    const textDiv = document.createElement('div');
+                    textDiv.style.margin = '4px 0';
+                    textDiv.style.fontFamily = 'monospace';
+                    textDiv.style.whiteSpace = 'pre-wrap';
+                    textDiv.textContent = ocrResults.ollama_vision.text;
+
+                    const copyBtn = document.createElement('button');
+                    copyBtn.className = 'copy-btn';
+                    copyBtn.textContent = 'Kopieren';
+                    copyBtn.onclick = () => copyToClipboard(ocrResults.ollama_vision.text);
+
+                    const strong = document.createElement('strong');
+                    strong.textContent = 'Ollama Vision:';
+
+                    altDiv.appendChild(strong);
+                    altDiv.appendChild(textDiv);
+                    altDiv.appendChild(copyBtn);
+                    alternativesContainer.appendChild(altDiv);
+                }
+
+                if (alternativesContainer.children.length === 0) {
+                    alternativesContainer.innerHTML = '<p style="color: #666; font-style: italic;">Keine alternativen Erkennungen verfügbar</p>';
+                }
+
+                // Zeige Dialog
+                document.getElementById('editDialogOverlay').classList.add('active');
+            } catch (error) {
+                console.error('Fehler beim Öffnen des Edit-Dialogs:', error);
+                showMessage('Fehler: ' + error.message, 'error');
+            }
+        }
+
+        function closeEditDialog(event) {
+            // Schließe nur wenn auf Overlay geklickt wurde (nicht auf Dialog selbst)
+            if (event && event.target.id === 'editDialogOverlay') {
+                document.getElementById('editDialogOverlay').classList.remove('active');
+                currentEditPageId = null;
+                currentEditBboxIndex = null;
+                currentBboxData = null;
+            } else if (!event) {
+                // Wird aufgerufen wenn Abbrechen-Button geklickt wurde
+                document.getElementById('editDialogOverlay').classList.remove('active');
+                currentEditPageId = null;
+                currentEditBboxIndex = null;
+                currentBboxData = null;
+            }
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                showMessage('Text in Zwischenablage kopiert', 'success');
+            }).catch(err => {
+                console.error('Fehler beim Kopieren:', err);
+                showMessage('Fehler beim Kopieren', 'error');
+            });
+        }
+
+        async function loadBboxPreview(pageId, bboxIndex) {
+            const previewContainer = document.getElementById('previewContainer');
+            previewContainer.innerHTML = '<div class="preview-loading">Lade Preview...</div>';
+
+            try {
+                const previewUrl = `${API_BASE}/api/review/pages/${pageId}/bboxes/${bboxIndex}/crop-preview`;
+                const img = document.createElement('img');
+                img.className = 'preview-image';
+                img.src = previewUrl;
+                img.alt = 'BBox Preview';
+                img.onload = () => {
+                    previewContainer.innerHTML = '';
+                    previewContainer.appendChild(img);
+                };
+                img.onerror = () => {
+                    previewContainer.innerHTML = '<div class="preview-loading" style="color: #842029;">Fehler beim Laden des Previews</div>';
+                };
+            } catch (error) {
+                console.error('Fehler beim Laden des Previews:', error);
+                previewContainer.innerHTML = '<div class="preview-loading" style="color: #842029;">Fehler beim Laden des Previews</div>';
+            }
+        }
+
+        async function findNextUnreviewedBBox(pageId, currentBboxIndex) {
+            // Finde die nächste ungeprüfte BBox auf derselben Seite
+            try {
+                const response = await fetch(`${API_BASE}/api/pages/${pageId}/inspect`);
+                if (!response.ok) return null;
+
+                const data = await response.json();
+
+                // Sammle alle BBoxes mit ihren Indizes
+                const allBBoxes = [];
+                for (const ocrResult of data.ocr_results || []) {
+                    if (ocrResult.bbox_data && ocrResult.bbox_data.length > 0) {
+                        ocrResult.bbox_data.forEach((bboxItem, index) => {
+                            const reviewStatus = bboxItem.review_status || 'pending';
+                            // Nur ungeprüfte Boxes (pending oder auto_confirmed, aber nicht confirmed, rejected, ignored)
+                            if (reviewStatus === 'pending' || reviewStatus === 'auto_confirmed') {
+                                allBBoxes.push({ index, bboxItem, ocrResult });
+                            }
+                        });
+                    }
+                }
+
+                if (allBBoxes.length === 0) return null;
+
+                // Finde die nächste Box nach der aktuellen
+                const currentIndex = allBBoxes.findIndex(bb => bb.index === currentBboxIndex);
+                if (currentIndex === -1) {
+                    // Aktuelle Box nicht gefunden, nimm die erste
+                    return { pageId, bboxIndex: allBBoxes[0].index };
+                }
+
+                // Nimm die nächste Box (oder die erste, wenn wir am Ende sind)
+                const nextIndex = (currentIndex + 1) % allBBoxes.length;
+                return { pageId, bboxIndex: allBBoxes[nextIndex].index };
+            } catch (error) {
+                console.error('Fehler beim Finden der nächsten BBox:', error);
+                return null;
+            }
+        }
+
+        async function saveReviewedText() {
+            // Speichere IDs GANZ AM ANFANG, bevor irgendetwas anderes passiert
+            const pageId = currentEditPageId;
+            const bboxIndex = currentEditBboxIndex;
+
+            if (pageId === null || bboxIndex === null) {
+                showMessage('Keine BBox zum Speichern ausgewählt', 'error');
+                console.error('currentEditPageId:', currentEditPageId, 'currentEditBboxIndex:', currentEditBboxIndex);
+                return;
+            }
+
+            const reviewedText = document.getElementById('editTextArea').value.trim();
+            if (!reviewedText) {
+                showMessage('Bitte geben Sie einen Text ein', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/review/pages/${pageId}/bboxes/${bboxIndex}/save-reviewed`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        reviewed_text: reviewedText
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
+                    showMessage('Fehler: ' + (errorData.detail || 'Unbekannter Fehler'), 'error');
+                    console.error('Save error:', errorData);
+                    return;
+                }
+
+                const result = await response.json();
+                showMessage('Text gespeichert und als geprüft markiert', 'success');
+
+                // Schließe Dialog (setzt currentEditPageId auf null, aber wir haben pageId bereits gespeichert)
+                closeEditDialog();
+
+                // Aktualisiere nur Status, behalte Zoom und Position
+                if (pageId !== null && bboxIndex !== null) {
+                    await updateBBoxStatus(pageId, bboxIndex);
+                } else {
+                    console.error('pageId oder bboxIndex ist null - sollte nicht passieren!');
+                }
+            } catch (error) {
+                console.error('Fehler beim Speichern:', error);
+                showMessage('Fehler beim Speichern: ' + error.message, 'error');
+            }
+        }
+
+        async function saveReviewedTextAndNext() {
+            // Speichere IDs GANZ AM ANFANG, bevor irgendetwas anderes passiert
+            const pageId = currentEditPageId;
+            const bboxIndex = currentEditBboxIndex;
+
+            if (pageId === null || bboxIndex === null) {
+                showMessage('Keine BBox zum Speichern ausgewählt', 'error');
+                console.error('currentEditPageId:', currentEditPageId, 'currentEditBboxIndex:', currentEditBboxIndex);
+                return;
+            }
+
+            const reviewedText = document.getElementById('editTextArea').value.trim();
+            if (!reviewedText) {
+                showMessage('Bitte geben Sie einen Text ein', 'error');
+                return;
+            }
+
+            try {
+                // Speichere den aktuellen Text
+                const response = await fetch(`${API_BASE}/api/review/pages/${pageId}/bboxes/${bboxIndex}/save-reviewed`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        reviewed_text: reviewedText
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
+                    showMessage('Fehler: ' + (errorData.detail || 'Unbekannter Fehler'), 'error');
+                    console.error('Save error:', errorData);
+                    return;
+                }
+
+                const result = await response.json();
+
+                // Aktualisiere Status in der Map
+                await updateBBoxStatus(pageId, bboxIndex);
+
+                // Finde die nächste ungeprüfte Box
+                const nextBBox = await findNextUnreviewedBBox(pageId, bboxIndex);
+
+                if (nextBBox) {
+                    // Öffne die nächste Box im Dialog
+                    await editBBox(nextBBox.pageId, nextBBox.bboxIndex);
+                    showMessage('Text gespeichert - nächste Box geöffnet', 'success');
+                } else {
+                    // Keine weitere ungeprüfte Box gefunden
+                    showMessage('Text gespeichert - keine weitere ungeprüfte Box gefunden', 'success');
+                    closeEditDialog();
+                }
+            } catch (error) {
+                console.error('Fehler beim Speichern:', error);
+                showMessage('Fehler beim Speichern: ' + error.message, 'error');
+            }
+        }
+
+        function toggleAddBBoxMode() {
+            isAddingBBox = !isAddingBBox;
+            const btn = document.getElementById('addBBoxBtn');
+
+            if (isAddingBBox) {
+                btn.classList.add('btn-warning');
+                btn.classList.remove('btn-success');
+                btn.textContent = '✕ Abbrechen';
+                if (map) {
+                    map.getContainer().classList.add('drawing-mode');
+                    // Deaktiviere Drag-Verhalten während des Zeichnens
+                    map.dragging.disable();
+                    map.boxZoom.disable();
+                    map.doubleClickZoom.disable();
+                    map.scrollWheelZoom.disable();
+                }
+            } else {
+                btn.classList.remove('btn-warning');
+                btn.classList.add('btn-success');
+                btn.textContent = '+';
+                if (map) {
+                    map.getContainer().classList.remove('drawing-mode');
+                    // Aktiviere Drag-Verhalten wieder
+                    map.dragging.enable();
+                    map.boxZoom.enable();
+                    map.doubleClickZoom.enable();
+                    map.scrollWheelZoom.enable();
+                }
+                // Entferne gezeichnetes Rectangle falls vorhanden
+                if (drawingRectangle) {
+                    map.removeLayer(drawingRectangle);
+                    drawingRectangle = null;
+                }
+                drawingStartPoint = null;
+            }
+        }
+
+        function setupBBoxDrawing() {
+            // Wird aufgerufen wenn Map initialisiert wird
+            // Die Event-Handler werden in loadPageInspect gesetzt
+        }
+
+        function setupMapDrawingHandlers() {
+            if (!map) return;
+
+            // Entferne alte Handler falls vorhanden
+            map.off('mousedown', handleMapMouseDown);
+            map.off('mousemove', handleMapMouseMove);
+            map.off('mouseup', handleMapMouseUp);
+
+            // Füge neue Handler hinzu
+            map.on('mousedown', handleMapMouseDown);
+            map.on('mousemove', handleMapMouseMove);
+            map.on('mouseup', handleMapMouseUp);
+        }
+
+        function handleMapMouseDown(e) {
+            if (!isAddingBBox) return;
+
+            // Verhindere Standard-Verhalten (wichtig: vor allem anderen)
+            L.DomEvent.stopPropagation(e);
+            L.DomEvent.preventDefault(e);
+            L.DomEvent.stop(e);
+
+            // Verhindere Drag komplett
+            if (map.dragging.enabled()) {
+                map.dragging.disable();
+            }
+
+            // Speichere Startpunkt
+            drawingStartPoint = e.latlng;
+
+            // Erstelle temporäres Rectangle
+            if (drawingRectangle) {
+                map.removeLayer(drawingRectangle);
+            }
+            drawingRectangle = L.rectangle([drawingStartPoint, drawingStartPoint], {
+                color: '#ff0000',
+                fillOpacity: 0.2,
+                weight: 2,
+                dashArray: '5, 5'
+            }).addTo(map);
+        }
+
+        function handleMapMouseMove(e) {
+            if (!isAddingBBox || !drawingStartPoint) return;
+
+            // Verhindere Drag während des Zeichnens
+            L.DomEvent.stopPropagation(e);
+
+            // Aktualisiere Rectangle
+            if (drawingRectangle) {
+                drawingRectangle.setBounds([drawingStartPoint, e.latlng]);
+            }
+        }
+
+        async function handleMapMouseUp(e) {
+            if (!isAddingBBox || !drawingStartPoint) return;
+
+            // Verhindere Standard-Verhalten
+            L.DomEvent.stopPropagation(e);
+            L.DomEvent.preventDefault(e);
+            L.DomEvent.stop(e);
+
+            if (!drawingRectangle) return;
+
+            // Prüfe ob Box groß genug ist (mindestens 10x10 Pixel)
+            const bounds = drawingRectangle.getBounds();
+            const size = bounds.getNorthEast().distanceTo(bounds.getSouthWest());
+
+            if (size < 10) {
+                // Zu klein, ignoriere
+                map.removeLayer(drawingRectangle);
+                drawingRectangle = null;
+                drawingStartPoint = null;
+                return;
+            }
+
+            // Speichere Bounds
+            const mapBounds = [
+                [bounds.getSouthWest().lat, bounds.getSouthWest().lng],  // [y_min, x_min]
+                [bounds.getNorthEast().lat, bounds.getNorthEast().lng]  // [y_max, x_max]
+            ];
+
+            // Entferne temporäres Rectangle
+            map.removeLayer(drawingRectangle);
+            drawingRectangle = null;
+            drawingStartPoint = null;
+
+            // Füge Box hinzu
+            await addBBoxFromDrawing(mapBounds);
+        }
+
+        function convertMapCoordsToBBoxPixel(mapBounds, ocrImageWidth, ocrImageHeight, mapImageWidth, mapImageHeight) {
+            // Konvertiere Leaflet-Koordinaten [y, x] zurück zu OCR-Bild-Koordinaten [x, y]
+            // Leaflet: [y, x] mit y von oben nach unten
+            // OCR: [x, y] mit y von unten nach oben
+            //
+            // Anzeige: x_map = x_ocr * (mapImageWidth/ocrImageWidth) * 0.7
+            // => x_ocr = x_map / ((mapImageWidth/ocrImageWidth) * 0.7)
+            //         = x_map * (ocrImageWidth/mapImageWidth) / 0.7
+
+            const [y1, x1] = mapBounds[0];  // Obere linke Ecke
+            const [y2, x2] = mapBounds[1];  // Untere rechte Ecke
+
+            // scaleX_display = (mapImageWidth/ocrImageWidth)*0.7  =>  x_ocr = x_map / scaleX_display
+            const scaleX_display = (mapImageWidth / ocrImageWidth) * 0.7;
+            const scaleY_display = mapImageHeight / ocrImageHeight;
+
+            // Konvertiere Leaflet X zu OCR: x_ocr = x_map / scaleX_display
+            const x_min = Math.min(x1, x2) / scaleX_display;
+            const x_max = Math.max(x1, x2) / scaleX_display;
+
+            // Y-Achse invertieren: Leaflet hat y=0 oben, OCR hat y=0 unten
+            // Anzeige: y_map = (ocrImageHeight - y_ocr) * scaleY  =>  y_ocr = ocrImageHeight - y_map/scaleY
+            const y_min_ocr = ocrImageHeight - (Math.max(y1, y2) / scaleY_display);
+            const y_max_ocr = ocrImageHeight - (Math.min(y1, y2) / scaleY_display);
+
+            return [Math.round(x_min), Math.round(y_min_ocr), Math.round(x_max), Math.round(y_max_ocr)];
+        }
+
+        async function addBBoxFromDrawing(mapBounds) {
+            if (!currentPageData) {
+                showMessage('Keine Seiten-Daten verfügbar', 'error');
+                return;
+            }
+
+            try {
+                // Hole OCR-Bild-Dimensionen
+                const response = await fetch(`${API_BASE}/api/pages/${currentPageData.page_id}/inspect`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+
+                // Finde OCRResult mit Bild-Dimensionen
+                let ocrImageWidth = data.image_width;
+                let ocrImageHeight = data.image_height;
+                for (const ocrResult of data.ocr_results || []) {
+                    if (ocrResult.image_width && ocrResult.image_height) {
+                        ocrImageWidth = ocrResult.image_width;
+                        ocrImageHeight = ocrResult.image_height;
+                        break;
+                    }
+                }
+
+                const mapImageWidth = data.image_width;
+                const mapImageHeight = data.image_height;
+
+                // Konvertiere Koordinaten
+                const bbox_pixel = convertMapCoordsToBBoxPixel(
+                    mapBounds,
+                    ocrImageWidth,
+                    ocrImageHeight,
+                    mapImageWidth,
+                    mapImageHeight
+                );
+
+                // Sende an API
+                const addResponse = await fetch(`${API_BASE}/api/review/pages/${currentPageData.page_id}/bboxes/add`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        bbox_pixel: bbox_pixel
+                    })
+                });
+
+                if (!addResponse.ok) {
+                    const errorData = await addResponse.json().catch(() => ({ detail: 'Unbekannter Fehler' }));
+                    const msg = typeof errorData.detail === 'string'
+                        ? errorData.detail
+                        : Array.isArray(errorData.detail)
+                            ? errorData.detail.map(e => e.msg || JSON.stringify(e)).join('; ')
+                            : JSON.stringify(errorData.detail || 'Fehler beim Hinzufügen der Box');
+                    throw new Error(msg);
+                }
+
+                const result = await addResponse.json();
+                showMessage('Neue Box hinzugefügt - OCR-Job erstellt', 'success');
+
+                // Verlasse Zeichnen-Modus
+                toggleAddBBoxMode();
+
+                // Lade Seite neu um neue Box anzuzeigen
+                loadPageInspect(currentPageData.page_id);
+            } catch (error) {
+                console.error('Fehler beim Hinzufügen der Box:', error);
+                showMessage('Fehler: ' + (error.message || String(error)), 'error');
+            }
+        }
     </script>
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </body>
 </html>

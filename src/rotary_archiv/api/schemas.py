@@ -12,14 +12,38 @@ from pydantic import BaseModel, Field
 from src.rotary_archiv.core.models import (
     DocumentStatus,
     DocumentType,
-    EntityType,
     OCRJobStatus,
-    OCRReviewStatus,
     OCRSource,
 )
 
 
-# OCR Schemas (müssen vor DocumentResponse definiert werden)
+# OCR Schemas
+class BBoxItem(BaseModel):
+    """Einzelne Bounding Box"""
+
+    text: str
+    bbox: list[float] = Field(
+        description="Relative Koordinaten [x_min, y_min, x_max, y_max] (0.0-1.0)"
+    )
+    bbox_pixel: list[int] = Field(description="Pixel-Koordinaten [x1, y1, x2, y2]")
+    # Review-Felder (optional)
+    review_status: str | None = Field(
+        default="pending",
+        description="Review-Status: pending, auto_confirmed, confirmed, rejected, ignored",
+    )
+    reviewed_at: datetime | None = Field(
+        default=None, description="Zeitpunkt der Review"
+    )
+    reviewed_by: str | None = Field(default=None, description="User-ID des Reviewers")
+    ocr_results: dict[str, Any] | None = Field(
+        default=None,
+        description="OCR-Ergebnisse von verschiedenen Modellen: {'ollama': {...}, 'tesseract': {...}}",
+    )
+    differences: list[dict[str, Any]] | None = Field(
+        default=None, description="Liste von Unterschieden zwischen OCR-Ergebnissen"
+    )
+
+
 class OCRResultResponse(BaseModel):
     """Schema für OCRResult-Response"""
 
@@ -35,55 +59,13 @@ class OCRResultResponse(BaseModel):
     language: str | None = None
     error_message: str | None = None
     created_at: datetime
+    # BBox-Felder
+    bbox_data: list[BBoxItem] | None = None
+    image_width: int | None = None
+    image_height: int | None = None
 
     class Config:
         from_attributes = True
-
-
-class OCRReviewCreate(BaseModel):
-    """Schema für OCR-Review-Erstellung"""
-
-    reviewed_ocr_result_id: int | None = Field(
-        None, description="ID des zu reviewenden OCRResult (optional)"
-    )
-    final_text: str | None = Field(
-        None, description="Manuell korrigierter Text (optional)"
-    )
-    review_notes: str | None = Field(None, description="Notizen zum Review (optional)")
-    reviewer_name: str | None = Field(None, description="Name des Reviewers (optional)")
-
-
-class OCRReviewResponse(BaseModel):
-    """Schema für OCRReview-Response"""
-
-    id: int
-    document_id: int
-    status: OCRReviewStatus
-    reviewed_ocr_result_id: int | None = None
-    final_text: str | None = None
-    reviewer_id: int | None = None
-    reviewer_name: str | None = None
-    review_notes: str | None = None
-    review_round: int
-    previous_review_id: int | None = None
-    reviewed_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class OCRComparisonResponse(BaseModel):
-    """Schema für OCR-Vergleichs-Response"""
-
-    results: list[dict[str, Any]] = Field(
-        ..., description="Liste der verglichenen Ergebnisse"
-    )
-    metrics: dict[str, Any] = Field(..., description="Gesamt-Metriken")
-    suggested_best: int | None = Field(
-        None, description="ID des vorgeschlagenen besten Ergebnisses"
-    )
 
 
 class OCRJobResponse(BaseModel):
@@ -92,9 +74,15 @@ class OCRJobResponse(BaseModel):
     id: int
     document_id: int
     document_page_id: int | None = None
+    job_type: str = Field(
+        default="ocr", description="Job-Typ: 'ocr' oder 'bbox_review'"
+    )
     status: OCRJobStatus
     language: str
     use_correction: bool
+    priority: int = Field(
+        default=0, description="Priorität (niedrigere Zahl = höhere Priorität)"
+    )
     progress: float
     current_step: str | None = None
     error_message: str | None = None
@@ -109,8 +97,79 @@ class OCRJobResponse(BaseModel):
 class OCRJobCreate(BaseModel):
     """Schema für OCRJob-Erstellung"""
 
-    language: str = Field(default="deu+eng", description="Sprache für Tesseract")
-    use_correction: bool = Field(default=True, description="GPT-Korrektur verwenden")
+    language: str = Field(
+        default="deu+eng",
+        description="Sprache (wird ignoriert, Ollama erkennt automatisch)",
+    )
+    use_correction: bool = Field(
+        default=False, description="Wird ignoriert (keine Korrektur mehr)"
+    )
+
+
+# Queue-Status: gemeinsames Statuspaket für Job-Queue (ein Request statt vieler)
+class QueueStatusJobItem(BaseModel):
+    """Job-Eintrag im Queue-Status mit page_number."""
+
+    id: int
+    document_id: int
+    document_page_id: int | None = None
+    page_number: int | None = Field(
+        default=None, description="Seitenzahl aus DocumentPage"
+    )
+    job_type: str = Field(default="ocr", description="'ocr' oder 'bbox_review'")
+    status: OCRJobStatus
+    language: str
+    use_correction: bool
+    priority: int = 0
+    progress: float
+    current_step: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class QueueStatusDocumentItem(BaseModel):
+    """Dokument mit Jobs für Queue-Status."""
+
+    id: int
+    filename: str
+    title: str | None = None
+    status: DocumentStatus
+    file_type: str
+    jobs: list[QueueStatusJobItem] = Field(default_factory=list)
+
+
+class QueueStatusResponse(BaseModel):
+    """Gemeinsames Statuspaket: Dokumente inkl. Jobs mit page_number."""
+
+    documents: list[QueueStatusDocumentItem] = Field(default_factory=list)
+
+
+# Batch-Job-Management Schemas
+class JobBatchRequest(BaseModel):
+    """Request für Batch-Job-Aktionen"""
+
+    job_ids: list[int] = Field(description="Liste von Job-IDs")
+    action: str = Field(
+        description="Aktion: 'cancel' | 'restart' | 'pause' | 'resume' | 'archive'"
+    )
+
+
+class JobBatchError(BaseModel):
+    """Fehler für einen einzelnen Job in Batch-Operation"""
+
+    job_id: int
+    reason: str
+
+
+class JobBatchResponse(BaseModel):
+    """Response für Batch-Job-Aktionen"""
+
+    updated: int = Field(description="Anzahl erfolgreich aktualisierter Jobs")
+    errors: list[JobBatchError] = Field(
+        default_factory=list, description="Liste von Fehlern pro Job"
+    )
 
 
 # Document Schemas
@@ -149,139 +208,38 @@ class DocumentResponse(DocumentBase):
     is_composite: int | None = None
     page_number: int | None = None
     ocr_text: str | None = None  # Legacy, deprecated
-    ocr_text_final: str | None = None  # Finales, reviewtes OCR-Ergebnis
     status: DocumentStatus
     created_at: datetime
     updated_at: datetime
     # Relationships werden optional hinzugefügt wenn benötigt
     ocr_results: list[OCRResultResponse] | None = None
-    ocr_review: OCRReviewResponse | None = None
 
     class Config:
         from_attributes = True
 
 
-# Entity Schemas
-class EntityBase(BaseModel):
-    """Base Schema für Entität"""
+# Page Inspect Schema
+class PageInspectResponse(BaseModel):
+    """Schema für Page Inspect View mit Bounding Boxes"""
 
-    name: str
-    entity_type: EntityType
-    description: str | None = None
-
-
-class EntityCreate(EntityBase):
-    """Schema für Entität-Erstellung"""
-
-    wikidata_id: str | None = None
-
-
-class EntityUpdate(BaseModel):
-    """Schema für Entität-Update"""
-
-    name: str | None = None
-    description: str | None = None
-    wikidata_id: str | None = None
-
-
-class EntityResponse(EntityBase):
-    """Schema für Entität-Response"""
-
-    id: int
-    wikidata_id: str | None = None
-    wikidata_label: str | None = None
-    wikidata_description: str | None = None
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-# Annotation Schemas
-class AnnotationBase(BaseModel):
-    """Base Schema für Annotation"""
-
-    text: str
-    start_char: int | None = None
-    end_char: int | None = None
-
-
-class AnnotationCreate(AnnotationBase):
-    """Schema für Annotation-Erstellung"""
-
+    page_id: int
     document_id: int
-
-
-class AnnotationResponse(AnnotationBase):
-    """Schema für Annotation-Response"""
-
-    id: int
-    document_id: int
-    user_name: str | None = None
-    created_at: datetime
-    updated_at: datetime
+    page_number: int
+    image_url: str = Field(description="URL zum Seitenbild")
+    image_width: int = Field(description="Bildbreite in Pixeln")
+    image_height: int = Field(description="Bildhöhe in Pixeln")
+    ocr_results: list[OCRResultResponse] = Field(
+        description="OCR-Ergebnisse mit Bounding Boxes"
+    )
 
     class Config:
         from_attributes = True
 
 
-# Triple Schemas
-class TripleCreate(BaseModel):
-    """Schema für Triple-Erstellung"""
-
-    subject: str
-    predicate: str
-    object_value: str
-    object_type: str = "uri"  # "uri" oder "literal"
-
-
-class TripleResponse(BaseModel):
-    """Schema für Triple-Response"""
-
-    subject: str
-    predicate: str
-    object_value: str
-    object_type: str
-
-
-# OCR Legacy Schema
-class OCRResultLegacy(BaseModel):
-    """Schema für OCR-Ergebnis (Legacy, für Rückwärtskompatibilität)"""
-
-    text: str
-    tesseract: dict[str, Any]
-    ollama_vision: dict[str, Any]
-    processed_at: str
-
-
-# Search Schemas
-class SearchRequest(BaseModel):
-    """Schema für Suchanfrage"""
-
-    query: str
-    limit: int = Field(default=50, ge=1, le=500)
-
-
-class SearchResponse(BaseModel):
-    """Schema für Suchergebnis"""
-
-    documents: list[DocumentResponse]
-    entities: list[EntityResponse]
-    total: int
-
-
-# Wikidata Schemas
-class WikidataSearchRequest(BaseModel):
-    """Schema für Wikidata-Suche"""
-
-    query: str
-    limit: int = Field(default=10, ge=1, le=50)
-
-
-class WikidataMatchRequest(BaseModel):
-    """Schema für Wikidata-Match"""
-
-    name: str
-    entity_type: EntityType
-    context: str | None = None
+# NOTE: Folgende Schemas sind vorerst nicht verwendet (für später):
+# - Entity Schemas (Entity, EntityCreate, EntityResponse, etc.)
+# - Annotation Schemas (Annotation, AnnotationCreate, AnnotationResponse, etc.)
+# - Triple Schemas (TripleCreate, TripleResponse)
+# - Search Schemas (SearchRequest, SearchResponse)
+# - Wikidata Schemas (WikidataSearchRequest, WikidataMatchRequest)
+# - OCRReview Schemas (OCRReviewCreate, OCRReviewResponse)
