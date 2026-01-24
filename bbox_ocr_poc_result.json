@@ -1,0 +1,12 @@
+{
+  "page_id": 1,
+  "document_id": 1,
+  "page_number": 1,
+  "image_width": 1000,
+  "image_height": 282,
+  "processing_time_ms": 58094,
+  "text": "<|ref|>text<|/ref|><|det|>[[437, 199, 600, 333]]<|/det|>\nf \n\n<|ref|>text<|/ref|><|det|>[[370, 600, 750, 703]]<|/det|>\ni o t a r y  c l u b  r e s d o n \n\n<|ref|>text<|/ref|><|det|>[[443, 760, 612, 828]]<|/det|>\n( in Grundung )",
+  "bbox_count": 0,
+  "bbox_data": null,
+  "raw_response": "<|ref|>text<|/ref|><|det|>[[437, 199, 600, 333]]<|/det|>\nf \n\n<|ref|>text<|/ref|><|det|>[[370, 600, 750, 703]]<|/det|>\ni o t a r y  c l u b  r e s d o n \n\n<|ref|>text<|/ref|><|det|>[[443, 760, 612, 828]]<|/det|>\n( in Grundung )"
+}

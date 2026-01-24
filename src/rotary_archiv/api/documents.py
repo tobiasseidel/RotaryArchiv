@@ -4,7 +4,6 @@ API Endpoints für Dokumente
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     HTTPException,
@@ -37,13 +36,9 @@ except ImportError:
     OCR_AVAILABLE = False
     OCRPipeline = None
 
-try:
-    from src.rotary_archiv.nlp.classification import DocumentClassifier
-
-    CLASSIFIER_AVAILABLE = True
-except ImportError:
-    CLASSIFIER_AVAILABLE = False
-    DocumentClassifier = None
+# NOTE: NLP-Klassifikation vorerst nicht verwendet
+CLASSIFIER_AVAILABLE = False
+DocumentClassifier = None
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -51,7 +46,6 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 @router.post("/", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def create_document(
     file: UploadFile = File(...),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db),
 ):
     """
@@ -98,8 +92,6 @@ async def create_document(
             or db_document.filename.lower().endswith(".pdf")
         ):
             try:
-                from src.rotary_archiv.ocr.job_processor import process_ocr_job
-
                 # Ermittle Seitenzahl
                 from src.rotary_archiv.utils.file_handler import get_file_path
 
@@ -140,11 +132,10 @@ async def create_document(
 
                 db.commit()
 
-                # Refresh für IDs und starte Background-Tasks
+                # Refresh für IDs
                 for ocr_job in ocr_jobs:
                     db.refresh(ocr_job)
-                    # Starte Background-Task für OCR-Verarbeitung
-                    background_tasks.add_task(process_ocr_job, ocr_job.id)
+                    # Jobs werden automatisch vom Worker-Prozess abgeholt
 
             except Exception as e:
                 import logging
@@ -319,7 +310,6 @@ def delete_document(document_id: int, db: Session = Depends(get_db)):
 @router.post("/{document_id}/create-page-jobs", response_model=dict)
 async def create_page_jobs(
     document_id: int,
-    background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db),
 ):
     """
@@ -345,8 +335,6 @@ async def create_page_jobs(
         )
 
     try:
-        from src.rotary_archiv.ocr.job_processor import process_ocr_job
-
         # Ermittle Seitenzahl
         from src.rotary_archiv.utils.file_handler import get_file_path
 
@@ -422,11 +410,10 @@ async def create_page_jobs(
 
         if ocr_jobs:
             db.commit()
-            # Refresh für IDs und starte Background-Tasks
+            # Refresh für IDs
             for ocr_job in ocr_jobs:
                 db.refresh(ocr_job)
-                # Starte Background-Task für OCR-Verarbeitung
-                background_tasks.add_task(process_ocr_job, ocr_job.id)
+                # Jobs werden automatisch vom Worker-Prozess abgeholt
 
         return {
             "document_id": document_id,

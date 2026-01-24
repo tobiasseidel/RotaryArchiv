@@ -1,0 +1,16 @@
+{
+  "page_id": 1,
+  "document_id": 1,
+  "page_number": 1,
+  "original_dimensions": {
+    "width": 1656,
+    "height": 2339
+  },
+  "cropped_dimensions": {
+    "width": 1656,
+    "height": 467
+  },
+  "image_size_bytes": 151521,
+  "image_size_mb": 0.14,
+  "crop_info": "Nur obere 20% behalten"
+}

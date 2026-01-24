@@ -1,0 +1,7 @@
+{
+  "success": false,
+  "bbox_count": 0,
+  "bbox_data": null,
+  "parsing_error": "BBox-Parsing fehlgeschlagen",
+  "raw_content_preview": "<|ref|>text<|/ref|><|det|>[[437, 199, 600, 333]]<|/det|>\nf \n\n<|ref|>text<|/ref|><|det|>[[370, 600, 750, 703]]<|/det|>\ni o t a r y  c l u b  r e s d o n \n\n<|ref|>text<|/ref|><|det|>[[443, 760, 612, 828]]<|/det|>\n( in Grundung )"
+}

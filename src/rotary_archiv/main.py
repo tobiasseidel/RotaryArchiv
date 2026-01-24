@@ -8,16 +8,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from src.rotary_archiv.api import (
-    documents,
-    entities,
-    ocr,
-    pages,
-    search,
-    sparql,
-    triples,
-    wikidata,
-)
+from src.rotary_archiv.api import documents, ocr, pages, review
+
+# NOTE: Folgende APIs sind vorerst nicht verwendet:
+# - entities (gelöscht)
+# - search (gelöscht)
+# - triples (markiert als ungenutzt)
+# - wikidata (markiert als ungenutzt)
+# - sparql (markiert als ungenutzt)
 from src.rotary_archiv.config import settings
 
 app = FastAPI(
@@ -47,13 +45,14 @@ if data_dir.exists():
 
 # Include Routers
 app.include_router(documents.router)
-app.include_router(entities.router)
 app.include_router(ocr.router)
-app.include_router(triples.router)
-app.include_router(search.router)
-app.include_router(wikidata.router)
-app.include_router(sparql.router)
 app.include_router(pages.router)
+app.include_router(review.router)
+
+# NOTE: Folgende Router sind vorerst nicht aktiviert:
+# - triples.router (markiert als ungenutzt)
+# - wikidata.router (markiert als ungenutzt)
+# - sparql.router (markiert als ungenutzt)
 
 
 @app.get("/")
@@ -71,12 +70,7 @@ async def root():
         "endpoints": {
             "documents": "/api/documents",
             "pages": "/api/pages",
-            "entities": "/api/entities",
             "ocr": "/api/ocr",
-            "triples": "/api/triples",
-            "search": "/api/search",
-            "wikidata": "/api/wikidata",
-            "sparql": "/sparql",
         },
     }
 

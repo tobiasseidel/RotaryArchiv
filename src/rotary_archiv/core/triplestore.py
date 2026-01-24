@@ -1,5 +1,7 @@
 """
 Triple Store Interface für RDF-Relationen
+
+NOTE: Vorerst nicht verwendet - kann später wieder aktiviert werden
 """
 
 from typing import Any

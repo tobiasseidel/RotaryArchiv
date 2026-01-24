@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     )
     pdf_extraction_dpi: int = 200  # DPI für PDF-zu-Bild-Konvertierung (niedriger = schneller, weniger Speicher)
     pdf_extraction_batch_size: int = 50  # Anzahl Seiten pro Batch für große PDFs
+    debug_save_bbox_crops: bool = True  # Speichere ausgeschnittene BBoxes für Debugging
+    debug_bbox_crops_path: str = "./data/debug/bbox_crops"  # Pfad für Debug-BBox-Bilder
     ollama_base_url: str = "http://localhost:11434"
     ollama_vision_model: str = "deepseek-ocr:latest"  # Standard: deepseek-ocr:latest, kann über .env überschrieben werden
     ollama_gpt_model: str = (

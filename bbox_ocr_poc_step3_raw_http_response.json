@@ -1,0 +1,25 @@
+{
+  "status_code": 200,
+  "headers": {
+    "content-type": "application/json; charset=utf-8",
+    "date": "Wed, 21 Jan 2026 19:52:18 GMT",
+    "content-length": "663"
+  },
+  "raw_response": {
+    "model": "deepseek-ocr:latest",
+    "created_at": "2026-01-21T19:52:18.6444004Z",
+    "message": {
+      "role": "assistant",
+      "content": "<|ref|>text<|/ref|><|det|>[[437, 199, 600, 333]]<|/det|>\nf \n\n<|ref|>text<|/ref|><|det|>[[370, 600, 750, 703]]<|/det|>\ni o t a r y  c l u b  r e s d o n \n\n<|ref|>text<|/ref|><|det|>[[443, 760, 612, 828]]<|/det|>\n( in Grundung )"
+    },
+    "done": true,
+    "done_reason": "stop",
+    "total_duration": 55552605300,
+    "load_duration": 4531181300,
+    "prompt_eval_count": 692,
+    "prompt_eval_duration": 44658953600,
+    "eval_count": 81,
+    "eval_duration": 5981186000
+  },
+  "response_text": null
+}

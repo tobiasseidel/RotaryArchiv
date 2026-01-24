@@ -606,6 +606,11 @@ def get_page_inspect(page_id: int, db: Session = Depends(get_db)):
                         text=item.get("text", ""),
                         bbox=item.get("bbox", []),
                         bbox_pixel=item.get("bbox_pixel", []),
+                        review_status=item.get("review_status", "pending"),
+                        reviewed_at=item.get("reviewed_at"),
+                        reviewed_by=item.get("reviewed_by"),
+                        ocr_results=item.get("ocr_results"),
+                        differences=item.get("differences", []),
                     )
                     for item in ocr_result.bbox_data
                 ]

@@ -1,0 +1,11 @@
+{
+  "model": "deepseek-ocr:latest",
+  "base_url": "http://localhost:11434",
+  "prompt": "<|grounding|>Extract text with bounding boxes.",
+  "prompt_length": 46,
+  "base64_length": 202028,
+  "base64_size_mb": 0.19,
+  "request_body_size_estimate_bytes": 202213,
+  "request_body_size_estimate_mb": 0.19,
+  "endpoint": "/api/chat"
+}
