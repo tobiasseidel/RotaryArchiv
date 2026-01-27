@@ -10,12 +10,15 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
+from PIL import Image
 from sqlalchemy.orm import Session
 
 from src.rotary_archiv.config import settings
+from src.rotary_archiv.core.models import DocumentPage
 from src.rotary_archiv.ocr.ollama_vision import OllamaVisionOCR
 from src.rotary_archiv.ocr.tesseract_ocr import TesseractOCR
 from src.rotary_archiv.utils.file_handler import get_file_path
+from src.rotary_archiv.utils.image_utils import crop_bbox_from_image, deskew_image
 from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
 
 logger = logging.getLogger(__name__)
@@ -211,6 +214,10 @@ async def process_bbox_ocr(
         ocr_image_width = ocr_result_ref.image_width if ocr_result_ref else None
         ocr_image_height = ocr_result_ref.image_height if ocr_result_ref else None
 
+        page = (
+            db.query(DocumentPage).filter(DocumentPage.id == document_page_id).first()
+        )
+
         logger.info(
             f"BBox OCR Start: Seite {document_page_id}, "
             f"bbox_pixel={bbox_pixel}, "
@@ -226,10 +233,10 @@ async def process_bbox_ocr(
                     "error": f"Bilddatei nicht gefunden: {image_path}",
                     "auto_confirmed": False,
                 }
-            # Schneide BBox aus
-            from src.rotary_archiv.utils.image_utils import crop_bbox_from_image_file
-
-            cropped_image = crop_bbox_from_image_file(full_image_path, bbox_pixel)
+            img = Image.open(full_image_path)
+            if page is not None and page.deskew_angle is not None:
+                img = deskew_image(img, page.deskew_angle)
+            cropped_image = crop_bbox_from_image(img, bbox_pixel)
         elif pdf_path and page_number:
             # Extrahiere Seite aus PDF
             full_pdf_path = get_file_path(pdf_path)
@@ -327,9 +334,8 @@ async def process_bbox_ocr(
                 f"BBox-Bereich (angepasst): {abs(bbox_pixel_adjusted[2] - bbox_pixel_adjusted[0])}x{abs(bbox_pixel_adjusted[3] - bbox_pixel_adjusted[1])}, "
                 f"OCR-Bild-Dimensionen: {ocr_image_width}x{ocr_image_height}"
             )
-            # Schneide BBox aus (verwende angepasste Koordinaten)
-            from src.rotary_archiv.utils.image_utils import crop_bbox_from_image
-
+            if page is not None and page.deskew_angle is not None:
+                page_image = deskew_image(page_image, page.deskew_angle)
             cropped_image = crop_bbox_from_image(page_image, bbox_pixel_adjusted)
         else:
             return {
@@ -362,15 +368,22 @@ async def process_bbox_ocr(
                 )  # Erstelle Ordner falls nicht vorhanden
 
                 # Erstelle eindeutigen Dateinamen mit Timestamp
+                import re
                 import time
 
                 timestamp = int(time.time())
-                safe_text = (
-                    bbox_item.get("text", "unknown")[:20]
-                    .replace(" ", "_")
-                    .replace("/", "_")
-                    .replace("\\", "_")
+                # Entferne alle ungültigen Windows-Dateinamen-Zeichen
+                # Ungültig: < > : " / \ | ? *
+                text = bbox_item.get("text", "unknown")[:20]
+                safe_text = re.sub(r'[<>:"/\\|?*]', "_", text)
+                safe_text = safe_text.replace(" ", "_")
+                # Entferne auch Steuerzeichen und andere problematische Zeichen
+                safe_text = "".join(
+                    c for c in safe_text if c.isprintable() or c in ("_", "-", ".")
                 )
+                # Stelle sicher, dass der Name nicht leer ist
+                if not safe_text or safe_text.strip() == "":
+                    safe_text = "unknown"
                 index_str = str(bbox_index) if bbox_index is not None else "x"
                 debug_filename = f"page_{document_page_id}_bbox_{index_str}_{timestamp}_{safe_text}.png"
                 debug_path = debug_dir / debug_filename

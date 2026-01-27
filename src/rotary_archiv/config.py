@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     api_port: int = 8000
     debug: bool = True
 
+    # Quality Metrics - Dichte-Schwellenwerte (Zeichen/1000px)
+    density_green_min: float = 3.5  # Ab diesem Wert: grün (optimal)
+    density_green_max: float = 6.0  # Bis zu diesem Wert: grün (optimal)
+    density_orange_min: float = 2.0  # Ab diesem Wert: orange (akzeptabel)
+    density_orange_max: float = 10.0  # Bis zu diesem Wert: orange (akzeptabel)
+    # < density_orange_min oder > density_orange_max: rot (problematisch)
+
     @property
     def database_url(self) -> str:
         """Database Connection URL (PostgreSQL oder SQLite)"""

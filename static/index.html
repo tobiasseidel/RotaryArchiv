@@ -526,6 +526,7 @@
         <ul>
             <li><a href="#" id="navImport" class="active" onclick="showImportView(); return false;">Import & Jobs</a></li>
             <li><a href="#" id="navReview" onclick="showReviewView(); return false;">Review</a></li>
+            <li><a href="#" id="navQuality" onclick="showQualityView(); return false;">Qualität</a></li>
         </ul>
     </nav>
 
@@ -554,6 +555,21 @@
                 <button class="tab-btn" onclick="switchJobTab('review')" id="tabReview">Review Jobs</button>
             </div>
 
+            <!-- Status-Filter -->
+            <div style="margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                <label for="statusFilter" style="font-weight: 600;">Status:</label>
+                <select id="statusFilter" onchange="switchStatusFilter(this.value)" style="padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                    <option value="all">Alle Status</option>
+                    <option value="pending">Wartend</option>
+                    <option value="running">Läuft</option>
+                    <option value="completed">Abgeschlossen</option>
+                    <option value="failed">Fehler</option>
+                    <option value="paused">Pausiert</option>
+                    <option value="cancelled">Abgebrochen</option>
+                </select>
+            </div>
+
+
             <div id="queueContainer">
                 <p style="color: #666;">Lade Queue...</p>
             </div>
@@ -569,6 +585,103 @@
         </div>
     </div>
 
+    <!-- Quality View -->
+    <div id="qualityView" class="container" style="display: none;">
+        <h1>Qualitätsmetriken</h1>
+        <p class="subtitle">OCR-Qualität: Abdeckung und Zeichendichte</p>
+
+        <div id="messages"></div>
+
+        <!-- Filter -->
+        <div style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px;">
+            <h3 style="margin-top: 0; margin-bottom: 10px;">Filter</h3>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: end;">
+                <div>
+                    <label for="qualityFilterDocumentId" style="display: block; margin-bottom: 5px; font-size: 12px;">Dokument-ID:</label>
+                    <input type="number" id="qualityFilterDocumentId" placeholder="Optional" style="padding: 6px; width: 120px;">
+                </div>
+                <div>
+                    <label for="qualityFilterMinCoverage" style="display: block; margin-bottom: 5px; font-size: 12px;">Min. Coverage:</label>
+                    <input type="number" id="qualityFilterMinCoverage" placeholder="0.0" min="0" max="1" step="0.01" style="padding: 6px; width: 100px;">
+                </div>
+                <div>
+                    <label for="qualityFilterMaxCoverage" style="display: block; margin-bottom: 5px; font-size: 12px;">Max. Coverage:</label>
+                    <input type="number" id="qualityFilterMaxCoverage" placeholder="1.0" min="0" max="1" step="0.01" style="padding: 6px; width: 100px;">
+                </div>
+                <div>
+                    <button class="btn btn-primary" onclick="loadQualityPages()">Filtern</button>
+                    <button class="btn btn-secondary" onclick="resetQualityFilters()" style="margin-left: 5px;">Zurücksetzen</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Liste der Seiten -->
+        <div id="qualityPagesContainer">
+            <p style="color: #666;">Lade Qualitäts-Seiten...</p>
+        </div>
+
+        <!-- Detailansicht für einzelne Seite (Modal oder ausklappbar) -->
+        <div id="qualityDetailView" style="display: none; margin-top: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2 style="margin: 0;">Detailansicht - Seite <span id="detailPageId">-</span></h2>
+                <button class="btn btn-secondary" onclick="closeQualityDetail()">Schließen</button>
+            </div>
+            <div id="qualityDetailContent">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <!-- Coverage Card -->
+                    <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px; background: white;">
+                        <h3>1. Abdeckung (Coverage)</h3>
+                        <div id="detailCoverageContent">
+                            <p><strong>Unbedeckte dunkle Pixel:</strong> <span id="detailUncoveredPixels">-</span></p>
+                            <p><strong>Gesamt dunkle Pixel:</strong> <span id="detailTotalPixels">-</span></p>
+                            <p><strong>Abdeckung:</strong> <span id="detailCoverageRatio">-</span>%</p>
+                            <p style="margin-top: 10px; font-size: 12px; color: #666;">
+                                Wenn alle Texte von BBoxen erfasst sind, bleiben außerhalb der Boxen nur wenige dunkle Pixel (Randscheiden, Linien). Hohe Abdeckung = gut.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Density Card -->
+                    <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px; background: white;">
+                        <h3>2. Zeichendichte (Density)</h3>
+                        <div id="detailDensityContent">
+                            <p><strong>Anzahl BBoxen:</strong> <span id="detailBboxCount">-</span></p>
+                            <p><strong>Min:</strong> <span id="detailMinDensity" style="font-weight: bold;">-</span> | <strong>Max:</strong> <span id="detailMaxDensity" style="font-weight: bold;">-</span> Zeichen/1000 px</p>
+                            <div id="detailDensityTable" style="margin-top: 15px; max-height: 300px; overflow-y: auto;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                                    <thead>
+                                        <tr style="background: #e0e0e0;">
+                                            <th style="padding: 6px; border: 1px solid #ccc;">Box</th>
+                                            <th style="padding: 6px; border: 1px solid #ccc;">Zeichen</th>
+                                            <th style="padding: 6px; border: 1px solid #ccc;">Fläche (px)</th>
+                                            <th style="padding: 6px; border: 1px solid #ccc;">Zeichen/1k px</th>
+                                            <th style="padding: 6px; border: 1px solid #ccc;">Text (Vorschau)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="detailDensityTableBody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Batch-Jobs & Debug -->
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <button class="btn btn-secondary" onclick="batchCreateQualityJobs()">Bestand nachberechnen</button>
+                <button class="btn btn-secondary" onclick="loadQualityStats()">Statistiken anzeigen</button>
+                <span id="batchStatus" style="margin-left: 10px;"></span>
+            </div>
+            <div id="qualityStats" style="margin-top: 15px; padding: 15px; background: #f0f0f0; border-radius: 8px; display: none;">
+                <h3 style="margin-top: 0;">Statistiken</h3>
+                <div id="qualityStatsContent"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Page Inspect View -->
     <div id="pageInspectView" class="container" style="display: none;">
         <div class="inspect-header">
@@ -580,6 +693,8 @@
                 <button class="btn btn-secondary" id="prevPageBtn" style="display: none;">← Vorherige Seite</button>
                 <button class="btn btn-secondary" id="nextPageBtn" style="display: none;">Nächste Seite →</button>
                 <button class="btn btn-success" id="addBBoxBtn" title="Neue Box hinzufügen">+</button>
+                <button class="btn btn-secondary" id="measureSkewBtn" title="Schrägwinkel der Seite messen (Hough)">Schräge messen</button>
+                <button class="btn btn-secondary" id="qualityBtn" title="Qualitätsmetriken für diese Seite anzeigen">Qualität</button>
                 <button class="btn btn-primary" id="createReviewJobBtn" style="display: none;">Review-Job erstellen</button>
                 <button class="btn btn-primary" id="fullscreenBtn">Vollbild</button>
                 <button class="btn btn-secondary" id="backBtn">Zurück</button>
@@ -619,8 +734,18 @@
         const API_BASE = 'http://localhost:8000';
         let pollInterval = null;
         let currentJobTab = 'all'; // 'all', 'ocr', 'review'
+        let currentStatusFilter = 'all'; // 'all', 'pending', 'running', 'completed', 'failed', 'paused', 'cancelled'
         let selectedJobIds = new Set(); // Set von ausgewählten Job-IDs
         let lastClickedIndex = -1; // Index der zuletzt angeklickten Zeile (für Shift-Range)
+
+        // Quality-Metriken Config
+        let densityConfig = {
+            green_min: 3.5,
+            green_max: 6.0,
+            orange_min: 2.0,
+            orange_max: 10.0,
+            loaded: false
+        };
 
         // File Input Handler
         document.getElementById('fileInput').addEventListener('change', handleFileSelect);
@@ -720,6 +845,105 @@
             updateQueue();
         }
 
+        function switchStatusFilter(status) {
+            currentStatusFilter = status;
+            // Aktualisiere Queue
+            updateQueue();
+        }
+
+        // Hilfsfunktion: Rendert eine einzelne Queue-Zeile
+        function renderQueueRow({ doc, job, pageNumber }, index) {
+            const docName = doc.title || doc.filename || `Dokument #${doc.id}`;
+            const pageLabel = pageNumber !== null ? `Seite ${pageNumber}` : 'Gesamtes Dokument';
+            const status = job.status;
+            const progress = job.progress || 0;
+            const jobType = job.job_type || 'ocr';
+            const jobTypeLabel = jobType === 'bbox_review' ? 'Review' : 'OCR';
+
+            let statusBadge = '';
+            switch (status) {
+                case 'pending':
+                    statusBadge = '<span class="status-badge status-pending">Wartend</span>';
+                    break;
+                case 'running':
+                    statusBadge = '<span class="status-badge status-running">Läuft</span>';
+                    break;
+                case 'completed':
+                    statusBadge = '<span class="status-badge status-completed">Abgeschlossen</span>';
+                    break;
+                case 'failed':
+                    statusBadge = '<span class="status-badge status-failed">Fehler</span>';
+                    break;
+            }
+
+            // Inspect-Button für abgeschlossene Jobs mit Seiten
+            let inspectBtn = '';
+            if (status === 'completed' && pageNumber !== null) {
+                const pageId = job.document_page_id || null;
+                if (pageId) {
+                    inspectBtn = ` <button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-left: 8px;" onclick="showPageInspect(${pageId})">Inspect</button>`;
+                }
+            }
+
+            // Einzelaktionen-Buttons
+            let actionButtons = '';
+            if (status === 'pending') {
+                actionButtons += `<button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="prioritizeJob(${job.id})">Als nächstes</button>`;
+                actionButtons += `<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="batchJobAction([${job.id}], 'pause')">Pausieren</button>`;
+                actionButtons += `<button class="btn btn-danger" style="padding: 4px 8px; font-size: 12px;" onclick="batchJobAction([${job.id}], 'cancel')">Abbrechen</button>`;
+            } else if (status === 'running') {
+                actionButtons += `<button class="btn btn-danger" style="padding: 4px 8px; font-size: 12px;" onclick="batchJobAction([${job.id}], 'cancel')">Abbrechen</button>`;
+            } else if (status === 'paused') {
+                actionButtons += `<button class="btn btn-success" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="batchJobAction([${job.id}], 'resume')">Fortsetzen</button>`;
+                actionButtons += `<button class="btn btn-danger" style="padding: 4px 8px; font-size: 12px;" onclick="batchJobAction([${job.id}], 'cancel')">Abbrechen</button>`;
+            } else if (status === 'failed' || status === 'cancelled') {
+                actionButtons += `<button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="batchJobAction([${job.id}], 'restart')">Neustart</button>`;
+                if (status === 'failed' || status === 'cancelled') {
+                    actionButtons += `<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" onclick="batchJobAction([${job.id}], 'archive')">Archivieren</button>`;
+                }
+            } else if (status === 'completed') {
+                actionButtons += `<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" onclick="batchJobAction([${job.id}], 'archive')">Archivieren</button>`;
+                if (inspectBtn) {
+                    actionButtons += inspectBtn;
+                }
+            }
+
+            const isSelected = selectedJobIds.has(job.id);
+            return `
+                <tr data-job-id="${job.id}" data-row-index="${index}" class="${isSelected ? 'selected-row' : ''}" onclick="handleRowClick(event, ${index}, ${job.id})">
+                    <td onclick="event.stopPropagation()"><input type="checkbox" ${isSelected ? 'checked' : ''} onclick="handleCheckboxClick(event, ${index}, ${job.id})" data-job-id="${job.id}"></td>
+                    <td>${jobTypeLabel}</td>
+                    <td>${docName}</td>
+                    <td>${pageLabel}</td>
+                    <td>${statusBadge} ${job.current_step ? '<br><small>' + job.current_step + '</small>' : ''}</td>
+                    <td>
+                        ${status === 'running' || status === 'pending' || status === 'paused' ? `
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${Math.min(progress, 100)}%"></div>
+                                <span class="progress-text">${Math.round(progress)}%</span>
+                            </div>
+                        ` : status === 'completed' ? '<span style="color: #0f5132;">✓ 100%</span>' : status === 'failed' ? '<span style="color: #842029;">✗ Fehler</span>' : status === 'cancelled' ? '<span style="color: #666;">Abgebrochen</span>' : '-'}
+                    </td>
+                    <td>${actionButtons}</td>
+                </tr>
+            `;
+        }
+
+        // Hilfsfunktion: Vergleicht zwei Job-Items auf Änderungen
+        function jobItemChanged(oldItem, newItem) {
+            if (!oldItem || !newItem) return true;
+            const oldJob = oldItem.job;
+            const newJob = newItem.job;
+            return (
+                oldJob.status !== newJob.status ||
+                oldJob.progress !== newJob.progress ||
+                oldJob.current_step !== newJob.current_step ||
+                oldJob.priority !== newJob.priority ||
+                oldItem.doc.id !== newItem.doc.id ||
+                oldItem.pageNumber !== newItem.pageNumber
+            );
+        }
+
         async function updateQueue() {
             // Prüfe ob Import-View sichtbar ist
             const importView = document.getElementById('importView');
@@ -736,13 +960,19 @@
                 }
                 const data = await response.json();
 
+                const queueContainer = document.getElementById('queueContainer');
+                const existingTable = queueContainer.querySelector('table.queue-table');
+                const existingTbody = existingTable ? existingTable.querySelector('tbody') : null;
+
                 if (!data.documents || data.documents.length === 0) {
-                    document.getElementById('queueContainer').innerHTML = '<p style="color: #666;">Keine aktiven Jobs in der Queue</p>';
+                    if (!existingTable) {
+                        queueContainer.innerHTML = '<p style="color: #666;">Keine aktiven Jobs in der Queue</p>';
+                    }
                     return;
                 }
 
                 // queueItems aus documents/jobs flach machen (page_number kommt vom Backend)
-                const queueItems = [];
+                let queueItems = [];
                 for (const doc of data.documents) {
                     const docInfo = { id: doc.id, filename: doc.filename, title: doc.title, status: doc.status, file_type: doc.file_type };
                     for (const job of doc.jobs || []) {
@@ -754,8 +984,15 @@
                     }
                 }
 
+                // Filtere nach Status, falls ein Filter gesetzt ist
+                if (currentStatusFilter && currentStatusFilter !== 'all') {
+                    queueItems = queueItems.filter(item => item.job.status === currentStatusFilter);
+                }
+
                 if (queueItems.length === 0) {
-                    document.getElementById('queueContainer').innerHTML = '<p style="color: #666;">Keine Jobs in der Queue</p>';
+                    if (!existingTable) {
+                        queueContainer.innerHTML = '<p style="color: #666;">Keine Jobs in der Queue</p>';
+                    }
                     return;
                 }
 
@@ -775,119 +1012,53 @@
                     return 0;
                 });
 
+                // Erstelle Tabelle neu, aber behalte Checkbox-Auswahl und Status-Filter
+                // Speichere die aktuelle Batch-Bar, falls vorhanden
+                const existingBatchBar = document.getElementById('queueBatchBar');
+                const batchBarWasVisible = existingBatchBar && existingBatchBar.style.display !== 'none';
+
                 // Erstelle Tabelle mit Checkbox-Spalte
                 let html = '<table class="queue-table"><thead><tr><th><input type="checkbox" id="selectAllJobs" onchange="toggleSelectAll()" title="Alle auswählen"></th><th>Typ</th><th>Dokument</th><th>Seite</th><th>Status</th><th>Fortschritt</th><th>Aktionen</th></tr></thead><tbody>';
 
-                queueItems.forEach(({ doc, job, pageNumber }, index) => {
-                    const docName = doc.title || doc.filename || `Dokument #${doc.id}`;
-                    const pageLabel = pageNumber !== null ? `Seite ${pageNumber}` : 'Gesamtes Dokument';
-                    const status = job.status;
-                    const progress = job.progress || 0;
-                    const jobType = job.job_type || 'ocr';
-                    const jobTypeLabel = jobType === 'bbox_review' ? 'Review' : 'OCR';
-
-                    let statusBadge = '';
-                    switch (status) {
-                        case 'pending':
-                            statusBadge = '<span class="status-badge status-pending">Wartend</span>';
-                            break;
-                        case 'running':
-                            statusBadge = '<span class="status-badge status-running">Läuft</span>';
-                            break;
-                        case 'completed':
-                            statusBadge = '<span class="status-badge status-completed">Abgeschlossen</span>';
-                            break;
-                        case 'failed':
-                            statusBadge = '<span class="status-badge status-failed">Fehler</span>';
-                            break;
-                    }
-
-                    // Inspect-Button für abgeschlossene Jobs mit Seiten
-                    let inspectBtn = '';
-                    if (status === 'completed' && pageNumber !== null) {
-                        const pageId = job.document_page_id || null;
-                        if (pageId) {
-                            inspectBtn = ` <button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-left: 8px;" onclick="showPageInspect(${pageId})">Inspect</button>`;
-                        }
-                    }
-
-                    // Einzelaktionen-Buttons
-                    let actionButtons = '';
-                    if (status === 'pending') {
-                        actionButtons += `<button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="prioritizeJob(${job.id})">Als nächstes</button>`;
-                        actionButtons += `<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="batchJobAction([${job.id}], 'pause')">Pausieren</button>`;
-                        actionButtons += `<button class="btn btn-danger" style="padding: 4px 8px; font-size: 12px;" onclick="batchJobAction([${job.id}], 'cancel')">Abbrechen</button>`;
-                    } else if (status === 'running') {
-                        actionButtons += `<button class="btn btn-danger" style="padding: 4px 8px; font-size: 12px;" onclick="batchJobAction([${job.id}], 'cancel')">Abbrechen</button>`;
-                    } else if (status === 'paused') {
-                        actionButtons += `<button class="btn btn-success" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="batchJobAction([${job.id}], 'resume')">Fortsetzen</button>`;
-                        actionButtons += `<button class="btn btn-danger" style="padding: 4px 8px; font-size: 12px;" onclick="batchJobAction([${job.id}], 'cancel')">Abbrechen</button>`;
-                    } else if (status === 'failed' || status === 'cancelled') {
-                        actionButtons += `<button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="batchJobAction([${job.id}], 'restart')">Neustart</button>`;
-                        if (status === 'failed' || status === 'cancelled') {
-                            actionButtons += `<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" onclick="batchJobAction([${job.id}], 'archive')">Archivieren</button>`;
-                        }
-                    } else if (status === 'completed') {
-                        actionButtons += `<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" onclick="batchJobAction([${job.id}], 'archive')">Archivieren</button>`;
-                        if (inspectBtn) {
-                            actionButtons += inspectBtn;
-                        }
-                    }
-
-                    const isSelected = selectedJobIds.has(job.id);
-                    html += `
-                        <tr data-job-id="${job.id}" data-row-index="${index}" class="${isSelected ? 'selected-row' : ''}" onclick="handleRowClick(event, ${index}, ${job.id})">
-                            <td onclick="event.stopPropagation()"><input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleJobSelection(${job.id}, ${index}, event)" data-job-id="${job.id}"></td>
-                            <td>${jobTypeLabel}</td>
-                            <td>${docName}</td>
-                            <td>${pageLabel}</td>
-                            <td>${statusBadge} ${job.current_step ? '<br><small>' + job.current_step + '</small>' : ''}</td>
-                            <td>
-                                ${status === 'running' || status === 'pending' || status === 'paused' ? `
-                                    <div class="progress-bar">
-                                        <div class="progress-fill" style="width: ${Math.min(progress, 100)}%"></div>
-                                        <span class="progress-text">${Math.round(progress)}%</span>
-                                    </div>
-                                ` : status === 'completed' ? '<span style="color: #0f5132;">✓ 100%</span>' : status === 'failed' ? '<span style="color: #842029;">✗ Fehler</span>' : status === 'cancelled' ? '<span style="color: #666;">Abgebrochen</span>' : '-'}
-                            </td>
-                            <td>${actionButtons}</td>
-                        </tr>
-                    `;
+                queueItems.forEach((item, index) => {
+                    html += renderQueueRow(item, index);
                 });
 
                 html += '</tbody></table>';
 
-                // Aktionsleiste für Mehrfachauswahl
-                let batchBarHtml = '';
-                if (selectedJobIds.size > 0) {
-                    batchBarHtml = `
-                        <div id="queueBatchBar" style="margin-bottom: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; display: flex; align-items: center; gap: 10px;">
-                            <span><strong>${selectedJobIds.size} ausgewählt</strong></span>
-                            <select id="queueBatchAction" style="padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px;">
-                                <option value="">Aktion wählen...</option>
-                                <option value="cancel">Abbrechen</option>
-                                <option value="restart">Neustart</option>
-                                <option value="pause">Pausieren</option>
-                                <option value="resume">Fortsetzen</option>
-                                <option value="archive">Archivieren</option>
-                            </select>
-                            <button class="btn btn-primary" onclick="applyBatchAction()">Anwenden</button>
-                            <button class="btn btn-secondary" onclick="clearSelection()">Auswahl aufheben</button>
-                        </div>
-                    `;
-                } else {
-                    batchBarHtml = '<div id="queueBatchBar" style="display: none;"></div>';
+                // Ersetze nur den Inhalt des queueContainer, nicht die Batch-Bar
+                // Die Batch-Bar wird separat aktualisiert
+                const existingBatchBarHtml = existingBatchBar ? existingBatchBar.outerHTML : '';
+                if (existingBatchBar) {
+                    // Entferne alte Batch-Bar
+                    existingBatchBar.remove();
                 }
 
-                document.getElementById('queueContainer').innerHTML = batchBarHtml + html;
+                // Setze neuen Inhalt
+                queueContainer.innerHTML = html;
+
+                // Füge Batch-Bar wieder hinzu, falls sie sichtbar war oder Jobs ausgewählt sind
+                if (selectedJobIds.size > 0 || batchBarWasVisible) {
+                    updateBatchBar();
+                }
 
                 // Update "Alle auswählen" Checkbox
                 const selectAllCheckbox = document.getElementById('selectAllJobs');
                 if (selectAllCheckbox) {
                     selectAllCheckbox.checked = selectedJobIds.size > 0 && selectedJobIds.size === queueItems.length;
                 }
+
+                // Update Status-Filter Dropdown (behält Wert bei, da außerhalb des Containers)
+                const statusFilter = document.getElementById('statusFilter');
+                if (statusFilter) {
+                    statusFilter.value = currentStatusFilter;
+                }
             } catch (error) {
-                document.getElementById('queueContainer').innerHTML = `<p style="color: red;">Fehler: ${error.message}</p>`;
+                const queueContainer = document.getElementById('queueContainer');
+                const existingTable = queueContainer.querySelector('table.queue-table');
+                if (!existingTable) {
+                    queueContainer.innerHTML = `<p style="color: red;">Fehler: ${error.message}</p>`;
+                }
                 console.error('Error updating queue:', error);
             }
         }
@@ -916,6 +1087,10 @@
                 }
             } else if (hash === '#/review') {
                 showReviewView();
+            } else if (hash.startsWith('#/quality')) {
+                const match = hash.match(/[?&]page_id=(\d+)/);
+                const pageId = match ? parseInt(match[1]) : null;
+                showQualityView(pageId);
             } else {
                 showImportView(); // Diese Funktion startet das Polling automatisch
             }
@@ -928,6 +1103,7 @@
             const importView = document.getElementById('importView');
             const reviewView = document.getElementById('reviewView');
             const pageInspectView = document.getElementById('pageInspectView');
+            const qualityView = document.getElementById('qualityView');
 
             if (importView) importView.style.display = 'block';
             if (reviewView) reviewView.style.display = 'none';
@@ -935,11 +1111,14 @@
                 pageInspectView.style.display = 'none';
                 pageInspectView.classList.remove('active');
             }
+            if (qualityView) qualityView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
+            const navQuality = document.getElementById('navQuality');
             if (navImport) navImport.classList.add('active');
             if (navReview) navReview.classList.remove('active');
+            if (navQuality) navQuality.classList.remove('active');
 
             // Starte Polling für Queue (falls noch nicht gestartet)
             if (!pollInterval) {
@@ -954,6 +1133,7 @@
             const importView = document.getElementById('importView');
             const reviewView = document.getElementById('reviewView');
             const pageInspectView = document.getElementById('pageInspectView');
+            const qualityView = document.getElementById('qualityView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'block';
@@ -961,11 +1141,14 @@
                 pageInspectView.style.display = 'none';
                 pageInspectView.classList.remove('active');
             }
+            if (qualityView) qualityView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
+            const navQuality = document.getElementById('navQuality');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.add('active');
+            if (navQuality) navQuality.classList.remove('active');
 
             // Stoppe Queue-Polling wenn Review-View angezeigt wird
             if (pollInterval) {
@@ -977,13 +1160,53 @@
             loadReviewPages();
         }
 
+        function showQualityView(pageId = null) {
+            const importView = document.getElementById('importView');
+            const reviewView = document.getElementById('reviewView');
+            const pageInspectView = document.getElementById('pageInspectView');
+            const qualityView = document.getElementById('qualityView');
+
+            if (importView) importView.style.display = 'none';
+            if (reviewView) reviewView.style.display = 'none';
+            if (pageInspectView) {
+                pageInspectView.style.display = 'none';
+                pageInspectView.classList.remove('active');
+            }
+            if (qualityView) qualityView.style.display = 'block';
+
+            const navImport = document.getElementById('navImport');
+            const navReview = document.getElementById('navReview');
+            const navQuality = document.getElementById('navQuality');
+            if (navImport) navImport.classList.remove('active');
+            if (navReview) navReview.classList.remove('active');
+            if (navQuality) navQuality.classList.add('active');
+
+            // Stoppe Queue-Polling wenn Quality-View angezeigt wird
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+
+            window.location.hash = pageId ? `#/quality?page_id=${pageId}` : '#/quality';
+
+            // Lade Liste der Qualitäts-Seiten
+            loadQualityPages();
+
+            // Wenn pageId gegeben, zeige Detailansicht
+            if (pageId) {
+                showQualityDetail(pageId);
+            }
+        }
+
         function showPageInspect(pageId) {
             const importView = document.getElementById('importView');
             const reviewView = document.getElementById('reviewView');
             const pageInspectView = document.getElementById('pageInspectView');
+            const qualityView = document.getElementById('qualityView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
+            if (qualityView) qualityView.style.display = 'none';
             if (pageInspectView) {
                 pageInspectView.style.display = 'block';
                 pageInspectView.classList.add('active');
@@ -1106,6 +1329,14 @@
                     } else {
                         reviewJobBtn.style.display = 'none';
                     }
+                }
+                const measureSkewBtn = document.getElementById('measureSkewBtn');
+                if (measureSkewBtn) {
+                    measureSkewBtn.onclick = () => measurePageSkew(data.page_id);
+                }
+                const qualityBtn = document.getElementById('qualityBtn');
+                if (qualityBtn) {
+                    qualityBtn.onclick = () => showQualityView(data.page_id);
                 }
 
                 // Initialisiere Leaflet Map
@@ -1767,6 +1998,21 @@
             }
         }
 
+        async function measurePageSkew(pageId) {
+            try {
+                const response = await fetch(`${API_BASE}/api/pages/${pageId}/skew`);
+                const data = await response.json();
+                if (response.ok) {
+                    const deg = (data.angle_deg != null ? data.angle_deg : data.angle);
+                    showMessage(`Schrägwinkel: ${Number(deg).toFixed(2)}°`, 'info');
+                } else {
+                    showMessage('Fehler: ' + (data.detail || 'Unbekannter Fehler'), 'error');
+                }
+            } catch (error) {
+                showMessage('Fehler beim Messen: ' + error.message, 'error');
+            }
+        }
+
         async function prioritizeJob(jobId) {
             try {
                 const response = await fetch(`${API_BASE}/api/ocr/jobs/${jobId}/prioritize`, {
@@ -1796,20 +2042,27 @@
             const shiftKey = event.shiftKey;
 
             if (shiftKey && lastClickedIndex >= 0) {
-                // Shift-Klick: Bereich auswählen
+                // Shift-Klick: Bereich zwischen letztem und aktuellem Element auswählen
                 const start = Math.min(lastClickedIndex, index);
                 const end = Math.max(lastClickedIndex, index);
-                const rows = document.querySelectorAll('tr[data-row-index]');
+                const rows = document.querySelectorAll('tbody tr[data-row-index]');
+
+                // Wähle alle Zeilen im Bereich aus
                 for (let i = start; i <= end; i++) {
                     const row = rows[i];
                     if (row) {
                         const rowJobId = parseInt(row.getAttribute('data-job-id'));
-                        selectedJobIds.add(rowJobId);
-                        row.classList.add('selected-row');
-                        const checkbox = row.querySelector('input[type="checkbox"]');
-                        if (checkbox) checkbox.checked = true;
+                        if (rowJobId) {
+                            selectedJobIds.add(rowJobId);
+                            row.classList.add('selected-row');
+                            const checkbox = row.querySelector('input[type="checkbox"]');
+                            if (checkbox) {
+                                checkbox.checked = true;
+                            }
+                        }
                     }
                 }
+                // Aktualisiere lastClickedIndex nicht bei Shift-Klick, damit weitere Shift-Klicks funktionieren
             } else if (ctrlKey) {
                 // Strg-Klick: Toggle
                 toggleJobSelection(jobId, index, event);
@@ -1829,20 +2082,86 @@
             updateBatchBar();
         }
 
+        function handleCheckboxClick(event, index, jobId) {
+            event.stopPropagation();
+
+            const shiftKey = event.shiftKey;
+            const ctrlKey = event.ctrlKey || event.metaKey;
+
+            if (shiftKey && lastClickedIndex >= 0) {
+                // Shift-Klick auf Checkbox: Bereich zwischen letztem und aktuellem Element auswählen
+                const start = Math.min(lastClickedIndex, index);
+                const end = Math.max(lastClickedIndex, index);
+                const rows = document.querySelectorAll('tbody tr[data-row-index]');
+
+                // Wähle alle Zeilen im Bereich aus
+                for (let i = start; i <= end; i++) {
+                    const row = rows[i];
+                    if (row) {
+                        const rowJobId = parseInt(row.getAttribute('data-job-id'));
+                        if (rowJobId) {
+                            selectedJobIds.add(rowJobId);
+                            row.classList.add('selected-row');
+                            const checkbox = row.querySelector('input[type="checkbox"]');
+                            if (checkbox) {
+                                checkbox.checked = true;
+                            }
+                        }
+                    }
+                }
+                // Aktualisiere lastClickedIndex nicht bei Shift-Klick
+            } else if (ctrlKey) {
+                // Strg-Klick: Toggle
+                toggleJobSelection(jobId, index, event);
+            } else {
+                // Normaler Klick: Toggle diese Zeile
+                toggleJobSelection(jobId, index, event);
+            }
+
+            updateBatchBar();
+        }
+
         function toggleJobSelection(jobId, index, event) {
             if (event) event.stopPropagation();
+
+            const checkbox = event ? event.target : document.querySelector(`input[data-job-id="${jobId}"]`);
 
             if (selectedJobIds.has(jobId)) {
                 selectedJobIds.delete(jobId);
                 const row = document.querySelector(`tr[data-job-id="${jobId}"]`);
                 if (row) row.classList.remove('selected-row');
+                if (checkbox) checkbox.checked = false;
             } else {
                 selectedJobIds.add(jobId);
                 const row = document.querySelector(`tr[data-job-id="${jobId}"]`);
                 if (row) row.classList.add('selected-row');
+                if (checkbox) checkbox.checked = true;
             }
 
             lastClickedIndex = index;
+            updateBatchBar();
+        }
+
+        function selectAllJobs() {
+            // Wähle alle Jobs in der aktuellen Tabelle aus
+            const allCheckboxes = document.querySelectorAll('tbody input[type="checkbox"][data-job-id]');
+
+            allCheckboxes.forEach(checkbox => {
+                const jobId = parseInt(checkbox.getAttribute('data-job-id'));
+                if (jobId) {
+                    selectedJobIds.add(jobId);
+                    const row = document.querySelector(`tr[data-job-id="${jobId}"]`);
+                    if (row) row.classList.add('selected-row');
+                    checkbox.checked = true;
+                }
+            });
+
+            // Aktualisiere "Alle auswählen" Checkbox
+            const selectAllCheckbox = document.getElementById('selectAllJobs');
+            if (selectAllCheckbox) {
+                selectAllCheckbox.checked = true;
+            }
+
             updateBatchBar();
         }
 
@@ -1854,10 +2173,12 @@
                 // Alle auswählen
                 allCheckboxes.forEach(checkbox => {
                     const jobId = parseInt(checkbox.getAttribute('data-job-id'));
-                    selectedJobIds.add(jobId);
-                    const row = document.querySelector(`tr[data-job-id="${jobId}"]`);
-                    if (row) row.classList.add('selected-row');
-                    checkbox.checked = true;
+                    if (jobId) {
+                        selectedJobIds.add(jobId);
+                        const row = document.querySelector(`tr[data-job-id="${jobId}"]`);
+                        if (row) row.classList.add('selected-row');
+                        checkbox.checked = true;
+                    }
                 });
             } else {
                 // Alle abwählen
@@ -1881,7 +2202,31 @@
         }
 
         function updateBatchBar() {
-            const batchBar = document.getElementById('queueBatchBar');
+            let batchBar = document.getElementById('queueBatchBar');
+            const queueContainer = document.getElementById('queueContainer');
+
+            if (!batchBar && queueContainer) {
+                // Erstelle Batch-Bar falls sie nicht existiert
+                batchBar = document.createElement('div');
+                batchBar.id = 'queueBatchBar';
+                batchBar.style.cssText = 'margin-bottom: 15px; padding: 10px; background: #f0f0f0; border-radius: 4px; display: flex; align-items: center; gap: 10px;';
+                batchBar.innerHTML = `
+                    <span><strong>0 ausgewählt</strong></span>
+                    <button class="btn btn-secondary" onclick="selectAllJobs()">Alle auswählen</button>
+                    <button class="btn btn-secondary" onclick="clearSelection()">Auswahl aufheben</button>
+                    <button class="btn btn-secondary" onclick="archiveSelectedJobs()" title="Ausgewählte Jobs archivieren" style="margin-left: auto;">
+                        <span style="font-size: 16px;">📦</span> Archivieren
+                    </button>
+                `;
+                // Füge Batch-Bar vor der Tabelle ein
+                const table = queueContainer.querySelector('table.queue-table');
+                if (table) {
+                    queueContainer.insertBefore(batchBar, table);
+                } else {
+                    queueContainer.insertBefore(batchBar, queueContainer.firstChild);
+                }
+            }
+
             if (!batchBar) return;
 
             if (selectedJobIds.size > 0) {
@@ -1891,6 +2236,19 @@
             } else {
                 batchBar.style.display = 'none';
             }
+        }
+
+        async function archiveSelectedJobs() {
+            if (selectedJobIds.size === 0) {
+                showMessage('Bitte wählen Sie mindestens einen Job aus', 'error');
+                return;
+            }
+
+            if (!confirm(`Möchten Sie ${selectedJobIds.size} ausgewählte Job(s) wirklich archivieren?`)) {
+                return;
+            }
+
+            await batchJobAction(Array.from(selectedJobIds), 'archive');
         }
 
         async function applyBatchAction() {
@@ -2514,6 +2872,403 @@
             } catch (error) {
                 console.error('Fehler beim Hinzufügen der Box:', error);
                 showMessage('Fehler: ' + (error.message || String(error)), 'error');
+            }
+        }
+
+        // Quality-Metriken Funktionen
+        async function loadDensityConfig() {
+            try {
+                const response = await fetch(`${API_BASE}/api/quality/config`);
+                if (response.ok) {
+                    const config = await response.json();
+                    densityConfig.green_min = config.density_green_min || 3.5;
+                    densityConfig.green_max = config.density_green_max || 6.0;
+                    densityConfig.orange_min = config.density_orange_min || 2.0;
+                    densityConfig.orange_max = config.density_orange_max || 10.0;
+                    densityConfig.loaded = true;
+                }
+            } catch (error) {
+                console.warn('Fehler beim Laden der Dichte-Config:', error);
+            }
+        }
+
+        function getDensityColor(value) {
+            if (value >= densityConfig.green_min && value <= densityConfig.green_max) {
+                return '#0f5132'; // Grün
+            } else if (value >= densityConfig.orange_min && value <= densityConfig.orange_max) {
+                return '#856404'; // Orange
+            } else {
+                return '#842029'; // Rot
+            }
+        }
+
+        async function loadQualityPages() {
+            try {
+                // Lade Config beim ersten Aufruf
+                if (!densityConfig.loaded) {
+                    await loadDensityConfig();
+                }
+
+                const container = document.getElementById('qualityPagesContainer');
+                container.innerHTML = '<p style="color: #666;">Lade Qualitäts-Seiten...</p>';
+
+                // Baue Query-Parameter aus Filtern
+                const params = new URLSearchParams();
+                const docId = document.getElementById('qualityFilterDocumentId').value;
+                const minCoverage = document.getElementById('qualityFilterMinCoverage').value;
+                const maxCoverage = document.getElementById('qualityFilterMaxCoverage').value;
+
+                if (docId) params.append('document_id', docId);
+                if (minCoverage) params.append('min_coverage', minCoverage);
+                if (maxCoverage) params.append('max_coverage', maxCoverage);
+
+                const url = `${API_BASE}/api/quality/pages${params.toString() ? '?' + params.toString() : ''}`;
+                const response = await fetch(url);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const pages = data.pages || [];
+
+                if (pages.length === 0) {
+                    container.innerHTML = '<p style="color: #666;">Keine Seiten mit Qualitätsmetriken gefunden. Verwenden Sie "Bestand nachberechnen" um Metriken zu berechnen.</p>';
+                    return;
+                }
+
+                // Erstelle Tabelle
+                let html = `
+                    <table class="queue-table" style="margin-top: 20px;">
+                        <thead>
+                            <tr>
+                                <th>Dokument</th>
+                                <th>Seite</th>
+                                <th>Coverage</th>
+                                <th>Unbedeckte Pixel</th>
+                                <th>BBoxen</th>
+                                <th>Min Dichte</th>
+                                <th>Max Dichte</th>
+                                <th>Berechnet</th>
+                                <th>Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                pages.forEach((page) => {
+                    const coveragePercent = (page.coverage_ratio * 100).toFixed(1);
+                    const coverageColor = page.coverage_ratio >= 0.95 ? '#0f5132' : page.coverage_ratio >= 0.85 ? '#856404' : '#842029';
+                    const minDensity = page.min_chars_per_1k_px ? page.min_chars_per_1k_px.toFixed(2) : '0.00';
+                    const maxDensity = page.max_chars_per_1k_px ? page.max_chars_per_1k_px.toFixed(2) : '0.00';
+                    const minDensityColor = getDensityColor(page.min_chars_per_1k_px || 0);
+                    const maxDensityColor = getDensityColor(page.max_chars_per_1k_px || 0);
+                    const computedDate = page.computed_at ? new Date(page.computed_at).toLocaleString('de-DE') : '-';
+                    const documentTitle = page.document_title || (page.document_id ? `Dokument #${page.document_id}` : 'Unbekannt');
+                    const bboxDensities = page.bbox_densities || [];
+
+                    html += `
+                        <tr data-page-id="${page.page_id}">
+                            <td>
+                                <span style="cursor: pointer; font-weight: bold; margin-right: 5px; font-size: 16px; user-select: none;" onclick="toggleQualityBBoxList(${page.page_id})" id="toggleIcon_${page.page_id}">+</span>
+                                ${documentTitle}
+                            </td>
+                            <td>Seite ${page.page_number}</td>
+                            <td><strong style="color: ${coverageColor};">${coveragePercent}%</strong></td>
+                            <td>${page.uncovered_dark_pixels} / ${page.total_dark_pixels}</td>
+                            <td>${page.bbox_count}</td>
+                            <td><strong style="color: ${minDensityColor};">${minDensity}</strong></td>
+                            <td><strong style="color: ${maxDensityColor};">${maxDensity}</strong></td>
+                            <td>${computedDate}</td>
+                            <td>
+                                <button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px;" onclick="showQualityDetail(${page.page_id})">
+                                    Details
+                                </button>
+                                <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-left: 5px;" onclick="showPageInspect(${page.page_id})">
+                                    Inspect
+                                </button>
+                            </td>
+                        </tr>
+                        <tr id="bboxListRow_${page.page_id}" style="display: none;">
+                            <td colspan="9" style="padding: 15px; background: #f9f9f9;">
+                                <div style="max-height: 400px; overflow-y: auto;">
+                                    <table style="width: 100%; border-collapse: collapse;">
+                                        <thead>
+                                            <tr style="background: #e9ecef;">
+                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Index</th>
+                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Text (Vorschau)</th>
+                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Zeichen</th>
+                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Fläche (px)</th>
+                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Dichte (Zeichen/1000px)</th>
+                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Aktionen</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="bboxListBody_${page.page_id}">
+                                            ${bboxDensities.map(bbox => `
+                                                <tr>
+                                                    <td style="padding: 6px; border: 1px solid #ddd;">${bbox.index}</td>
+                                                    <td style="padding: 6px; border: 1px solid #ddd; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${(bbox.text_preview || '').replace(/"/g, '&quot;')}">${bbox.text_preview || '-'}</td>
+                                                    <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${bbox.char_count || 0}</td>
+                                                    <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${bbox.area_px || 0}</td>
+                                                    <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">
+                                                        <strong style="color: ${getDensityColor(bbox.chars_per_1k_px || 0)};">
+                                                            ${bbox.chars_per_1k_px ? bbox.chars_per_1k_px.toFixed(2) : '0.00'}
+                                                        </strong>
+                                                    </td>
+                                                    <td style="padding: 6px; border: 1px solid #ddd; text-align: center;">
+                                                        <button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white;" onclick="editBBox(${page.page_id}, ${bbox.index})">
+                                                            Bearbeiten
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += '</tbody></table>';
+                container.innerHTML = html;
+            } catch (error) {
+                document.getElementById('qualityPagesContainer').innerHTML = `<p style="color: red;">Fehler beim Laden: ${error.message}</p>`;
+                console.error('Error loading quality pages:', error);
+            }
+        }
+
+        function toggleQualityBBoxList(pageId) {
+            const row = document.getElementById(`bboxListRow_${pageId}`);
+            const icon = document.getElementById(`toggleIcon_${pageId}`);
+
+            if (!row || !icon) return;
+
+            if (row.style.display === 'none') {
+                row.style.display = '';
+                icon.textContent = '−';
+            } else {
+                row.style.display = 'none';
+                icon.textContent = '+';
+            }
+        }
+
+        function resetQualityFilters() {
+            document.getElementById('qualityFilterDocumentId').value = '';
+            document.getElementById('qualityFilterMinCoverage').value = '';
+            document.getElementById('qualityFilterMaxCoverage').value = '';
+            loadQualityPages();
+        }
+
+        function closeQualityDetail() {
+            document.getElementById('qualityDetailView').style.display = 'none';
+        }
+
+        async function showQualityDetail(pageId) {
+            // Lade Config falls noch nicht geladen
+            if (!densityConfig.loaded) {
+                await loadDensityConfig();
+            }
+
+            const detailView = document.getElementById('qualityDetailView');
+            detailView.style.display = 'block';
+            document.getElementById('detailPageId').textContent = pageId;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/quality/pages/${pageId}`);
+                if (response.status === 404) {
+                    document.getElementById('qualityDetailContent').innerHTML = '<p style="color: #856404;">Qualitätsmetriken für diese Seite noch nicht berechnet.</p>';
+                    return;
+                }
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                // Zeige Coverage
+                const coverage = data.coverage || {};
+                document.getElementById('detailUncoveredPixels').textContent = coverage.uncovered_dark_pixels || 0;
+                document.getElementById('detailTotalPixels').textContent = coverage.total_dark_pixels || 0;
+                const coveragePercent = coverage.coverage_ratio ? (coverage.coverage_ratio * 100).toFixed(1) : '0.0';
+                document.getElementById('detailCoverageRatio').textContent = coveragePercent;
+
+                // Zeige Density
+                const density = data.density || {};
+                const summary = density.summary || {};
+                document.getElementById('detailBboxCount').textContent = summary.bbox_count || 0;
+                const minDensityValue = summary.min_chars_per_1k_px || 0;
+                const maxDensityValue = summary.max_chars_per_1k_px || 0;
+                const minDensityEl = document.getElementById('detailMinDensity');
+                const maxDensityEl = document.getElementById('detailMaxDensity');
+                minDensityEl.textContent = minDensityValue.toFixed(2);
+                minDensityEl.style.color = getDensityColor(minDensityValue);
+                maxDensityEl.textContent = maxDensityValue.toFixed(2);
+                maxDensityEl.style.color = getDensityColor(maxDensityValue);
+
+                // Zeige Density-Tabelle
+                const tbody = document.getElementById('detailDensityTableBody');
+                tbody.innerHTML = '';
+                const bboxes = density.bboxes || [];
+                bboxes.forEach(bbox => {
+                    const densityValue = bbox.chars_per_1k_px || 0;
+                    const densityColor = getDensityColor(densityValue);
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td style="padding: 6px; border: 1px solid #ccc;">${bbox.index}</td>
+                        <td style="padding: 6px; border: 1px solid #ccc;">${bbox.char_count}</td>
+                        <td style="padding: 6px; border: 1px solid #ccc;">${bbox.area_px}</td>
+                        <td style="padding: 6px; border: 1px solid #ccc;">
+                            <strong style="color: ${densityColor};">${densityValue.toFixed(2)}</strong>
+                        </td>
+                        <td style="padding: 6px; border: 1px solid #ccc; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${bbox.text_preview}">${bbox.text_preview}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                // Scroll zu Detailansicht
+                detailView.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (error) {
+                document.getElementById('qualityDetailContent').innerHTML = `<p style="color: red;">Fehler beim Laden: ${error.message}</p>`;
+                console.error('Error loading quality detail:', error);
+            }
+        }
+
+        async function computeQualityMetrics() {
+            const pageId = document.getElementById('qualityPageId')?.value;
+            if (!pageId) {
+                showMessage('Bitte geben Sie eine Seiten-ID ein', 'error');
+                return;
+            }
+
+            try {
+                showMessage('Erstelle Quality-Job...', 'info');
+                const response = await fetch(`${API_BASE}/api/quality/pages/${pageId}/compute`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    showMessage(`Quality-Job erstellt (ID: ${data.job_id}). Die Berechnung läuft im Hintergrund. Bitte warten Sie einige Sekunden und laden Sie dann erneut.`, 'success');
+                    setTimeout(() => {
+                        loadQualityPages();
+                    }, 5000);
+                } else {
+                    showMessage('Fehler: ' + (data.detail || 'Unbekannter Fehler'), 'error');
+                }
+            } catch (error) {
+                showMessage('Fehler beim Erstellen des Quality-Jobs: ' + error.message, 'error');
+            }
+        }
+
+        async function batchCreateQualityJobs() {
+            if (!confirm('Möchten Sie Quality-Jobs für alle Seiten ohne Metriken erstellen? Dies kann viele Jobs erzeugen.')) {
+                return;
+            }
+
+            const batchStatus = document.getElementById('batchStatus');
+            batchStatus.textContent = 'Erstelle Jobs...';
+            batchStatus.style.color = '#666';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/quality/batch-create-jobs`, {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    batchStatus.textContent = `✓ ${data.created} Quality-Jobs erstellt. Sie erscheinen in der Job-Queue.`;
+                    batchStatus.style.color = '#0f5132';
+                    showMessage(`${data.created} Quality-Jobs erstellt. Sie werden im Hintergrund verarbeitet.`, 'success');
+                    // Lade Liste neu nach kurzer Verzögerung
+                    setTimeout(() => {
+                        loadQualityPages();
+                    }, 2000);
+                } else {
+                    batchStatus.textContent = 'Fehler beim Erstellen der Jobs';
+                    batchStatus.style.color = '#842029';
+                    showMessage('Fehler: ' + (data.detail || 'Unbekannter Fehler'), 'error');
+                }
+            } catch (error) {
+                batchStatus.textContent = 'Fehler: ' + error.message;
+                batchStatus.style.color = '#842029';
+                showMessage('Fehler beim Erstellen der Batch-Jobs: ' + error.message, 'error');
+            }
+        }
+
+        async function loadQualityStats() {
+            const statsDiv = document.getElementById('qualityStats');
+            const statsContent = document.getElementById('qualityStatsContent');
+
+            statsDiv.style.display = 'block';
+            statsContent.innerHTML = '<p>Lade Statistiken...</p>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/quality/debug/stats`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                let html = `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                        <div style="padding: 10px; background: white; border-radius: 4px;">
+                            <strong>Seiten mit BBox:</strong><br>
+                            <span style="font-size: 24px; color: #2196F3;">${data.pages_with_bbox}</span>
+                        </div>
+                        <div style="padding: 10px; background: white; border-radius: 4px;">
+                            <strong>Mit Metriken:</strong><br>
+                            <span style="font-size: 24px; color: #0f5132;">${data.pages_with_quality_metrics}</span>
+                        </div>
+                        <div style="padding: 10px; background: white; border-radius: 4px;">
+                            <strong>Ohne Metriken:</strong><br>
+                            <span style="font-size: 24px; color: #856404;">${data.pages_without_quality_metrics}</span>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <h4>Quality-Jobs:</h4>
+                        <ul style="list-style: none; padding: 0;">
+                            <li>Pending: <strong>${data.jobs.pending}</strong></li>
+                            <li>Running: <strong>${data.jobs.running}</strong></li>
+                            <li>Completed: <strong style="color: #0f5132;">${data.jobs.completed}</strong></li>
+                            <li>Failed: <strong style="color: #842029;">${data.jobs.failed}</strong></li>
+                            <li>Total: <strong>${data.jobs.total}</strong></li>
+                        </ul>
+                    </div>
+                `;
+
+                if (data.recent_failed_jobs && data.recent_failed_jobs.length > 0) {
+                    html += `
+                        <div style="margin-top: 15px;">
+                            <h4>Letzte fehlgeschlagene Jobs (max. 10):</h4>
+                            <table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px;">
+                                <thead>
+                                    <tr style="background: #f8d7da;">
+                                        <th style="padding: 6px; border: 1px solid #ccc;">Job-ID</th>
+                                        <th style="padding: 6px; border: 1px solid #ccc;">Page-ID</th>
+                                        <th style="padding: 6px; border: 1px solid #ccc;">Fehler</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+                    data.recent_failed_jobs.forEach(job => {
+                        html += `
+                            <tr>
+                                <td style="padding: 6px; border: 1px solid #ccc;">${job.job_id}</td>
+                                <td style="padding: 6px; border: 1px solid #ccc;">${job.document_page_id || '-'}</td>
+                                <td style="padding: 6px; border: 1px solid #ccc; max-width: 400px; overflow: hidden; text-overflow: ellipsis;" title="${job.error_message || 'Keine Fehlermeldung'}">${job.error_message || '-'}</td>
+                            </tr>
+                        `;
+                    });
+                    html += '</tbody></table></div>';
+                }
+
+                statsContent.innerHTML = html;
+            } catch (error) {
+                statsContent.innerHTML = `<p style="color: red;">Fehler beim Laden der Statistiken: ${error.message}</p>`;
+                console.error('Error loading quality stats:', error);
             }
         }
     </script>

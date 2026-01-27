@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from src.rotary_archiv.api import documents, ocr, pages, review
+from src.rotary_archiv.api import documents, ocr, pages, quality, review
 
 # NOTE: Folgende APIs sind vorerst nicht verwendet:
 # - entities (gelöscht)
@@ -48,6 +48,7 @@ app.include_router(documents.router)
 app.include_router(ocr.router)
 app.include_router(pages.router)
 app.include_router(review.router)
+app.include_router(quality.router)
 
 # NOTE: Folgende Router sind vorerst nicht aktiviert:
 # - triples.router (markiert als ungenutzt)

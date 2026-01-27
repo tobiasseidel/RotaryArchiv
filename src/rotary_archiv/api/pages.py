@@ -29,6 +29,7 @@ from src.rotary_archiv.core.models import (
     OCRResult,
 )
 from src.rotary_archiv.utils.file_handler import get_file_path
+from src.rotary_archiv.utils.image_utils import deskew_image, detect_skew_angle
 from src.rotary_archiv.utils.pdf_splitter import PDF2IMAGE_AVAILABLE, PDFSplitter
 from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
 
@@ -279,6 +280,22 @@ def get_page_preview(
             status_code=status.HTTP_404_NOT_FOUND, detail="Seite nicht gefunden"
         )
 
+    # Wenn deskew_angle gesetzt: laden, begradigen (Drehpunkt 0,0), ggf. Thumbnail, ausliefern
+    if page.deskew_angle is not None:
+        img = _load_page_as_pil(page, db, dpi=150)
+        img = deskew_image(img, page.deskew_angle)
+        if thumbnail and PIL_AVAILABLE:
+            from src.rotary_archiv.utils.pdf_utils import create_page_thumbnail
+
+            img = create_page_thumbnail(img, size=(200, 200))
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f:
+            img.save(f.name, "PNG")
+            return FileResponse(
+                path=f.name,
+                media_type="image/png",
+                filename=f"page_{page.page_number}.png",
+            )
+
     # Prüfe ob Seite ein file_path hat (extrahierte Seite) oder virtuell ist
     if page.file_path:
         # Normale Seite mit extrahierter Datei
@@ -448,6 +465,90 @@ def get_page_preview(
         media_type=media_type,
         filename=f"page_{page.page_number}.{page.file_type}",
     )
+
+
+def _load_page_as_pil(page: DocumentPage, db: Session, dpi: int = 150) -> "Image.Image":
+    """Lädt eine DocumentPage als PIL Image. Erfordert PIL; bei PDF pdf2image."""
+    if not PIL_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="PIL/Pillow ist nicht verfügbar",
+        )
+    if not page.file_path:
+        document = db.query(Document).filter(Document.id == page.document_id).first()
+        if not document:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Dokument nicht gefunden"
+            )
+        pdf_path = get_file_path(document.file_path)
+        if not pdf_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"PDF nicht gefunden: {pdf_path}",
+            )
+        if not PDF2IMAGE_AVAILABLE:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="pdf2image ist für PDF-Extraktion nötig",
+            )
+        return extract_page_as_image(str(pdf_path), page.page_number, dpi=dpi)
+    fp = get_file_path(page.file_path)
+    if not fp.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Seiten-Datei nicht gefunden: {fp}",
+        )
+    is_img = (
+        page.file_type
+        and page.file_type.lower() in ("image/png", "image/jpeg", "image/jpg")
+    ) or str(fp).lower().endswith((".png", ".jpg", ".jpeg"))
+    if is_img:
+        return Image.open(fp).convert("RGB")
+    if str(fp).lower().endswith(".pdf") or (
+        page.file_type and "pdf" in (page.file_type or "").lower()
+    ):
+        if not PDF2IMAGE_AVAILABLE:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="pdf2image ist für PDF-Konvertierung nötig",
+            )
+        from pdf2image import convert_from_path
+
+        convert_kwargs = {
+            "first_page": page.page_number,
+            "last_page": page.page_number,
+            "dpi": dpi,
+        }
+        if settings.poppler_path:
+            pp = Path(settings.poppler_path)
+            if pp.exists():
+                convert_kwargs["poppler_path"] = str(pp)
+        images = convert_from_path(str(fp), **convert_kwargs)
+        if not images:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="PDF konnte nicht zu Bild konvertiert werden",
+            )
+        return images[0]
+    return Image.open(fp).convert("RGB")
+
+
+@router.get("/{page_id}/skew")
+def get_page_skew(page_id: int, db: Session = Depends(get_db)):
+    """
+    Misst den Schrägwinkel (Skew) einer Seite per Hough-Transformation.
+
+    Drehpunkt bei Koordinatentransformation: obere linke Ecke (0,0).
+    Response: angle / angle_deg in Grad.
+    """
+    page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+    if not page:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Seite nicht gefunden"
+        )
+    img = _load_page_as_pil(page, db, dpi=200)
+    angle = detect_skew_angle(img)
+    return {"angle": angle, "angle_deg": angle}
 
 
 @router.post("/merge")

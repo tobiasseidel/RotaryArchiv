@@ -18,6 +18,7 @@ from src.rotary_archiv.core.models import (
 from src.rotary_archiv.ocr.bbox_ocr import process_bbox_ocr
 from src.rotary_archiv.ocr.pipeline import OCRPipeline
 from src.rotary_archiv.utils.file_handler import get_file_path
+from src.rotary_archiv.utils.quality_metrics import compute_coverage, compute_density
 
 
 async def process_ocr_job(job_id: int) -> None:
@@ -99,6 +100,7 @@ async def process_ocr_job(job_id: int) -> None:
                 language=job.language,
                 use_correction=job.use_correction,
                 extract_bbox=True,  # Aktiviere BBox-Extraktion für Seiten-Jobs
+                deskew=False,  # TODO: aus job-Parameter oder API wenn vorhanden
             )
 
             # Abschluss
@@ -380,6 +382,239 @@ async def process_bbox_review_job(job_id: int) -> None:
 
         # Log Fehler
         print(f"BBox Review Job {job_id} fehlgeschlagen: {e}")
+
+    finally:
+        db.close()
+
+
+async def process_quality_job(job_id: int) -> None:
+    """
+    Verarbeite einen Quality-Job: Berechne Coverage- und Density-Metriken für eine Seite.
+
+    Args:
+        job_id: ID des Quality-Jobs
+    """
+    db = SessionLocal()
+    job = None
+
+    try:
+        # Hole Job
+        job = db.query(OCRJob).filter(OCRJob.id == job_id).first()
+        if not job:
+            return
+
+        if not job.document_page_id:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Quality-Job benötigt document_page_id"
+            db.commit()
+            return
+
+        # Hole Seite
+        page = (
+            db.query(DocumentPage)
+            .filter(DocumentPage.id == job.document_page_id)
+            .first()
+        )
+        if not page:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Seite nicht gefunden"
+            db.commit()
+            return
+
+        # Hole Dokument
+        document = db.query(Document).filter(Document.id == job.document_id).first()
+        if not document:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Dokument nicht gefunden"
+            db.commit()
+            return
+
+        # Update Job-Status
+        job.status = OCRJobStatus.RUNNING
+        job.started_at = datetime.now()
+        job.progress = 0.0
+        job.current_step = f"Lade OCRResult für Seite {page.page_number}"
+        db.commit()
+
+        # Hole neuestes OCRResult mit bbox_data für diese Seite
+        ocr_result = (
+            db.query(OCRResult)
+            .filter(
+                OCRResult.document_page_id == job.document_page_id,
+                OCRResult.bbox_data.isnot(None),
+            )
+            .order_by(OCRResult.created_at.desc())
+            .first()
+        )
+
+        if not ocr_result or not ocr_result.bbox_data:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Keine BBox-Daten für diese Seite gefunden"
+            db.commit()
+            return
+
+        # Parse bbox_data
+        if isinstance(ocr_result.bbox_data, str):
+            bbox_list = json.loads(ocr_result.bbox_data)
+        else:
+            bbox_list = ocr_result.bbox_data
+
+        if not isinstance(bbox_list, list):
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "bbox_data ist keine Liste"
+            db.commit()
+            return
+
+        job.progress = 20.0
+        job.current_step = f"Lade Seitenbild für Seite {page.page_number}"
+        db.commit()
+
+        # Importiere Image am Anfang (außerhalb des try-Blocks)
+        from PIL import Image
+
+        from src.rotary_archiv.config import settings
+        from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
+
+        # Lade Seitenbild (ähnlich wie _load_page_as_pil, aber ohne HTTPException)
+        try:
+            if not page.file_path:
+                # Virtuelle Seite: aus PDF extrahieren
+                pdf_path = get_file_path(document.file_path)
+                if not pdf_path.exists():
+                    raise FileNotFoundError(f"PDF nicht gefunden: {pdf_path}")
+                img = extract_page_as_image(str(pdf_path), page.page_number, dpi=200)
+            else:
+                # Extrahierte Seite: Datei laden
+                file_path = get_file_path(page.file_path)
+                if not file_path.exists():
+                    raise FileNotFoundError(f"Seiten-Datei nicht gefunden: {file_path}")
+
+                is_img = (
+                    page.file_type
+                    and page.file_type.lower()
+                    in ("image/png", "image/jpeg", "image/jpg")
+                ) or str(file_path).lower().endswith((".png", ".jpg", ".jpeg"))
+
+                if is_img:
+                    img = Image.open(file_path).convert("RGB")
+                else:
+                    # PDF-Seite
+                    from pdf2image import convert_from_path
+
+                    convert_kwargs = {
+                        "first_page": page.page_number,
+                        "last_page": page.page_number,
+                        "dpi": 200,
+                    }
+                    if settings.poppler_path:
+                        from pathlib import Path
+
+                        pp = Path(settings.poppler_path)
+                        if pp.exists():
+                            convert_kwargs["poppler_path"] = str(pp)
+                    images = convert_from_path(str(file_path), **convert_kwargs)
+                    if not images:
+                        raise ValueError("PDF konnte nicht zu Bild konvertiert werden")
+                    img = images[0]
+
+            # Deskew anwenden falls gesetzt
+            if page.deskew_angle is not None:
+                from src.rotary_archiv.utils.image_utils import deskew_image
+
+                img = deskew_image(img, page.deskew_angle)
+
+            # Resize auf OCR-Bildgröße falls abweichend
+            if (
+                ocr_result.image_width
+                and ocr_result.image_height
+                and img.size
+                != (
+                    ocr_result.image_width,
+                    ocr_result.image_height,
+                )
+            ):
+                img = img.resize(
+                    (ocr_result.image_width, ocr_result.image_height),
+                    Image.Resampling.LANCZOS,
+                )
+
+        except Exception as e:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = f"Fehler beim Laden des Seitenbilds: {e!s}"
+            db.commit()
+            return
+
+        job.progress = 50.0
+        job.current_step = "Berechne Coverage-Metrik"
+        db.commit()
+
+        # Berechne Coverage
+        try:
+            coverage_result = compute_coverage(
+                img,
+                bbox_list,
+                image_width=ocr_result.image_width,
+                image_height=ocr_result.image_height,
+                dark_threshold=200,
+            )
+        except Exception as e:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = f"Fehler bei Coverage-Berechnung: {e!s}"
+            db.commit()
+            return
+
+        job.progress = 75.0
+        job.current_step = "Berechne Density-Metrik"
+        db.commit()
+
+        # Berechne Density
+        try:
+            bbox_densities, density_summary = compute_density(bbox_list)
+        except Exception as e:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = f"Fehler bei Density-Berechnung: {e!s}"
+            db.commit()
+            return
+
+        job.progress = 90.0
+        job.current_step = "Speichere Qualitätsmetriken"
+        db.commit()
+
+        # Speichere quality_metrics im OCRResult
+        quality_metrics = {
+            "page_id": page.id,
+            "coverage": coverage_result,
+            "density": {
+                "bboxes": bbox_densities,
+                "summary": density_summary,
+            },
+        }
+
+        ocr_result.quality_metrics = quality_metrics
+        db.commit()
+
+        # Abschluss
+        job.current_step = (
+            f"Abgeschlossen - Qualitätsmetriken für Seite {page.page_number}"
+        )
+        job.progress = 100.0
+        job.status = OCRJobStatus.COMPLETED
+        job.completed_at = datetime.now()
+        db.commit()
+
+    except Exception as e:
+        # Fehlerbehandlung
+        if job:
+            db.refresh(job)
+            if job.status in [OCRJobStatus.CANCELLED, OCRJobStatus.ARCHIVED]:
+                return
+
+            job.status = OCRJobStatus.FAILED
+            job.error_message = str(e)
+            job.completed_at = datetime.now()
+            db.commit()
+
+        print(f"Quality Job {job_id} fehlgeschlagen: {e}")
 
     finally:
         db.close()

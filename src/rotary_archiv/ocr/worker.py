@@ -13,7 +13,11 @@ from typing import Optional
 
 from src.rotary_archiv.core.database import SessionLocal
 from src.rotary_archiv.core.models import OCRJob, OCRJobStatus
-from src.rotary_archiv.ocr.job_processor import process_bbox_review_job, process_ocr_job
+from src.rotary_archiv.ocr.job_processor import (
+    process_bbox_review_job,
+    process_ocr_job,
+    process_quality_job,
+)
 
 # Logging konfigurieren
 logging.basicConfig(
@@ -71,6 +75,9 @@ async def worker_loop(poll_interval: int = 5):
                         logger.info(
                             f"BBox-Review-Job {job.id} erfolgreich abgeschlossen"
                         )
+                    elif job_type == "quality":
+                        await process_quality_job(job.id)
+                        logger.info(f"Quality-Job {job.id} erfolgreich abgeschlossen")
                     else:
                         await process_ocr_job(job.id)
                         logger.info(f"OCR-Job {job.id} erfolgreich abgeschlossen")

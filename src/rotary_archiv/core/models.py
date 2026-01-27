@@ -184,6 +184,10 @@ class DocumentPage(Base):
         Boolean, default=False, nullable=False, server_default="0"
     )  # True wenn Seite als Datei extrahiert wurde
 
+    # Deskew: Winkel (Grad), der beim Erzeugen von OCR/BBox angewandt wurde.
+    # NULL = Rohbild (Legacy). Drehpunkt bei Transformation: obere linke Ecke (0,0).
+    deskew_angle = Column(Float, nullable=True)
+
     # OCR für einzelne Seite - Legacy (deprecated)
     ocr_text = Column(Text, nullable=True)  # Deprecated: Verwende OCRResult
     ocr_confidence = Column(String(50), nullable=True)  # Deprecated
@@ -242,6 +246,11 @@ class OCRResult(Base):
     image_height = Column(
         Integer, nullable=True
     )  # Höhe des verarbeiteten Bildes in Pixeln
+
+    # Qualitätsmetriken
+    quality_metrics = Column(
+        JSON, nullable=True
+    )  # Qualitätsmetriken: {"coverage": {...}, "density": {...}}
 
     # Timestamps
     created_at = Column(DateTime, server_default=func.now(), nullable=False)

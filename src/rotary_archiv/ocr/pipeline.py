@@ -8,9 +8,10 @@ import tempfile
 
 from sqlalchemy.orm import Session
 
-from src.rotary_archiv.core.models import OCRResult, OCRSource
+from src.rotary_archiv.core.models import DocumentPage, OCRResult, OCRSource
 from src.rotary_archiv.ocr.ollama_vision import OllamaVisionOCR
 from src.rotary_archiv.utils.file_handler import get_file_path
+from src.rotary_archiv.utils.image_utils import deskew_image, detect_skew_angle
 from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
 
 
@@ -31,6 +32,7 @@ class OCRPipeline:
         language: str = "deu+eng",
         use_correction: bool = True,  # Wird ignoriert, für Kompatibilität behalten
         extract_bbox: bool = False,  # NEU: BBox-Extraktion aktivieren
+        deskew: bool = False,  # Seite vor OCR begradigen (Drehpunkt: 0,0)
     ) -> list[OCRResult]:
         """
         Verarbeite eine einzelne Seite aus einem PDF mit OCR-Pipeline und speichere Ergebnisse in DB
@@ -58,6 +60,14 @@ class OCRPipeline:
 
         # Extrahiere Seite als Bild (im Speicher)
         page_image = extract_page_as_image(str(absolute_pdf_path), page_number)
+
+        # Optional: Deskew (Drehpunkt: obere linke Ecke 0,0)
+        deskew_angle_applied: float | None = None
+        if deskew:
+            angle = detect_skew_angle(page_image)
+            if abs(angle) > 0.1:
+                page_image = deskew_image(page_image, angle)
+                deskew_angle_applied = angle
 
         # Speichere temporär als Datei für OCR-Engine
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_file:
@@ -99,9 +109,21 @@ class OCRPipeline:
                         f"Ollama Vision OCR Fehler für Seite {page_number} von Dokument {document_id}: {error_msg}"
                     )
 
-                # BBox-Daten extrahieren (falls vorhanden)
+                # BBox-Daten extrahieren und deskew_angle an jede Box (Drehpunkt 0,0)
                 bbox_list = ollama_result.get("bbox_list")
+                if bbox_list:
+                    for item in bbox_list:
+                        item["deskew_angle"] = deskew_angle_applied
                 bbox_data = bbox_list if bbox_list else None
+
+                # DocumentPage.deskew_angle setzen
+                page = (
+                    db.query(DocumentPage)
+                    .filter(DocumentPage.id == document_page_id)
+                    .first()
+                )
+                if page:
+                    page.deskew_angle = deskew_angle_applied
 
                 ollama_ocr_result = OCRResult(
                     document_id=document_id,

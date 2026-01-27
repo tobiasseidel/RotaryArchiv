@@ -1,8 +1,9 @@
 """
-Image-Utilities für Bildbearbeitung (Cropping, etc.)
+Image-Utilities für Bildbearbeitung (Cropping, Skew/Deskew, etc.)
 """
 
 import logging
+import math
 from pathlib import Path
 
 try:
@@ -13,8 +14,128 @@ except ImportError:
     PIL_AVAILABLE = False
     Image = None
 
+try:
+    import cv2
+    import numpy as np
+
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+    cv2 = None
+    np = None
 
 logger = logging.getLogger(__name__)
+
+
+def detect_skew_angle(image: "Image.Image") -> float:
+    """
+    Erkennt den Schrägwinkel (Skew) eines Dokumentbildes per Hough-Transformation.
+
+    Drehpunkt für spätere Koordinatentransformation: obere linke Ecke (0,0).
+
+    Args:
+        image: PIL Image (Graustufen oder RGB)
+
+    Returns:
+        Winkel in Grad (typ. -10 bis +10). 0.0 bei zu wenig Linien oder wenn
+        OpenCV nicht verfügbar.
+
+    Raises:
+        ImportError: Wenn PIL nicht verfügbar ist
+    """
+    if not PIL_AVAILABLE:
+        raise ImportError("PIL/Pillow ist nicht installiert")
+    if not CV2_AVAILABLE:
+        logger.warning("OpenCV nicht verfügbar, detect_skew_angle liefert 0.0")
+        return 0.0
+
+    img = np.array(image)
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if len(img.shape) == 3 else img
+    edges = cv2.Canny(gray, 50, 150)
+    lines = cv2.HoughLinesP(
+        edges, 1, math.pi / 180, threshold=80, minLineLength=50, maxLineGap=10
+    )
+    if lines is None or len(lines) == 0:
+        return 0.0
+
+    angles: list[float] = []
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        a = math.degrees(math.atan2(y2 - y1, x2 - x1 + 1e-6))
+        # Normiere auf ca. [-45, 45]; für Skew zählen vor allem nahe 0° und 90°
+        if a > 45:
+            a -= 90
+        elif a < -45:
+            a += 90
+        if -15 <= a <= 15:  # typischer Skew-Bereich
+            angles.append(a)
+    if not angles:
+        return 0.0
+    return float(np.median(angles))
+
+
+def deskew_image(
+    image: "Image.Image",
+    angle: float,
+    *,
+    expand: bool = True,
+    fill_color: int | tuple[int, ...] = 255,
+) -> "Image.Image":
+    """
+    Dreht ein Bild um den angegebenen Winkel (Deskew).
+
+    Drehpunkt ist immer die obere linke Ecke (0,0). bbox_pixel-Koordinaten
+    beziehen sich auf das Ausgabebild.
+
+    Args:
+        image: PIL Image
+        angle: Winkel in Grad (positiv = gegen Uhrzeigersinn)
+        expand: Bei True wird das Canvas vergrößert, damit das gedrehte Bild
+            vollständig sichtbar ist.
+        fill_color: Farbe für neue Ränder (Standard: 255 = weiß). Bei RGB:
+            (255, 255, 255).
+
+    Returns:
+        Gedrehtes PIL Image
+
+    Raises:
+        ImportError: Wenn PIL oder OpenCV nicht verfügbar
+    """
+    if not PIL_AVAILABLE:
+        raise ImportError("PIL/Pillow ist nicht installiert")
+    if not CV2_AVAILABLE:
+        raise ImportError("OpenCV (opencv-python-headless) für deskew_image nötig")
+
+    if abs(angle) < 0.01:
+        return image.copy()
+
+    img = np.array(image)
+    h, w = img.shape[:2]
+    # Rotation um (0,0) = obere linke Ecke
+    m = cv2.getRotationMatrix2D((0.0, 0.0), -angle, 1.0)
+    # m ist 2x3: [a,b,tx; c,d,ty]. Reine Rotation: tx=ty=0.
+
+    if expand:
+        corners = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
+        # Anwenden der 2x3-Matrix: (x,y) -> m[:,:2]@[x;y] + m[:,2]
+        rotated = (corners @ m[:, :2].T) + m[:, 2]
+        min_x, min_y = rotated.min(axis=0)
+        max_x, max_y = rotated.max(axis=0)
+        out_w = int(math.ceil(max_x - min_x))
+        out_h = int(math.ceil(max_y - min_y))
+        m[0, 2] -= min_x
+        m[1, 2] -= min_y
+    else:
+        out_w, out_h = w, h
+
+    if len(img.shape) == 2:
+        fill = fill_color if isinstance(fill_color, int) else 255
+    else:
+        fill = fill_color if isinstance(fill_color, (tuple, list)) else (255,) * 3
+    out = cv2.warpAffine(
+        img, m, (out_w, out_h), flags=cv2.INTER_LANCZOS4, borderValue=fill
+    )
+    return Image.fromarray(out)
 
 
 def crop_bbox_from_image(
