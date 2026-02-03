@@ -43,35 +43,148 @@ def detect_skew_angle(image: "Image.Image") -> float:
     Raises:
         ImportError: Wenn PIL nicht verfügbar ist
     """
+    debug_info = detect_skew_angle_debug(image)
+    return debug_info["angle"]
+
+
+def detect_skew_angle_debug(image: "Image.Image") -> dict:
+    """
+    Erkennt den Schrägwinkel (Skew) mit detaillierten Debug-Informationen.
+
+    Args:
+        image: PIL Image (Graustufen oder RGB)
+
+    Returns:
+        Dictionary mit:
+        - angle: Winkel in Grad (float)
+        - total_lines: Anzahl aller erkannten Linien (int)
+        - valid_angles: Liste aller gültigen Winkel (list[float])
+        - angle_stats: Statistiken (min, max, median, mean, std) (dict)
+        - lines_info: Liste mit Details zu jeder Linie (list[dict])
+        - canny_params: Parameter für Canny-Edge-Detection (dict)
+        - hough_params: Parameter für Hough-Transformation (dict)
+
+    Raises:
+        ImportError: Wenn PIL nicht verfügbar ist
+    """
     if not PIL_AVAILABLE:
         raise ImportError("PIL/Pillow ist nicht installiert")
     if not CV2_AVAILABLE:
         logger.warning("OpenCV nicht verfügbar, detect_skew_angle liefert 0.0")
-        return 0.0
+        return {
+            "angle": 0.0,
+            "total_lines": 0,
+            "valid_angles": [],
+            "angle_stats": {},
+            "lines_info": [],
+            "canny_params": {"low": 50, "high": 150},
+            "hough_params": {
+                "threshold": 80,
+                "minLineLength": 50,
+                "maxLineGap": 10,
+            },
+            "error": "OpenCV nicht verfügbar",
+        }
 
     img = np.array(image)
     gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if len(img.shape) == 3 else img
-    edges = cv2.Canny(gray, 50, 150)
-    lines = cv2.HoughLinesP(
-        edges, 1, math.pi / 180, threshold=80, minLineLength=50, maxLineGap=10
-    )
-    if lines is None or len(lines) == 0:
-        return 0.0
 
+    # Canny-Edge-Detection
+    canny_low = 50
+    canny_high = 150
+    edges = cv2.Canny(gray, canny_low, canny_high)
+
+    # Hough-Transformation
+    hough_threshold = 80
+    hough_min_line_length = 50
+    hough_max_line_gap = 10
+    lines = cv2.HoughLinesP(
+        edges,
+        1,
+        math.pi / 180,
+        threshold=hough_threshold,
+        minLineLength=hough_min_line_length,
+        maxLineGap=hough_max_line_gap,
+    )
+
+    total_lines = len(lines) if lines is not None else 0
+    lines_info = []
     angles: list[float] = []
-    for line in lines:
+
+    if lines is None or len(lines) == 0:
+        return {
+            "angle": 0.0,
+            "total_lines": 0,
+            "valid_angles": [],
+            "angle_stats": {},
+            "lines_info": [],
+            "canny_params": {"low": canny_low, "high": canny_high},
+            "hough_params": {
+                "threshold": hough_threshold,
+                "minLineLength": hough_min_line_length,
+                "maxLineGap": hough_max_line_gap,
+            },
+        }
+
+    for idx, line in enumerate(lines):
         x1, y1, x2, y2 = line[0]
-        a = math.degrees(math.atan2(y2 - y1, x2 - x1 + 1e-6))
+        # Berechne Winkel vor Normalisierung
+        raw_angle = math.degrees(math.atan2(y2 - y1, x2 - x1 + 1e-6))
+        line_length = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
         # Normiere auf ca. [-45, 45]; für Skew zählen vor allem nahe 0° und 90°
-        if a > 45:
-            a -= 90
-        elif a < -45:
-            a += 90
-        if -15 <= a <= 15:  # typischer Skew-Bereich
-            angles.append(a)
-    if not angles:
-        return 0.0
-    return float(np.median(angles))
+        normalized_angle = raw_angle
+        if raw_angle > 45:
+            normalized_angle = raw_angle - 90
+        elif raw_angle < -45:
+            normalized_angle = raw_angle + 90
+
+        is_valid = -15 <= normalized_angle <= 15  # typischer Skew-Bereich
+
+        line_info = {
+            "index": idx,
+            "x1": int(x1),
+            "y1": int(y1),
+            "x2": int(x2),
+            "y2": int(y2),
+            "length": float(line_length),
+            "raw_angle": float(raw_angle),
+            "normalized_angle": float(normalized_angle),
+            "is_valid": is_valid,
+        }
+        lines_info.append(line_info)
+
+        if is_valid:
+            angles.append(normalized_angle)
+
+    # Berechne Statistiken
+    angle_stats = {}
+    if angles:
+        angle_stats = {
+            "min": float(np.min(angles)),
+            "max": float(np.max(angles)),
+            "median": float(np.median(angles)),
+            "mean": float(np.mean(angles)),
+            "std": float(np.std(angles)),
+            "count": len(angles),
+        }
+        final_angle = float(np.median(angles))
+    else:
+        final_angle = 0.0
+
+    return {
+        "angle": final_angle,
+        "total_lines": total_lines,
+        "valid_angles": [float(a) for a in angles],
+        "angle_stats": angle_stats,
+        "lines_info": lines_info,
+        "canny_params": {"low": canny_low, "high": canny_high},
+        "hough_params": {
+            "threshold": hough_threshold,
+            "minLineLength": hough_min_line_length,
+            "maxLineGap": hough_max_line_gap,
+        },
+    }
 
 
 def deskew_image(
@@ -112,7 +225,14 @@ def deskew_image(
     img = np.array(image)
     h, w = img.shape[:2]
     # Rotation um (0,0) = obere linke Ecke
-    m = cv2.getRotationMatrix2D((0.0, 0.0), -angle, 1.0)
+    # angle ist der erkannte Schrägwinkel
+    # cv2.getRotationMatrix2D: positiver Winkel = gegen Uhrzeigersinn
+    # Wenn angle positiv ist (z.B. +2° = nach rechts geneigt),
+    # müssen wir -angle drehen (im Uhrzeigersinn) um zu begradigen
+    # Da die aktuelle Implementierung das Problem verstärkt, verwenden wir angle statt -angle
+    # (Das bedeutet: der erkannte Winkel gibt bereits die Korrekturrichtung an)
+    correction_angle = angle  # Verwende angle direkt (statt -angle)
+    m = cv2.getRotationMatrix2D((0.0, 0.0), correction_angle, 1.0)
     # m ist 2x3: [a,b,tx; c,d,ty]. Reine Rotation: tx=ty=0.
 
     if expand:

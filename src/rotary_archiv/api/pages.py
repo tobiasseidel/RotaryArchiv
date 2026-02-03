@@ -551,6 +551,119 @@ def get_page_skew(page_id: int, db: Session = Depends(get_db)):
     return {"angle": angle, "angle_deg": angle}
 
 
+@router.get("/{page_id}/skew/debug")
+def get_page_skew_debug(page_id: int, db: Session = Depends(get_db)):
+    """
+    Misst den Schrägwinkel (Skew) mit detaillierten Debug-Informationen.
+
+    Gibt zurück:
+    - angle: Erkannte Winkel in Grad
+    - total_lines: Anzahl aller erkannten Linien
+    - valid_angles: Liste aller gültigen Winkel
+    - angle_stats: Statistiken (min, max, median, mean, std, count)
+    - lines_info: Details zu jeder erkannten Linie
+    - canny_params: Parameter für Canny-Edge-Detection
+    - hough_params: Parameter für Hough-Transformation
+    """
+    from src.rotary_archiv.utils.image_utils import detect_skew_angle_debug
+
+    page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+    if not page:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Seite nicht gefunden"
+        )
+    img = _load_page_as_pil(page, db, dpi=200)
+    debug_info = detect_skew_angle_debug(img)
+    return debug_info
+
+
+@router.get("/{page_id}/deskewed-image")
+def get_deskewed_page_image(page_id: int, db: Session = Depends(get_db)):
+    """
+    Gibt das begradigte (deskewed) Bild einer Seite zurück.
+
+    Falls deskew_angle in der DocumentPage gesetzt ist, wird dieser verwendet.
+    Andernfalls wird der Winkel automatisch erkannt.
+    """
+    page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+    if not page:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Seite nicht gefunden"
+        )
+
+    img = _load_page_as_pil(page, db, dpi=200)
+
+    # Verwende gespeicherten Winkel oder erkenne automatisch
+    if page.deskew_angle is not None:
+        angle = page.deskew_angle
+    else:
+        angle = detect_skew_angle(img)
+        if abs(angle) < 0.1:
+            # Keine nennenswerte Schräge, gebe Original zurück
+            angle = 0.0
+
+    if abs(angle) > 0.1:
+        img = deskew_image(img, angle)
+
+    # Speichere als temporäre Datei und gebe zurück
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
+        img.save(tmp_file.name, "PNG")
+        return FileResponse(
+            tmp_file.name,
+            media_type="image/png",
+            filename=f"page_{page_id}_deskewed.png",
+        )
+
+
+@router.get("/{page_id}/skew/lines")
+def get_page_skew_lines(page_id: int, db: Session = Depends(get_db)):
+    """
+    Gibt die erkannten Linien für die Schräglagen-Erkennung zurück.
+
+    Returns:
+        Dictionary mit:
+        - lines: Liste der Linien mit Koordinaten (im Bild-Koordinatensystem)
+        - image_width: Breite des Bildes
+        - image_height: Höhe des Bildes
+        - angle: Erkannte Winkel
+    """
+    from src.rotary_archiv.utils.image_utils import detect_skew_angle_debug
+
+    page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+    if not page:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Seite nicht gefunden"
+        )
+    img = _load_page_as_pil(page, db, dpi=200)
+    debug_info = detect_skew_angle_debug(img)
+
+    # Konvertiere Linien-Info in einfaches Format für Frontend
+    lines = []
+    if debug_info.get("lines_info"):
+        for line_info in debug_info["lines_info"]:
+            # Nur gültige Linien zurückgeben (oder alle, je nach Präferenz)
+            if line_info.get("is_valid", False):
+                lines.append(
+                    {
+                        "x1": line_info["x1"],
+                        "y1": line_info["y1"],
+                        "x2": line_info["x2"],
+                        "y2": line_info["y2"],
+                        "angle": line_info["normalized_angle"],
+                        "length": line_info["length"],
+                    }
+                )
+
+    return {
+        "lines": lines,
+        "image_width": img.width,
+        "image_height": img.height,
+        "angle": debug_info["angle"],
+        "total_lines": debug_info["total_lines"],
+        "valid_lines": len(lines),
+    }
+
+
 @router.post("/merge")
 def merge_pages(request: MergePagesRequest, db: Session = Depends(get_db)):
     """
