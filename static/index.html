@@ -527,6 +527,7 @@
             <li><a href="#" id="navImport" class="active" onclick="showImportView(); return false;">Import & Jobs</a></li>
             <li><a href="#" id="navReview" onclick="showReviewView(); return false;">Review</a></li>
             <li><a href="#" id="navQuality" onclick="showQualityView(); return false;">Qualität</a></li>
+            <li><a href="#" id="navDeskew" onclick="showDeskewView(); return false;">Winkel</a></li>
         </ul>
     </nav>
 
@@ -707,6 +708,27 @@
         </div>
     </div>
 
+    <!-- Winkel (Deskew) View -->
+    <div id="deskewView" class="container" style="display: none;">
+        <h1>Winkel-Übersicht</h1>
+        <p class="subtitle">Seiten mit Deskew-Winkel und Anteil BBoxen mit Winkelkorrektur</p>
+        <p style="font-size: 12px; color: #666; margin-bottom: 12px;">
+            Seitenwinkel und BBox-Winkel werden gesetzt, wenn Sie „Alle nicht gemessenen Winkel messen“ ausführen oder wenn ein OCR-Lauf mit Deskew (Seiten-OCR) durchgeführt wurde. In „BBoxen“ wird nur die Anzahl mit gültigen Koordinaten gezählt (wie in Inspect sichtbar); bei Abweichung zur Rohanzahl steht „X (von Y)“.
+        </p>
+
+        <div style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary" id="measureDeskewBatchBtn" onclick="measureDeskewBatch(); return false;">
+                Alle nicht gemessenen Winkel messen
+            </button>
+            <span id="measureDeskewBatchStatus"></span>
+        </div>
+        <div id="deskewMessages" style="margin-bottom: 15px;"></div>
+
+        <div id="deskewPagesContainer">
+            <p style="color: #666;">Lade Winkel-Daten...</p>
+        </div>
+    </div>
+
     <!-- Page Inspect View -->
     <div id="pageInspectView" class="container" style="display: none;">
         <div class="inspect-header">
@@ -759,6 +781,12 @@
 
     <script>
         const API_BASE = 'http://localhost:8000';
+        function escapeHtml(s) {
+            if (s == null) return '';
+            const div = document.createElement('div');
+            div.textContent = s;
+            return div.innerHTML;
+        }
         let pollInterval = null;
         let currentJobTab = 'all'; // 'all', 'ocr', 'review'
         let currentStatusFilter = 'all'; // 'all', 'pending', 'running', 'completed', 'failed', 'paused', 'cancelled'
@@ -1119,6 +1147,8 @@
                 const match = hash.match(/[?&]page_id=(\d+)/);
                 const pageId = match ? parseInt(match[1]) : null;
                 showQualityView(pageId);
+            } else if (hash === '#/deskew') {
+                showDeskewView();
             } else {
                 showImportView(); // Diese Funktion startet das Polling automatisch
             }
@@ -1132,6 +1162,7 @@
             const reviewView = document.getElementById('reviewView');
             const pageInspectView = document.getElementById('pageInspectView');
             const qualityView = document.getElementById('qualityView');
+            const deskewView = document.getElementById('deskewView');
 
             if (importView) importView.style.display = 'block';
             if (reviewView) reviewView.style.display = 'none';
@@ -1140,13 +1171,16 @@
                 pageInspectView.classList.remove('active');
             }
             if (qualityView) qualityView.style.display = 'none';
+            if (deskewView) deskewView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
             const navQuality = document.getElementById('navQuality');
+            const navDeskew = document.getElementById('navDeskew');
             if (navImport) navImport.classList.add('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.remove('active');
+            if (navDeskew) navDeskew.classList.remove('active');
 
             // Starte Polling für Queue (falls noch nicht gestartet)
             if (!pollInterval) {
@@ -1162,6 +1196,7 @@
             const reviewView = document.getElementById('reviewView');
             const pageInspectView = document.getElementById('pageInspectView');
             const qualityView = document.getElementById('qualityView');
+            const deskewView = document.getElementById('deskewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'block';
@@ -1170,13 +1205,16 @@
                 pageInspectView.classList.remove('active');
             }
             if (qualityView) qualityView.style.display = 'none';
+            if (deskewView) deskewView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
             const navQuality = document.getElementById('navQuality');
+            const navDeskew = document.getElementById('navDeskew');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.add('active');
             if (navQuality) navQuality.classList.remove('active');
+            if (navDeskew) navDeskew.classList.remove('active');
 
             // Stoppe Queue-Polling wenn Review-View angezeigt wird
             if (pollInterval) {
@@ -1193,6 +1231,7 @@
             const reviewView = document.getElementById('reviewView');
             const pageInspectView = document.getElementById('pageInspectView');
             const qualityView = document.getElementById('qualityView');
+            const deskewView = document.getElementById('deskewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -1201,13 +1240,16 @@
                 pageInspectView.classList.remove('active');
             }
             if (qualityView) qualityView.style.display = 'block';
+            if (deskewView) deskewView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
             const navQuality = document.getElementById('navQuality');
+            const navDeskew = document.getElementById('navDeskew');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.add('active');
+            if (navDeskew) navDeskew.classList.remove('active');
 
             // Stoppe Queue-Polling wenn Quality-View angezeigt wird
             if (pollInterval) {
@@ -1226,15 +1268,131 @@
             }
         }
 
+        function showDeskewView() {
+            const importView = document.getElementById('importView');
+            const reviewView = document.getElementById('reviewView');
+            const pageInspectView = document.getElementById('pageInspectView');
+            const qualityView = document.getElementById('qualityView');
+            const deskewView = document.getElementById('deskewView');
+
+            if (importView) importView.style.display = 'none';
+            if (reviewView) reviewView.style.display = 'none';
+            if (pageInspectView) {
+                pageInspectView.style.display = 'none';
+                pageInspectView.classList.remove('active');
+            }
+            if (qualityView) qualityView.style.display = 'none';
+            if (deskewView) deskewView.style.display = 'block';
+
+            const navImport = document.getElementById('navImport');
+            const navReview = document.getElementById('navReview');
+            const navQuality = document.getElementById('navQuality');
+            const navDeskew = document.getElementById('navDeskew');
+            if (navImport) navImport.classList.remove('active');
+            if (navReview) navReview.classList.remove('active');
+            if (navQuality) navQuality.classList.remove('active');
+            if (navDeskew) navDeskew.classList.add('active');
+
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+
+            window.location.hash = '#/deskew';
+            loadDeskewOverview();
+        }
+
+        async function loadDeskewOverview() {
+            const container = document.getElementById('deskewPagesContainer');
+            const msgEl = document.getElementById('deskewMessages');
+            if (!container) return;
+            container.innerHTML = '<p style="color: #666;">Lade Winkel-Daten...</p>';
+            if (msgEl) msgEl.innerHTML = '';
+            try {
+                const url = `${API_BASE}/api/pages/deskew-overview`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                const data = await response.json();
+                const pages = data.pages || [];
+                if (pages.length === 0) {
+                    container.innerHTML = '<p style="color: #666;">Noch keine Seiten mit Winkel-Daten vorhanden.</p>';
+                    return;
+                }
+                let html = '<table class="review-table" style="width: 100%; border-collapse: collapse;"><thead><tr>' +
+                    '<th style="padding: 8px; border: 1px solid #ccc;">Dokument</th>' +
+                    '<th style="padding: 8px; border: 1px solid #ccc;">Seite</th>' +
+                    '<th style="padding: 8px; border: 1px solid #ccc;">Seiten-Winkel (°)</th>' +
+                    '<th style="padding: 8px; border: 1px solid #ccc;" title="Anzahl BBoxen mit gültigen Koordinaten (wie in Inspect angezeigt)">BBoxen</th>' +
+                    '<th style="padding: 8px; border: 1px solid #ccc;">BBoxen mit Winkel</th>' +
+                    '<th style="padding: 8px; border: 1px solid #ccc;">Anteil (%)</th>' +
+                    '<th style="padding: 8px; border: 1px solid #ccc;">Aktionen</th></tr></thead><tbody>';
+                pages.forEach(function (p) {
+                    const angle = p.deskew_angle != null ? p.deskew_angle + '°' : '-';
+                    const bboxCount = p.bbox_count != null ? p.bbox_count : 0;
+                    const total = p.bbox_count_total != null ? p.bbox_count_total : bboxCount;
+                    const bboxDisplay = total > bboxCount ? bboxCount + ' (von ' + total + ')' : (bboxCount || '-');
+                    const withDeskew = p.bbox_with_deskew_count != null ? p.bbox_with_deskew_count : '-';
+                    const pct = p.bbox_with_deskew_pct != null ? p.bbox_with_deskew_pct + '%' : '-';
+                    html += '<tr>' +
+                        '<td style="padding: 8px; border: 1px solid #ccc;">' + escapeHtml(p.document_title || '-') + '</td>' +
+                        '<td style="padding: 8px; border: 1px solid #ccc;">Seite ' + (p.page_number != null ? p.page_number : '-') + '</td>' +
+                        '<td style="padding: 8px; border: 1px solid #ccc;">' + angle + '</td>' +
+                        '<td style="padding: 8px; border: 1px solid #ccc;">' + bboxDisplay + '</td>' +
+                        '<td style="padding: 8px; border: 1px solid #ccc;">' + withDeskew + '</td>' +
+                        '<td style="padding: 8px; border: 1px solid #ccc;">' + pct + '</td>' +
+                        '<td style="padding: 8px; border: 1px solid #ccc;"><button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px;" onclick="showPageInspect(' + p.page_id + ')">Inspect</button></td>' +
+                        '</tr>';
+                });
+                html += '</tbody></table>';
+                container.innerHTML = html;
+            } catch (err) {
+                container.innerHTML = '<p style="color: red;">Fehler beim Laden: ' + escapeHtml(err.message) + '</p>';
+                if (msgEl) msgEl.innerHTML = '<span style="color: red;">' + escapeHtml(err.message) + '</span>';
+                console.error('loadDeskewOverview error', err);
+            }
+        }
+
+        async function measureDeskewBatch() {
+            const btn = document.getElementById('measureDeskewBatchBtn');
+            const statusEl = document.getElementById('measureDeskewBatchStatus');
+            const msgEl = document.getElementById('deskewMessages');
+            if (btn) btn.disabled = true;
+            if (statusEl) statusEl.textContent = 'Messe...';
+            if (msgEl) msgEl.innerHTML = '';
+            try {
+                const response = await fetch(`${API_BASE}/api/pages/measure-deskew-batch`, { method: 'POST' });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.detail || response.statusText || 'Fehler beim Messen');
+                }
+                const n = data.measured != null ? data.measured : 0;
+                const errs = data.errors || [];
+                if (statusEl) statusEl.textContent = n + ' Seite(n) gemessen.';
+                if (errs.length > 0 && msgEl) {
+                    msgEl.innerHTML = '<span style="color: #856404;">Fehler bei ' + errs.length + ' Seite(n): ' +
+                        errs.map(function (e) { return 'Seite ' + e.page_id + ': ' + escapeHtml(e.error); }).join('; ') + '</span>';
+                }
+                loadDeskewOverview();
+            } catch (err) {
+                if (statusEl) statusEl.textContent = '';
+                if (msgEl) msgEl.innerHTML = '<span style="color: red;">' + escapeHtml(err.message) + '</span>';
+                console.error('measureDeskewBatch error', err);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
         function showPageInspect(pageId) {
             const importView = document.getElementById('importView');
             const reviewView = document.getElementById('reviewView');
             const pageInspectView = document.getElementById('pageInspectView');
             const qualityView = document.getElementById('qualityView');
+            const deskewView = document.getElementById('deskewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
             if (qualityView) qualityView.style.display = 'none';
+            if (deskewView) deskewView.style.display = 'none';
             if (pageInspectView) {
                 pageInspectView.style.display = 'block';
                 pageInspectView.classList.add('active');

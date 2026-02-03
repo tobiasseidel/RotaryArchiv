@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 import traceback
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -153,6 +153,149 @@ def extract_pages(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=detail
         ) from e
+
+
+@router.get("/deskew-overview")
+def get_deskew_overview(
+    document_id: int | None = Query(
+        None, description="Optional: nur Seiten dieses Dokuments"
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    Übersicht aller Seiten mit Deskew-Winkel (und optional Anteil BBoxen mit Winkelkorrektur).
+
+    Returns:
+        Liste: page_id, document_id, document_title, page_number, deskew_angle,
+               bbox_count, bbox_with_deskew_count, bbox_with_deskew_pct
+    """
+    import json
+
+    query = (
+        db.query(DocumentPage)
+        .join(Document, Document.id == DocumentPage.document_id)
+        .order_by(DocumentPage.document_id, DocumentPage.page_number)
+    )
+    if document_id is not None:
+        query = query.filter(DocumentPage.document_id == document_id)
+    pages = query.all()
+
+    result = []
+    for page in pages:
+        doc = page.document
+        document_title = (
+            (doc.title or doc.filename or f"Dokument #{page.document_id}")
+            if doc
+            else f"Dokument #{page.document_id}"
+        )
+
+        # Neuestes OCRResult mit bbox_data für BBox-Statistik
+        ocr_result = (
+            db.query(OCRResult)
+            .filter(
+                OCRResult.document_page_id == page.id,
+                OCRResult.bbox_data.isnot(None),
+            )
+            .order_by(OCRResult.created_at.desc())
+            .first()
+        )
+        bbox_count = 0
+        bbox_with_deskew_count = 0
+        if ocr_result and ocr_result.bbox_data:
+            bbox_list = (
+                ocr_result.bbox_data
+                if isinstance(ocr_result.bbox_data, list)
+                else json.loads(ocr_result.bbox_data)
+                if isinstance(ocr_result.bbox_data, str)
+                else []
+            )
+
+            # Nur BBoxen mit gültigen Koordinaten zählen (wie in Page Inspect dargestellt)
+            def _has_valid_coords(b):
+                bp = (
+                    b.get("bbox_pixel")
+                    if isinstance(b.get("bbox_pixel"), (list, tuple))
+                    else None
+                )
+                br = b.get("bbox") if isinstance(b.get("bbox"), (list, tuple)) else None
+                return (bp and len(bp) >= 4) or (br and len(br) >= 4)
+
+            bbox_count_total = len(bbox_list)
+            bbox_list_valid = [b for b in bbox_list if _has_valid_coords(b)]
+            bbox_count = len(bbox_list_valid)
+            bbox_with_deskew_count = sum(
+                1 for b in bbox_list_valid if b.get("deskew_angle") is not None
+            )
+        else:
+            bbox_count_total = 0
+            bbox_count = 0
+            bbox_with_deskew_count = 0
+        bbox_with_deskew_pct = (
+            round(bbox_with_deskew_count / bbox_count * 100.0, 1)
+            if bbox_count
+            else None
+        )
+
+        result.append(
+            {
+                "page_id": page.id,
+                "document_id": page.document_id,
+                "document_title": document_title,
+                "page_number": page.page_number,
+                "deskew_angle": round(page.deskew_angle, 2)
+                if page.deskew_angle is not None
+                else None,
+                "bbox_count": bbox_count,
+                "bbox_count_total": bbox_count_total,
+                "bbox_with_deskew_count": bbox_with_deskew_count,
+                "bbox_with_deskew_pct": bbox_with_deskew_pct,
+            }
+        )
+
+    return {"pages": result}
+
+
+@router.post("/measure-deskew-batch")
+def measure_deskew_batch(
+    document_id: int | None = Query(
+        None, description="Optional: nur Seiten dieses Dokuments"
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    Misst den Seitenwinkel (Skew) für alle Seiten, die noch keinen deskew_angle haben,
+    und speichert den Winkel in DocumentPage.deskew_angle.
+    """
+    query = (
+        db.query(DocumentPage)
+        .filter(DocumentPage.deskew_angle.is_(None))
+        .order_by(DocumentPage.document_id, DocumentPage.page_number)
+    )
+    if document_id is not None:
+        query = query.filter(DocumentPage.document_id == document_id)
+    pages = query.all()
+
+    measured = []
+    errors = []
+
+    for page in pages:
+        try:
+            img = _load_page_as_pil(page, db, dpi=200)
+            angle = detect_skew_angle(img)
+            page.deskew_angle = round(angle, 4)
+            measured.append({"page_id": page.id, "angle": page.deskew_angle})
+        except Exception as e:
+            errors.append({"page_id": page.id, "error": str(e)})
+            logging.warning("Deskew messen Seite %s: %s", page.id, e)
+
+    if measured:
+        db.commit()
+
+    return {
+        "measured": len(measured),
+        "page_ids": [m["page_id"] for m in measured],
+        "errors": errors,
+    }
 
 
 @router.get("/document/{document_id}")
