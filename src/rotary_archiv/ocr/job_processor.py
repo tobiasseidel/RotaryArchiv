@@ -104,7 +104,7 @@ async def process_ocr_job(job_id: int) -> None:
                 language=job.language,
                 use_correction=job.use_correction,
                 extract_bbox=True,  # Aktiviere BBox-Extraktion für Seiten-Jobs
-                deskew=False,  # TODO: aus job-Parameter oder API wenn vorhanden
+                deskew=True,  # Seite vor OCR begradigen (gleiche Logik wie Unskew-Vorschau)
             )
 
             # Abschluss

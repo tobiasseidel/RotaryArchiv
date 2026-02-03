@@ -236,7 +236,7 @@ async def process_bbox_ocr(
             img = Image.open(full_image_path)
             if page is not None and page.deskew_angle is not None:
                 img = deskew_image(img, page.deskew_angle)
-            cropped_image = crop_bbox_from_image(img, bbox_pixel)
+            cropped_image = crop_bbox_from_image(img, bbox_pixel_adjusted)
         elif pdf_path and page_number:
             # Extrahiere Seite aus PDF
             full_pdf_path = get_file_path(pdf_path)
