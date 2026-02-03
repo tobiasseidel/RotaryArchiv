@@ -645,7 +645,7 @@
                     <div style="border: 1px solid #ddd; border-radius: 8px; padding: 20px; background: white;">
                         <h3>2. Zeichendichte (Density)</h3>
                         <div id="detailDensityContent">
-                            <p><strong>Anzahl BBoxen:</strong> <span id="detailBboxCount">-</span></p>
+                            <p><strong>Anzahl BBoxen:</strong> <span id="detailBboxCount">-</span> | <strong>Geprüft:</strong> <span id="detailReviewedPct" style="font-weight: bold;">-</span>%</p>
                             <p><strong>Min:</strong> <span id="detailMinDensity" style="font-weight: bold;">-</span> | <strong>Max:</strong> <span id="detailMaxDensity" style="font-weight: bold;">-</span> Zeichen/1000 px</p>
                             <div id="detailDensityTable" style="margin-top: 15px; max-height: 300px; overflow-y: auto;">
                                 <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
@@ -655,10 +655,35 @@
                                             <th style="padding: 6px; border: 1px solid #ccc;">Zeichen</th>
                                             <th style="padding: 6px; border: 1px solid #ccc;">Fläche (px)</th>
                                             <th style="padding: 6px; border: 1px solid #ccc;">Zeichen/1k px</th>
+                                            <th style="padding: 6px; border: 1px solid #ccc;">Review-Status</th>
                                             <th style="padding: 6px; border: 1px solid #ccc;">Text (Vorschau)</th>
                                         </tr>
                                     </thead>
                                     <tbody id="detailDensityTableBody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Black Pixels per Char Card -->
+                    <div style="grid-column: 1 / -1; border: 1px solid #ddd; border-radius: 8px; padding: 20px; background: white;">
+                        <h3>3. Schwarze Pixel pro Zeichen</h3>
+                        <p style="font-size: 12px; color: #666;">Verhältnis dunkler Pixel in der Box zur Zeichenzahl. Hoher Wert = viel „Tinte“ pro Zeichen.</p>
+                        <div id="detailBlackPcContent">
+                            <p><strong>Min:</strong> <span id="detailMinBlackPc" style="font-weight: bold;">-</span> | <strong>Max:</strong> <span id="detailMaxBlackPc" style="font-weight: bold;">-</span> schwarze px/Zeichen</p>
+                            <div id="detailBlackPcTable" style="margin-top: 15px; max-height: 300px; overflow-y: auto;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                                    <thead>
+                                        <tr style="background: #e0e0e0;">
+                                            <th style="padding: 6px; border: 1px solid #ccc;">Box</th>
+                                            <th style="padding: 6px; border: 1px solid #ccc;">Schwarze px</th>
+                                            <th style="padding: 6px; border: 1px solid #ccc;">Zeichen</th>
+                                            <th style="padding: 6px; border: 1px solid #ccc;">Schwarze px/Zeichen</th>
+                                            <th style="padding: 6px; border: 1px solid #ccc;">Text (Vorschau)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="detailBlackPcTableBody">
                                     </tbody>
                                 </table>
                             </div>
@@ -694,6 +719,8 @@
                 <button class="btn btn-secondary" id="nextPageBtn" style="display: none;">Nächste Seite →</button>
                 <button class="btn btn-success" id="addBBoxBtn" title="Neue Box hinzufügen">+</button>
                 <button class="btn btn-secondary" id="measureSkewBtn" title="Schrägwinkel der Seite messen (Hough)">Schräge messen</button>
+                <button class="btn btn-secondary" id="measureSkewDebugBtn" title="Schrägwinkel mit Debug-Informationen messen">Schräge debuggen</button>
+                <button class="btn btn-secondary" id="showDeskewedBtn" title="Begradigte Seite mit erkannten Linien anzeigen">Begradigt anzeigen</button>
                 <button class="btn btn-secondary" id="qualityBtn" title="Qualitätsmetriken für diese Seite anzeigen">Qualität</button>
                 <button class="btn btn-primary" id="createReviewJobBtn" style="display: none;">Review-Job erstellen</button>
                 <button class="btn btn-primary" id="fullscreenBtn">Vollbild</button>
@@ -739,6 +766,7 @@
         let lastClickedIndex = -1; // Index der zuletzt angeklickten Zeile (für Shift-Range)
 
         // Quality-Metriken Config
+        const qualityBBoxCache = {}; // BBox-Daten pro page_id nach Aufklappen
         let densityConfig = {
             green_min: 3.5,
             green_max: 6.0,
@@ -1280,6 +1308,10 @@
         let isFullscreen = false;
         let textOverlays = [];
         let fontSize = 12;
+        let skewLinesLayer = null;
+        let deskewedImageOverlay = null;
+        let originalImageOverlay = null;
+        let isShowingDeskewed = false;
         let fontFamily = "'Courier New', 'Courier', monospace";  // Schreibmaschinenschrift
         let currentPageData = null;  // Speichert aktuelle Seiten-Daten (document_id, page_number, page_id)
         let isAddingBBox = false;  // Modus: Box hinzufügen
@@ -1333,6 +1365,25 @@
                 const measureSkewBtn = document.getElementById('measureSkewBtn');
                 if (measureSkewBtn) {
                     measureSkewBtn.onclick = () => measurePageSkew(data.page_id);
+                }
+                const measureSkewDebugBtn = document.getElementById('measureSkewDebugBtn');
+                if (measureSkewDebugBtn) {
+                    measureSkewDebugBtn.onclick = () => measurePageSkewDebug(data.page_id);
+                }
+                const showDeskewedBtn = document.getElementById('showDeskewedBtn');
+                if (showDeskewedBtn) {
+                    showDeskewedBtn.onclick = () => showDeskewedPageWithLines(data.page_id);
+                    showDeskewedBtn.textContent = 'Begradigt anzeigen'; // Reset Button-Text
+                }
+                // Reset Deskew-Status beim Laden einer neuen Seite
+                isShowingDeskewed = false;
+                if (skewLinesLayer) {
+                    if (map) map.removeLayer(skewLinesLayer);
+                    skewLinesLayer = null;
+                }
+                if (deskewedImageOverlay) {
+                    if (map) map.removeLayer(deskewedImageOverlay);
+                    deskewedImageOverlay = null;
                 }
                 const qualityBtn = document.getElementById('qualityBtn');
                 if (qualityBtn) {
@@ -2010,6 +2061,208 @@
                 }
             } catch (error) {
                 showMessage('Fehler beim Messen: ' + error.message, 'error');
+            }
+        }
+
+        async function measurePageSkewDebug(pageId) {
+            try {
+                showMessage('Lade Debug-Informationen...', 'info');
+                const response = await fetch(`${API_BASE}/api/pages/${pageId}/skew/debug`);
+                const data = await response.json();
+                if (response.ok) {
+                    // Erstelle detaillierte Debug-Ausgabe
+                    let debugText = `=== Skew-Debug für Seite ${pageId} ===\n\n`;
+                    debugText += `Erkannte Winkel: ${data.angle.toFixed(2)}°\n`;
+                    debugText += `Anzahl Linien: ${data.total_lines}\n`;
+                    debugText += `Gültige Winkel: ${data.valid_angles.length}\n\n`;
+
+                    if (data.angle_stats && Object.keys(data.angle_stats).length > 0) {
+                        debugText += `Winkel-Statistiken:\n`;
+                        debugText += `  Min: ${data.angle_stats.min.toFixed(2)}°\n`;
+                        debugText += `  Max: ${data.angle_stats.max.toFixed(2)}°\n`;
+                        debugText += `  Median: ${data.angle_stats.median.toFixed(2)}°\n`;
+                        debugText += `  Mittelwert: ${data.angle_stats.mean.toFixed(2)}°\n`;
+                        debugText += `  Std-Abw.: ${data.angle_stats.std.toFixed(2)}°\n`;
+                        debugText += `  Anzahl: ${data.angle_stats.count}\n\n`;
+                    }
+
+                    debugText += `Canny-Parameter:\n`;
+                    debugText += `  Low: ${data.canny_params.low}\n`;
+                    debugText += `  High: ${data.canny_params.high}\n\n`;
+
+                    debugText += `Hough-Parameter:\n`;
+                    debugText += `  Threshold: ${data.hough_params.threshold}\n`;
+                    debugText += `  Min Line Length: ${data.hough_params.minLineLength}\n`;
+                    debugText += `  Max Line Gap: ${data.hough_params.maxLineGap}\n\n`;
+
+                    if (data.lines_info && data.lines_info.length > 0) {
+                        debugText += `Erste 10 Linien (von ${data.lines_info.length}):\n`;
+                        data.lines_info.slice(0, 10).forEach((line, idx) => {
+                            debugText += `  ${idx + 1}. (${line.x1},${line.y1}) -> (${line.x2},${line.y2}), `;
+                            debugText += `Länge: ${line.length.toFixed(1)}px, `;
+                            debugText += `Winkel: ${line.normalized_angle.toFixed(2)}° `;
+                            debugText += `(raw: ${line.raw_angle.toFixed(2)}°) `;
+                            debugText += line.is_valid ? '[✓]' : '[✗]';
+                            debugText += '\n';
+                        });
+                        if (data.lines_info.length > 10) {
+                            debugText += `  ... und ${data.lines_info.length - 10} weitere\n`;
+                        }
+                    }
+
+                    // Zeige in Console und Alert
+                    console.log('Skew-Debug:', data);
+                    console.log(debugText);
+                    alert(debugText);
+                    showMessage(`Debug-Informationen geladen (siehe Console/Alert)`, 'success');
+                } else {
+                    showMessage('Fehler: ' + (data.detail || 'Unbekannter Fehler'), 'error');
+                }
+            } catch (error) {
+                console.error('Fehler beim Debug-Messen:', error);
+                showMessage('Fehler beim Debug-Messen: ' + error.message, 'error');
+            }
+        }
+
+        async function showDeskewedPageWithLines(pageId) {
+            try {
+                if (!map) {
+                    showMessage('Bitte öffnen Sie zuerst eine Seite im Inspect-View', 'error');
+                    return;
+                }
+
+                showMessage('Lade begradigte Seite und Linien...', 'info');
+
+                // Lade Linien-Daten
+                const linesResponse = await fetch(`${API_BASE}/api/pages/${pageId}/skew/lines`);
+                const linesData = await linesResponse.json();
+
+                if (!linesResponse.ok) {
+                    showMessage('Fehler beim Laden der Linien: ' + (linesData.detail || 'Unbekannter Fehler'), 'error');
+                    return;
+                }
+
+                // Entferne alte Linien-Layer
+                if (skewLinesLayer) {
+                    map.removeLayer(skewLinesLayer);
+                    skewLinesLayer = null;
+                }
+
+                // Entferne alle bestehenden Image-Overlays (außer dem Hauptbild)
+                map.eachLayer((layer) => {
+                    if (layer instanceof L.ImageOverlay && layer !== originalImageOverlay) {
+                        map.removeLayer(layer);
+                    }
+                });
+
+                // Entferne alte Bild-Overlays
+                if (deskewedImageOverlay) {
+                    map.removeLayer(deskewedImageOverlay);
+                    deskewedImageOverlay = null;
+                }
+
+                if (isShowingDeskewed) {
+                    // Zurück zum Original
+                    isShowingDeskewed = false;
+
+                    // Entferne begradigtes Bild und Linien
+                    if (deskewedImageOverlay) {
+                        map.removeLayer(deskewedImageOverlay);
+                        deskewedImageOverlay = null;
+                    }
+                    if (skewLinesLayer) {
+                        map.removeLayer(skewLinesLayer);
+                        skewLinesLayer = null;
+                    }
+
+                    // Lade Original-Seite neu (mit BBoxes)
+                    const inspectResponse = await fetch(`${API_BASE}/api/pages/${pageId}/inspect`);
+                    const inspectData = await inspectResponse.json();
+                    if (inspectResponse.ok) {
+                        // Entferne alle Overlays
+                        map.eachLayer((layer) => {
+                            if (layer instanceof L.ImageOverlay || layer instanceof L.LayerGroup) {
+                                map.removeLayer(layer);
+                            }
+                        });
+
+                        const imageUrl = `${API_BASE}${inspectData.image_url}`;
+                        const imageBounds = [
+                            [0, 0],
+                            [inspectData.image_height, inspectData.image_width]
+                        ];
+                        originalImageOverlay = L.imageOverlay(imageUrl, imageBounds).addTo(map);
+                        map.fitBounds(imageBounds, { padding: [50, 50], maxZoom: 0 });
+
+                        // Lade BBoxes neu (vereinfacht - könnte auch die showPageInspect Funktion aufrufen)
+                        // Für jetzt zeigen wir nur das Bild ohne BBoxes beim Zurückschalten
+                    }
+
+                    // Aktualisiere Button-Text
+                    const btn = document.getElementById('showDeskewedBtn');
+                    if (btn) btn.textContent = 'Begradigt anzeigen';
+
+                    showMessage('Original-Bild angezeigt', 'success');
+                    return;
+                }
+
+                // Zeige begradigtes Bild
+                isShowingDeskewed = true;
+                const deskewedImageUrl = `${API_BASE}/api/pages/${pageId}/deskewed-image`;
+
+                // Verwende die Bild-Dimensionen aus den Linien-Daten
+                const imageWidth = linesData.image_width;
+                const imageHeight = linesData.image_height;
+                const imageBounds = [
+                    [0, 0],
+                    [imageHeight, imageWidth]
+                ];
+
+                // Füge begradigtes Bild hinzu
+                deskewedImageOverlay = L.imageOverlay(deskewedImageUrl, imageBounds).addTo(map);
+                map.fitBounds(imageBounds, { padding: [50, 50], maxZoom: 0 });
+
+                // Zeichne Linien
+                if (linesData.lines && linesData.lines.length > 0) {
+                    const lineGroup = [];
+
+                    // Sortiere Linien nach Länge (längste zuerst) und zeige nur die wichtigsten
+                    const sortedLines = [...linesData.lines].sort((a, b) => b.length - a.length);
+                    const importantLines = sortedLines.slice(0, Math.min(50, sortedLines.length)); // Max 50 wichtigste Linien
+
+                    importantLines.forEach((line) => {
+                        // Konvertiere Koordinaten: Leaflet mit CRS.Simple verwendet [y, x] Format
+                        // y=0 ist oben, x=0 ist links (wie im Bild)
+                        // Die Linien-Koordinaten kommen bereits im Bild-Koordinatensystem
+                        const polyline = L.polyline(
+                            [[line.y1, line.x1], [line.y2, line.x2]],
+                            {
+                                color: Math.abs(line.angle) < 1 ? '#00ff00' : (Math.abs(line.angle) < 3 ? '#ffaa00' : '#ff0000'),
+                                weight: 2,
+                                opacity: 0.8,
+                                interactive: false
+                            }
+                        );
+                        lineGroup.push(polyline);
+                    });
+
+                    skewLinesLayer = L.layerGroup(lineGroup).addTo(map);
+
+                    // Aktualisiere Button-Text
+                    const btn = document.getElementById('showDeskewedBtn');
+                    if (btn) btn.textContent = 'Original anzeigen';
+
+                    showMessage(`Begradigte Seite angezeigt mit ${importantLines.length} wichtigsten Linien (von ${linesData.valid_lines} gültigen)`, 'success');
+                } else {
+                    // Aktualisiere Button-Text auch wenn keine Linien
+                    const btn = document.getElementById('showDeskewedBtn');
+                    if (btn) btn.textContent = 'Original anzeigen';
+
+                    showMessage('Begradigte Seite angezeigt, aber keine Linien gefunden', 'info');
+                }
+            } catch (error) {
+                console.error('Fehler beim Anzeigen der begradigten Seite:', error);
+                showMessage('Fehler: ' + error.message, 'error');
             }
         }
 
@@ -2902,6 +3155,15 @@
             }
         }
 
+        function getReviewStatusLabel(status) {
+            const s = (status || 'pending').toLowerCase();
+            if (s === 'confirmed') return { label: 'Bestätigt', color: '#0f5132' };
+            if (s === 'rejected') return { label: 'Abgelehnt', color: '#842029' };
+            if (s === 'auto_confirmed') return { label: 'Auto', color: '#0d6efd' };
+            if (s === 'ignored') return { label: 'Ignoriert', color: '#6c757d' };
+            return { label: 'Ausstehend', color: '#856404' };
+        }
+
         async function loadQualityPages() {
             try {
                 // Lade Config beim ersten Aufruf
@@ -2911,6 +3173,7 @@
 
                 const container = document.getElementById('qualityPagesContainer');
                 container.innerHTML = '<p style="color: #666;">Lade Qualitäts-Seiten...</p>';
+                Object.keys(qualityBBoxCache).forEach(k => delete qualityBBoxCache[k]); // Cache leeren bei neuem Laden
 
                 // Baue Query-Parameter aus Filtern
                 const params = new URLSearchParams();
@@ -2921,8 +3184,9 @@
                 if (docId) params.append('document_id', docId);
                 if (minCoverage) params.append('min_coverage', minCoverage);
                 if (maxCoverage) params.append('max_coverage', maxCoverage);
+                params.append('include_bboxes', 'false'); // Eine leichte Anfrage; BBox-Daten beim Aufklappen laden
 
-                const url = `${API_BASE}/api/quality/pages${params.toString() ? '?' + params.toString() : ''}`;
+                const url = `${API_BASE}/api/quality/pages?${params.toString()}`;
                 const response = await fetch(url);
 
                 if (!response.ok) {
@@ -2947,8 +3211,11 @@
                                 <th>Coverage</th>
                                 <th>Unbedeckte Pixel</th>
                                 <th>BBoxen</th>
+                                <th>Review</th>
                                 <th>Min Dichte</th>
                                 <th>Max Dichte</th>
+                                <th>Min Black/Char</th>
+                                <th>Max Black/Char</th>
                                 <th>Berechnet</th>
                                 <th>Aktionen</th>
                             </tr>
@@ -2963,6 +3230,8 @@
                     const maxDensity = page.max_chars_per_1k_px ? page.max_chars_per_1k_px.toFixed(2) : '0.00';
                     const minDensityColor = getDensityColor(page.min_chars_per_1k_px || 0);
                     const maxDensityColor = getDensityColor(page.max_chars_per_1k_px || 0);
+                    const minBlackChar = page.min_black_pixels_per_char != null ? page.min_black_pixels_per_char.toFixed(1) : '–';
+                    const maxBlackChar = page.max_black_pixels_per_char != null ? page.max_black_pixels_per_char.toFixed(1) : '–';
                     const computedDate = page.computed_at ? new Date(page.computed_at).toLocaleString('de-DE') : '-';
                     const documentTitle = page.document_title || (page.document_id ? `Dokument #${page.document_id}` : 'Unbekannt');
                     const bboxDensities = page.bbox_densities || [];
@@ -2977,8 +3246,11 @@
                             <td><strong style="color: ${coverageColor};">${coveragePercent}%</strong></td>
                             <td>${page.uncovered_dark_pixels} / ${page.total_dark_pixels}</td>
                             <td>${page.bbox_count}</td>
+                            <td><strong>${page.reviewed_pct != null ? page.reviewed_pct + '%' : '–'}</strong></td>
                             <td><strong style="color: ${minDensityColor};">${minDensity}</strong></td>
                             <td><strong style="color: ${maxDensityColor};">${maxDensity}</strong></td>
+                            <td>${minBlackChar}</td>
+                            <td>${maxBlackChar}</td>
                             <td>${computedDate}</td>
                             <td>
                                 <button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px;" onclick="showQualityDetail(${page.page_id})">
@@ -2990,7 +3262,7 @@
                             </td>
                         </tr>
                         <tr id="bboxListRow_${page.page_id}" style="display: none;">
-                            <td colspan="9" style="padding: 15px; background: #f9f9f9;">
+                            <td colspan="12" style="padding: 15px; background: #f9f9f9;">
                                 <div style="max-height: 400px; overflow-y: auto;">
                                     <table style="width: 100%; border-collapse: collapse;">
                                         <thead>
@@ -3000,11 +3272,15 @@
                                                 <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Zeichen</th>
                                                 <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Fläche (px)</th>
                                                 <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Dichte (Zeichen/1000px)</th>
+                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Schwarze px/Zeichen</th>
+                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Review-Status</th>
                                                 <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Aktionen</th>
                                             </tr>
                                         </thead>
                                         <tbody id="bboxListBody_${page.page_id}">
-                                            ${bboxDensities.map(bbox => `
+                                            ${bboxDensities.map(bbox => {
+                                                const rs = getReviewStatusLabel(bbox.review_status);
+                                                return `
                                                 <tr>
                                                     <td style="padding: 6px; border: 1px solid #ddd;">${bbox.index}</td>
                                                     <td style="padding: 6px; border: 1px solid #ddd; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${(bbox.text_preview || '').replace(/"/g, '&quot;')}">${bbox.text_preview || '-'}</td>
@@ -3015,13 +3291,15 @@
                                                             ${bbox.chars_per_1k_px ? bbox.chars_per_1k_px.toFixed(2) : '0.00'}
                                                         </strong>
                                                     </td>
+                                                    <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${bbox.black_pixels_per_char != null ? bbox.black_pixels_per_char.toFixed(1) : '–'}</td>
+                                                    <td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><span style="color: ${rs.color}; font-weight: bold;">${rs.label}</span></td>
                                                     <td style="padding: 6px; border: 1px solid #ddd; text-align: center;">
                                                         <button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white;" onclick="editBBox(${page.page_id}, ${bbox.index})">
                                                             Bearbeiten
                                                         </button>
                                                     </td>
                                                 </tr>
-                                            `).join('')}
+                                            `; }).join('')}
                                         </tbody>
                                     </table>
                                 </div>
@@ -3038,13 +3316,90 @@
             }
         }
 
-        function toggleQualityBBoxList(pageId) {
+        async function toggleQualityBBoxList(pageId) {
             const row = document.getElementById(`bboxListRow_${pageId}`);
             const icon = document.getElementById(`toggleIcon_${pageId}`);
+            const tbody = document.getElementById(`bboxListBody_${pageId}`);
 
             if (!row || !icon) return;
 
             if (row.style.display === 'none') {
+                // Aufklappen: ggf. BBox-Daten nachladen (eine Abfrage pro aufgeklappter Zeile)
+                if (!tbody.querySelector('tr') && !qualityBBoxCache[pageId]) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="padding:12px;color:#666;">Lade BBox-Daten...</td></tr>';
+                    row.style.display = '';
+                    icon.textContent = '−';
+                    try {
+                        const response = await fetch(`${API_BASE}/api/quality/pages/${pageId}`);
+                        if (!response.ok) throw new Error(response.statusText);
+                        const data = await response.json();
+                        const density = data.density || {};
+                        const blackPc = data.black_pixels_per_char || {};
+                        const bboxDensities = [].concat(density.bboxes || []);
+                        const bboxBlackPc = {};
+                        (blackPc.bboxes || []).forEach(b => { bboxBlackPc[b.index] = b; });
+                        bboxDensities.forEach(bbox => {
+                            const bp = bboxBlackPc[bbox.index];
+                            if (bp) {
+                                bbox.black_pixels = bp.black_pixels;
+                                bbox.black_pixels_per_char = bp.black_pixels_per_char;
+                            }
+                        });
+                        qualityBBoxCache[pageId] = bboxDensities;
+                        tbody.innerHTML = '';
+                        bboxDensities.forEach(bbox => {
+                            const rs = getReviewStatusLabel(bbox.review_status);
+                            const tr = document.createElement('tr');
+                            tr.innerHTML = `
+                                <td style="padding: 6px; border: 1px solid #ddd;">${bbox.index}</td>
+                                <td style="padding: 6px; border: 1px solid #ddd; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${(bbox.text_preview || '').replace(/"/g, '&quot;')}">${bbox.text_preview || '-'}</td>
+                                <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${bbox.char_count || 0}</td>
+                                <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${bbox.area_px || 0}</td>
+                                <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">
+                                    <strong style="color: ${getDensityColor(bbox.chars_per_1k_px || 0)};">
+                                        ${bbox.chars_per_1k_px != null ? bbox.chars_per_1k_px.toFixed(2) : '0.00'}
+                                    </strong>
+                                </td>
+                                <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${bbox.black_pixels_per_char != null ? bbox.black_pixels_per_char.toFixed(1) : '–'}</td>
+                                <td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><span style="color: ${rs.color}; font-weight: bold;">${rs.label}</span></td>
+                                <td style="padding: 6px; border: 1px solid #ddd; text-align: center;">
+                                    <button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white;" onclick="editBBox(${pageId}, ${bbox.index})">
+                                        Bearbeiten
+                                    </button>
+                                </td>
+                            `;
+                            tbody.appendChild(tr);
+                        });
+                    } catch (err) {
+                        tbody.innerHTML = '<tr><td colspan="8" style="padding:12px;color:#842029;">Fehler: ' + err.message + '</td></tr>';
+                    }
+                } else if (qualityBBoxCache[pageId] && tbody) {
+                    // Cache vorhanden: Zeilen aus Cache wieder einfügen (nach Neu-Laden der Liste ist tbody leer)
+                    tbody.innerHTML = '';
+                    qualityBBoxCache[pageId].forEach(bbox => {
+                        const rs = getReviewStatusLabel(bbox.review_status);
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td style="padding: 6px; border: 1px solid #ddd;">${bbox.index}</td>
+                            <td style="padding: 6px; border: 1px solid #ddd; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${(bbox.text_preview || '').replace(/"/g, '&quot;')}">${bbox.text_preview || '-'}</td>
+                            <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${bbox.char_count || 0}</td>
+                            <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${bbox.area_px || 0}</td>
+                            <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">
+                                <strong style="color: ${getDensityColor(bbox.chars_per_1k_px || 0)};">
+                                    ${bbox.chars_per_1k_px != null ? bbox.chars_per_1k_px.toFixed(2) : '0.00'}
+                                </strong>
+                            </td>
+                            <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${bbox.black_pixels_per_char != null ? bbox.black_pixels_per_char.toFixed(1) : '–'}</td>
+                            <td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><span style="color: ${rs.color}; font-weight: bold;">${rs.label}</span></td>
+                            <td style="padding: 6px; border: 1px solid #ddd; text-align: center;">
+                                <button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white;" onclick="editBBox(${pageId}, ${bbox.index})">
+                                    Bearbeiten
+                                </button>
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
                 row.style.display = '';
                 icon.textContent = '−';
             } else {
@@ -3094,10 +3449,12 @@
                 const coveragePercent = coverage.coverage_ratio ? (coverage.coverage_ratio * 100).toFixed(1) : '0.0';
                 document.getElementById('detailCoverageRatio').textContent = coveragePercent;
 
-                // Zeige Density
+                // Zeige Density + Review-%
                 const density = data.density || {};
                 const summary = density.summary || {};
                 document.getElementById('detailBboxCount').textContent = summary.bbox_count || 0;
+                const reviewedPct = data.reviewed_pct != null ? data.reviewed_pct : '–';
+                document.getElementById('detailReviewedPct').textContent = typeof reviewedPct === 'number' ? reviewedPct : reviewedPct;
                 const minDensityValue = summary.min_chars_per_1k_px || 0;
                 const maxDensityValue = summary.max_chars_per_1k_px || 0;
                 const minDensityEl = document.getElementById('detailMinDensity');
@@ -3107,13 +3464,14 @@
                 maxDensityEl.textContent = maxDensityValue.toFixed(2);
                 maxDensityEl.style.color = getDensityColor(maxDensityValue);
 
-                // Zeige Density-Tabelle
+                // Zeige Density-Tabelle (mit Review-Status)
                 const tbody = document.getElementById('detailDensityTableBody');
                 tbody.innerHTML = '';
                 const bboxes = density.bboxes || [];
                 bboxes.forEach(bbox => {
                     const densityValue = bbox.chars_per_1k_px || 0;
                     const densityColor = getDensityColor(densityValue);
+                    const rs = getReviewStatusLabel(bbox.review_status);
                     const row = document.createElement('tr');
                     row.innerHTML = `
                         <td style="padding: 6px; border: 1px solid #ccc;">${bbox.index}</td>
@@ -3122,9 +3480,36 @@
                         <td style="padding: 6px; border: 1px solid #ccc;">
                             <strong style="color: ${densityColor};">${densityValue.toFixed(2)}</strong>
                         </td>
-                        <td style="padding: 6px; border: 1px solid #ccc; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${bbox.text_preview}">${bbox.text_preview}</td>
+                        <td style="padding: 6px; border: 1px solid #ccc;"><span style="color: ${rs.color}; font-weight: bold;">${rs.label}</span></td>
+                        <td style="padding: 6px; border: 1px solid #ccc; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${bbox.text_preview || ''}">${bbox.text_preview || '–'}</td>
                     `;
                     tbody.appendChild(row);
+                });
+
+                // Schwarze Pixel pro Zeichen
+                const blackPc = data.black_pixels_per_char || {};
+                const blackPcSummary = blackPc.summary || {};
+                const minBlackPc = blackPcSummary.min_black_pixels_per_char;
+                const maxBlackPc = blackPcSummary.max_black_pixels_per_char;
+                const minBlackPcEl = document.getElementById('detailMinBlackPc');
+                const maxBlackPcEl = document.getElementById('detailMaxBlackPc');
+                minBlackPcEl.textContent = minBlackPc != null ? minBlackPc.toFixed(1) : '–';
+                maxBlackPcEl.textContent = maxBlackPc != null ? maxBlackPc.toFixed(1) : '–';
+
+                const blackPcTbody = document.getElementById('detailBlackPcTableBody');
+                blackPcTbody.innerHTML = '';
+                const blackPcBboxes = blackPc.bboxes || [];
+                blackPcBboxes.forEach(bbox => {
+                    const row = document.createElement('tr');
+                    const bpChar = bbox.black_pixels_per_char != null ? bbox.black_pixels_per_char.toFixed(1) : '–';
+                    row.innerHTML = `
+                        <td style="padding: 6px; border: 1px solid #ccc;">${bbox.index}</td>
+                        <td style="padding: 6px; border: 1px solid #ccc;">${bbox.black_pixels ?? '–'}</td>
+                        <td style="padding: 6px; border: 1px solid #ccc;">${bbox.char_count ?? '–'}</td>
+                        <td style="padding: 6px; border: 1px solid #ccc;">${bpChar}</td>
+                        <td style="padding: 6px; border: 1px solid #ccc; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${bbox.text_preview || ''}">${bbox.text_preview || '–'}</td>
+                    `;
+                    blackPcTbody.appendChild(row);
                 });
 
                 // Scroll zu Detailansicht
@@ -3163,7 +3548,7 @@
         }
 
         async function batchCreateQualityJobs() {
-            if (!confirm('Möchten Sie Quality-Jobs für alle Seiten ohne Metriken erstellen? Dies kann viele Jobs erzeugen.')) {
+            if (!confirm('Möchten Sie Quality-Jobs für alle Seiten mit BBox erstellen? Bereits berechnete Seiten werden dabei nachberechnet (Metriken aktualisiert). Dies kann viele Jobs erzeugen.')) {
                 return;
             }
 

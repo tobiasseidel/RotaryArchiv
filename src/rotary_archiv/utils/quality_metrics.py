@@ -25,6 +25,9 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Gleicher X-Skalierungsfaktor wie in bbox_ocr.py und review.py crop-preview
+BBOX_CROP_X_SCALE = 0.7
+
 
 def compute_coverage(
     image: "Image.Image",
@@ -80,7 +83,7 @@ def compute_coverage(
     for bbox_item in bbox_list:
         bbox_pixel = bbox_item.get("bbox_pixel")
         if not bbox_pixel or len(bbox_pixel) != 4:
-            logger.warning(f"Ungültige bbox_pixel in BBox: {bbox_item}")
+            logger.debug("Ungültige bbox_pixel in BBox: %s", bbox_item)
             continue
 
         x1, y1, x2, y2 = bbox_pixel
@@ -93,7 +96,13 @@ def compute_coverage(
 
         # Stelle sicher, dass x1 < x2 und y1 < y2
         if x1 >= x2 or y1 >= y2:
-            logger.warning(f"Ungültige BBox-Dimensionen: ({x1}, {y1}, {x2}, {y2})")
+            logger.debug(
+                "Ungültige BBox-Dimensionen (übersprungen): (%s, %s, %s, %s)",
+                x1,
+                y1,
+                x2,
+                y2,
+            )
             continue
 
         # Markiere Bereich als abgedeckt
@@ -144,7 +153,7 @@ def compute_density(
     for idx, bbox_item in enumerate(bbox_list):
         bbox_pixel = bbox_item.get("bbox_pixel")
         if not bbox_pixel or len(bbox_pixel) != 4:
-            logger.warning(f"Ungültige bbox_pixel in BBox {idx}: {bbox_item}")
+            logger.debug("Ungültige bbox_pixel in BBox %s: %s", idx, bbox_item)
             continue
 
         x1, y1, x2, y2 = bbox_pixel
@@ -152,7 +161,7 @@ def compute_density(
         # Berechne Fläche
         area_px = abs((x2 - x1) * (y2 - y1))
         if area_px == 0:
-            logger.warning(f"BBox {idx} hat Fläche 0: {bbox_pixel}")
+            logger.debug("BBox %s hat Fläche 0, verwende 1: %s", idx, bbox_pixel)
             area_px = 1  # Vermeide Division durch 0
 
         # Hole Text (reviewed_text hat Vorrang, sonst text)
@@ -196,3 +205,124 @@ def compute_density(
         }
 
     return bbox_densities, summary
+
+
+def compute_black_pixels_per_char(
+    image: "Image.Image",
+    bbox_list: list[dict[str, Any]],
+    dark_threshold: int = 200,
+    crop_padding: int = 5,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """
+    Berechnet pro Box: Schwarze (dunkle) Pixel in der Box im Verhältnis zur Zeichenzahl.
+
+    Crop-Logik ist identisch mit der Dialog-Vorschau (review crop-preview / bbox_ocr):
+    - X-Koordinaten werden mit BBOX_CROP_X_SCALE (0.7) skaliert
+    - crop_bbox_from_image mit gleichem Padding
+
+    Metrik: black_pixels_per_char = Anzahl dunkler Pixel in der Box / Zeichenanzahl im Text.
+
+    Args:
+        image: PIL Image (RGB oder Graustufen)
+        bbox_list: Liste von Dicts mit 'bbox_pixel' [x1, y1, x2, y2] und 'text'
+        dark_threshold: Schwellwert für „dunkel“ (0-255, Standard: 200)
+        crop_padding: Padding in Pixeln wie bei crop_bbox_from_image (Standard: 5)
+
+    Returns:
+        Tuple von:
+        - Liste pro Box: {index, black_pixels, char_count, black_pixels_per_char, text_preview}
+        - Summary: {min_black_pixels_per_char, max_black_pixels_per_char, bbox_count_with_chars}
+    """
+    if not PIL_AVAILABLE:
+        raise ImportError("PIL/Pillow ist nicht installiert")
+    if not NUMPY_AVAILABLE:
+        raise ImportError("NumPy ist nicht installiert")
+
+    try:
+        from src.rotary_archiv.utils.image_utils import crop_bbox_from_image
+    except ImportError:
+        crop_bbox_from_image = None
+
+    result_bboxes: list[dict[str, Any]] = []
+    black_per_char_list: list[float] = []
+
+    for idx, bbox_item in enumerate(bbox_list):
+        bbox_pixel = bbox_item.get("bbox_pixel")
+        if not bbox_pixel or len(bbox_pixel) != 4:
+            logger.debug("Ungültige bbox_pixel in BBox %s: %s", idx, bbox_item)
+            continue
+
+        x1, y1, x2, y2 = bbox_pixel
+        # Gleiche Anpassung wie Dialog-Vorschau und bbox_ocr: X-Koordinaten * 0.7
+        x1_adj = int(x1 * BBOX_CROP_X_SCALE)
+        x2_adj = int(x2 * BBOX_CROP_X_SCALE)
+        bbox_pixel_adjusted = [x1_adj, y1, x2_adj, y2]
+
+        if crop_bbox_from_image is not None:
+            # Exakt gleicher Crop wie in der Dialog-Vorschau (crop_bbox_from_image mit Padding)
+            try:
+                cropped_pil = crop_bbox_from_image(
+                    image, bbox_pixel_adjusted, padding=crop_padding
+                )
+            except (ValueError, Exception):
+                logger.debug(
+                    "Crop fehlgeschlagen für BBox %s: %s", idx, bbox_pixel_adjusted
+                )
+                continue
+            gray_crop = (
+                cropped_pil.convert("L") if cropped_pil.mode != "L" else cropped_pil
+            )
+            crop_array = np.array(gray_crop, dtype=np.uint8)
+        else:
+            # Fallback: direkter Slice mit angepassten Koordinaten (ohne Padding)
+            w, h = image.size
+            x1_clip = max(0, min(x1_adj, w))
+            y1_clip = max(0, min(y1, h))
+            x2_clip = max(0, min(x2_adj, w))
+            y2_clip = max(0, min(y2, h))
+            if x1_clip >= x2_clip or y1_clip >= y2_clip:
+                logger.debug("Ungültige BBox-Dimensionen (übersprungen) in %s", idx)
+                continue
+            gray_img = image.convert("L") if image.mode != "L" else image
+            gray_array = np.array(gray_img, dtype=np.uint8)
+            crop_array = gray_array[y1_clip:y2_clip, x1_clip:x2_clip]
+
+        dark_pixels = crop_array < dark_threshold
+        black_pixels = int(np.sum(dark_pixels))
+
+        text = bbox_item.get("reviewed_text") or bbox_item.get("text") or ""
+        char_count = len(text)
+        text_preview = text[:50] + ("..." if len(text) > 50 else "")
+
+        if char_count > 0:
+            black_pixels_per_char = black_pixels / char_count
+            black_per_char_list.append(black_pixels_per_char)
+        else:
+            black_pixels_per_char = None  # keine Zeichen → Verhältnis undefiniert
+
+        result_bboxes.append(
+            {
+                "index": idx,
+                "black_pixels": black_pixels,
+                "char_count": char_count,
+                "black_pixels_per_char": float(black_pixels_per_char)
+                if black_pixels_per_char is not None
+                else None,
+                "text_preview": text_preview,
+            }
+        )
+
+    if black_per_char_list:
+        summary = {
+            "min_black_pixels_per_char": float(min(black_per_char_list)),
+            "max_black_pixels_per_char": float(max(black_per_char_list)),
+            "bbox_count_with_chars": len(black_per_char_list),
+        }
+    else:
+        summary = {
+            "min_black_pixels_per_char": None,
+            "max_black_pixels_per_char": None,
+            "bbox_count_with_chars": 0,
+        }
+
+    return result_bboxes, summary

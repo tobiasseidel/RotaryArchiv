@@ -258,6 +258,11 @@ class OllamaVisionOCR:
         for match in matches:
             ref_text = match[0].strip()
             x1, y1, x2, y2 = int(match[1]), int(match[2]), int(match[3]), int(match[4])
+
+            # Ungültige Boxen (0,0,0,0 oder keine Fläche) vom Modell nicht speichern
+            if x1 >= x2 or y1 >= y2:
+                continue
+
             actual_text = (
                 match[5].strip() if len(match) > 5 and match[5].strip() else ref_text
             )

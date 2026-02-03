@@ -2,10 +2,13 @@
 API Endpoints für Qualitätsmetriken
 """
 
+import copy
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
+from sqlalchemy import func as sqlfunc
 from sqlalchemy.orm import Session
 
 from src.rotary_archiv.config import settings
@@ -159,87 +162,114 @@ def get_quality_pages(
     max_coverage: float | None = Query(
         None, description="Optional: Maximal-Coverage-Ratio (0.0-1.0)"
     ),
+    include_bboxes: bool = Query(
+        True,
+        description="Bei False nur Zusammenfassung pro Seite (keine bbox_densities), für schnelle Listen-Ansicht",
+    ),
     db: Session = Depends(get_db),
 ):
     """
     Hole alle Seiten mit Qualitätsmetriken (filterbar).
+    Eine Anfrage liefert das Datenpaket für die Tabelle; BBox-Daten pro Zeile
+    können separat beim Aufklappen abgerufen werden (GET /pages/{page_id}).
 
     Args:
         document_id: Optional: nur Seiten dieses Dokuments
         min_coverage: Optional: Mindest-Coverage-Ratio
         max_coverage: Optional: Maximal-Coverage-Ratio
+        include_bboxes: Bei False nur Summary (keine bbox_densities), kleineres Payload
 
     Returns:
         Liste von Seiten mit Qualitätsmetriken
     """
 
     try:
-        # Finde alle DocumentPages mit OCRResult.quality_metrics
-        query = (
-            db.query(DocumentPage)
-            .join(OCRResult, OCRResult.document_page_id == DocumentPage.id)
-            .join(Document, DocumentPage.document_id == Document.id)
+        # Eine Abfrage: neuestes OCRResult pro Seite mit DocumentPage + Document
+        # Subquery: (document_page_id, max(created_at)) für OCRResults mit quality_metrics
+        latest_ocr_subq = (
+            db.query(
+                OCRResult.document_page_id,
+                sqlfunc.max(OCRResult.created_at).label("max_created_at"),
+            )
             .filter(OCRResult.quality_metrics.isnot(None))
+            .group_by(OCRResult.document_page_id)
+        ).subquery("latest_ocr")
+
+        # Join: OCRResult (nur neueste pro Seite) + DocumentPage + Document
+        query = (
+            db.query(OCRResult, DocumentPage, Document)
+            .join(
+                latest_ocr_subq,
+                (OCRResult.document_page_id == latest_ocr_subq.c.document_page_id)
+                & (OCRResult.created_at == latest_ocr_subq.c.max_created_at),
+            )
+            .join(DocumentPage, DocumentPage.id == OCRResult.document_page_id)
+            .join(Document, Document.id == DocumentPage.document_id)
         )
 
         if document_id:
             query = query.filter(DocumentPage.document_id == document_id)
 
-        # Gruppiere nach page_id (eine Seite kann mehrere OCRResults haben)
-        pages_with_metrics = (
-            query.distinct(DocumentPage.id)
-            .order_by(DocumentPage.created_at.desc())
-            .all()
-        )
+        rows = query.order_by(DocumentPage.created_at.desc()).all()
 
         result = []
-        for page in pages_with_metrics:
-            # Hole neuestes OCRResult mit quality_metrics für diese Seite
-            ocr_result = (
-                db.query(OCRResult)
-                .filter(
-                    OCRResult.document_page_id == page.id,
-                    OCRResult.quality_metrics.isnot(None),
-                )
-                .order_by(OCRResult.created_at.desc())
-                .first()
-            )
-
-            if not ocr_result or not ocr_result.quality_metrics:
+        for ocr_result, page, document in rows:
+            if not ocr_result.quality_metrics:
                 continue
 
             quality_metrics = ocr_result.quality_metrics
             coverage = quality_metrics.get("coverage", {})
             density = quality_metrics.get("density", {})
             density_summary = density.get("summary", {})
+            black_pc = quality_metrics.get("black_pixels_per_char", {})
+            black_pc_summary = black_pc.get("summary", {})
 
             coverage_ratio = coverage.get("coverage_ratio", 0.0)
-
-            # Filter nach Coverage-Ratio falls angegeben
             if min_coverage is not None and coverage_ratio < min_coverage:
                 continue
             if max_coverage is not None and coverage_ratio > max_coverage:
                 continue
 
-            document = None
-            document_title = "Unbekannt"
-            if page.document_id:
-                document = (
-                    db.query(Document).filter(Document.id == page.document_id).first()
-                )
-                if document:
-                    document_title = (
-                        document.title
-                        or document.filename
-                        or f"Dokument #{page.document_id}"
-                    )
-                else:
-                    document_title = f"Dokument #{page.document_id} (nicht gefunden)"
-            else:
-                logger.warning(f"Seite {page.id} hat keine document_id")
+            document_title = (
+                document.title or document.filename or f"Dokument #{page.document_id}"
+            )
 
-            # Hole BBox-Daten mit Dichte-Metriken
-            bbox_densities = density.get("bboxes", [])
+            # Review-Status aus bbox_data: Anteil geprüfter BBoxen (confirmed/rejected/auto_confirmed)
+            bbox_data_list = ocr_result.bbox_data
+            if isinstance(bbox_data_list, str):
+                try:
+                    bbox_data_list = (
+                        json.loads(bbox_data_list) if bbox_data_list else []
+                    )
+                except json.JSONDecodeError:
+                    bbox_data_list = []
+            bbox_data_list = bbox_data_list if isinstance(bbox_data_list, list) else []
+            total_bboxes = len(bbox_data_list)
+            reviewed_count = sum(
+                1
+                for b in bbox_data_list
+                if b.get("review_status") in ("confirmed", "rejected", "auto_confirmed")
+            )
+            reviewed_pct = (
+                round(reviewed_count / total_bboxes * 100.0, 1) if total_bboxes else 0.0
+            )
+
+            if include_bboxes:
+                bbox_densities = list(density.get("bboxes", []))
+                bbox_black_pc = {b["index"]: b for b in black_pc.get("bboxes", [])}
+                for bbox in bbox_densities:
+                    idx = bbox.get("index")
+                    if idx in bbox_black_pc:
+                        bp = bbox_black_pc[idx]
+                        bbox["black_pixels"] = bp.get("black_pixels")
+                        bbox["black_pixels_per_char"] = bp.get("black_pixels_per_char")
+                    if idx < len(bbox_data_list):
+                        bd = bbox_data_list[idx]
+                        bbox["review_status"] = bd.get("review_status", "pending")
+                        bbox["reviewed_at"] = bd.get("reviewed_at")
+                        bbox["reviewed_by"] = bd.get("reviewed_by")
+            else:
+                bbox_densities = []
 
             result.append(
                 {
@@ -256,8 +286,15 @@ def get_quality_pages(
                     "max_chars_per_1k_px": density_summary.get(
                         "max_chars_per_1k_px", 0.0
                     ),
+                    "min_black_pixels_per_char": black_pc_summary.get(
+                        "min_black_pixels_per_char"
+                    ),
+                    "max_black_pixels_per_char": black_pc_summary.get(
+                        "max_black_pixels_per_char"
+                    ),
                     "bbox_count": density_summary.get("bbox_count", 0),
-                    "bbox_densities": bbox_densities,  # Liste mit Dichte-Daten pro Box
+                    "reviewed_pct": reviewed_pct,
+                    "bbox_densities": bbox_densities,
                     "computed_at": ocr_result.created_at.isoformat()
                     if ocr_result.created_at
                     else None,
@@ -318,7 +355,34 @@ def get_page_quality_metrics(page_id: int, db: Session = Depends(get_db)):
             detail="Qualitätsmetriken für diese Seite noch nicht berechnet",
         )
 
-    return ocr_result.quality_metrics
+    # Review-Status aus bbox_data in density.bboxes mergen + reviewed_pct
+    result = copy.deepcopy(ocr_result.quality_metrics)
+    bbox_data_list = ocr_result.bbox_data
+    if isinstance(bbox_data_list, str):
+        try:
+            bbox_data_list = json.loads(bbox_data_list) if bbox_data_list else []
+        except json.JSONDecodeError:
+            bbox_data_list = []
+    bbox_data_list = bbox_data_list if isinstance(bbox_data_list, list) else []
+    total_bboxes = len(bbox_data_list)
+    reviewed_count = sum(
+        1
+        for b in bbox_data_list
+        if b.get("review_status") in ("confirmed", "rejected", "auto_confirmed")
+    )
+    result["reviewed_pct"] = (
+        round(reviewed_count / total_bboxes * 100.0, 1) if total_bboxes else 0.0
+    )
+    density = result.get("density", {})
+    for bbox in density.get("bboxes", []):
+        idx = bbox.get("index")
+        if isinstance(idx, int) and idx < len(bbox_data_list):
+            bd = bbox_data_list[idx]
+            bbox["review_status"] = bd.get("review_status", "pending")
+            bbox["reviewed_at"] = bd.get("reviewed_at")
+            bbox["reviewed_by"] = bd.get("reviewed_by")
+
+    return result
 
 
 @router.post("/pages/{page_id}/compute", response_model=QualityJobCreateResponse)
@@ -383,7 +447,7 @@ def batch_create_quality_jobs(
     db: Session = Depends(get_db),
 ):
     """
-    Erstellt Quality-Jobs für alle Seiten mit bbox_data aber ohne quality_metrics (Bestand nachholen).
+    Erstellt Quality-Jobs für alle Seiten mit bbox_data (inkl. Seiten die bereits Metriken haben = Nachberechnung).
 
     Args:
         document_id: Optional: nur Seiten dieses Dokuments
@@ -391,9 +455,7 @@ def batch_create_quality_jobs(
     Returns:
         Anzahl erstellter Jobs und Liste von Job-IDs
     """
-    # Finde alle DocumentPages mit OCRResult.bbox_data
-    # Wichtig: Eine Seite kann mehrere OCRResults haben - wir suchen nur Seiten,
-    # bei denen KEIN OCRResult quality_metrics hat
+    # Finde alle DocumentPages mit OCRResult.bbox_data (mit und ohne quality_metrics)
 
     # Schritt 1: Finde alle Seiten mit bbox_data
     pages_with_bbox_query = (
@@ -410,38 +472,26 @@ def batch_create_quality_jobs(
 
     page_ids_with_bbox = {row[0] for row in pages_with_bbox_query.all()}
 
-    # Schritt 2: Finde alle Seiten mit quality_metrics
-    pages_with_metrics_query = (
-        db.query(OCRResult.document_page_id)
-        .filter(OCRResult.quality_metrics.isnot(None))
-        .distinct()
-    )
-
-    page_ids_with_metrics = {row[0] for row in pages_with_metrics_query.all()}
-
-    # Schritt 3: Differenz = Seiten mit bbox aber ohne metrics
-    page_ids_without_metrics = page_ids_with_bbox - page_ids_with_metrics
-
-    # Schritt 4: Lade DocumentPage-Objekte
-    if not page_ids_without_metrics:
-        pages_without_metrics = []
+    # Schritt 2: Lade DocumentPage-Objekte (alle mit bbox_data, auch mit bestehenden Metriken)
+    if not page_ids_with_bbox:
+        pages_to_process = []
     else:
-        pages_without_metrics = (
+        pages_to_process = (
             db.query(DocumentPage)
-            .filter(DocumentPage.id.in_(page_ids_without_metrics))
+            .filter(DocumentPage.id.in_(page_ids_with_bbox))
             .order_by(DocumentPage.id)
             .all()
         )
 
     logger.info(
-        f"Batch-Quality-Jobs: {len(pages_without_metrics)} Seiten ohne Metriken gefunden"
+        f"Batch-Quality-Jobs: {len(pages_to_process)} Seiten mit BBox zur (Nach-)Berechnung"
     )
 
     created_jobs: list[int] = []
     skipped = 0
     reset_failed = 0
 
-    for page in pages_without_metrics:
+    for page in pages_to_process:
         # Prüfe ob bereits ein Quality-Job für diese Seite existiert
         existing_job = (
             db.query(OCRJob)
@@ -469,43 +519,21 @@ def batch_create_quality_jobs(
                 created_jobs.append(existing_job.id)
                 reset_failed += 1
                 continue
-            # Wenn completed: Prüfe ob wirklich Metriken vorhanden sind
+            # Wenn completed: neuen Job erstellen für Nachberechnung (Metriken werden überschrieben)
             elif existing_job.status == OCRJobStatus.COMPLETED:
-                # Prüfe ob die Seite wirklich quality_metrics hat
-                ocr_result_with_metrics = (
-                    db.query(OCRResult)
-                    .filter(
-                        OCRResult.document_page_id == page.id,
-                        OCRResult.quality_metrics.isnot(None),
-                    )
-                    .first()
+                quality_job = OCRJob(
+                    document_id=page.document_id,
+                    document_page_id=page.id,
+                    job_type="quality",
+                    status=OCRJobStatus.PENDING,
+                    language="deu+eng",
+                    use_correction=False,
+                    priority=0,
                 )
-                # Wenn keine Metriken vorhanden sind, erstelle neuen Job
-                if not ocr_result_with_metrics:
-                    logger.warning(
-                        f"Seite {page.id} hat COMPLETED Quality-Job aber keine Metriken - erstelle neuen Job"
-                    )
-                    # Erstelle neuen Quality-Job
-                    quality_job = OCRJob(
-                        document_id=page.document_id,
-                        document_page_id=page.id,
-                        job_type="quality",
-                        status=OCRJobStatus.PENDING,
-                        language="deu+eng",
-                        use_correction=False,
-                        priority=0,
-                    )
-                    db.add(quality_job)
-                    db.flush()  # Flush um ID zu erhalten
-                    created_jobs.append(quality_job.id)
-                    continue
-                else:
-                    # Metriken vorhanden - sollte nicht in pages_without_metrics sein, aber sicherheitshalber überspringen
-                    skipped += 1
-                    logger.warning(
-                        f"Seite {page.id} hat COMPLETED Job und Metriken - sollte nicht in pages_without_metrics sein"
-                    )
-                    continue
+                db.add(quality_job)
+                db.flush()
+                created_jobs.append(quality_job.id)
+                continue
             # Andere Status (z.B. CANCELLED): erstelle neuen Job
             else:
                 logger.info(

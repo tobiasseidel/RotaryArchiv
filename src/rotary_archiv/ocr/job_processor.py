@@ -18,7 +18,11 @@ from src.rotary_archiv.core.models import (
 from src.rotary_archiv.ocr.bbox_ocr import process_bbox_ocr
 from src.rotary_archiv.ocr.pipeline import OCRPipeline
 from src.rotary_archiv.utils.file_handler import get_file_path
-from src.rotary_archiv.utils.quality_metrics import compute_coverage, compute_density
+from src.rotary_archiv.utils.quality_metrics import (
+    compute_black_pixels_per_char,
+    compute_coverage,
+    compute_density,
+)
 
 
 async def process_ocr_job(job_id: int) -> None:
@@ -576,6 +580,21 @@ async def process_quality_job(job_id: int) -> None:
             db.commit()
             return
 
+        job.progress = 78.0
+        job.current_step = "Berechne Schwarze-Pixel-pro-Zeichen-Metrik"
+        db.commit()
+
+        # Berechne Schwarze Pixel pro Zeichen (pro Box)
+        try:
+            bbox_black_per_char, black_per_char_summary = compute_black_pixels_per_char(
+                img, bbox_list, dark_threshold=200
+            )
+        except Exception as e:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = f"Fehler bei Black-Pixels-per-Char-Berechnung: {e!s}"
+            db.commit()
+            return
+
         job.progress = 90.0
         job.current_step = "Speichere Qualitätsmetriken"
         db.commit()
@@ -587,6 +606,10 @@ async def process_quality_job(job_id: int) -> None:
             "density": {
                 "bboxes": bbox_densities,
                 "summary": density_summary,
+            },
+            "black_pixels_per_char": {
+                "bboxes": bbox_black_per_char,
+                "summary": black_per_char_summary,
             },
         }
 
