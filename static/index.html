@@ -518,6 +518,54 @@
             justify-content: flex-end;
         }
 
+        .bbox-list-table tbody tr {
+            cursor: pointer;
+        }
+
+        #bboxListView.container {
+            max-width: none;
+            width: 100%;
+        }
+
+        #bboxListContainer {
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .bbox-list-table thead th {
+            position: sticky;
+            top: 0;
+            background: #e0e0e0;
+            z-index: 1;
+            box-shadow: 0 1px 0 #ccc;
+        }
+
+        .bbox-list-table thead th .sort-icon {
+            cursor: pointer;
+            margin-left: 4px;
+            font-size: 10px;
+            color: #666;
+        }
+
+        .bbox-list-table thead th .sort-icon:hover {
+            color: #333;
+        }
+
+        .bbox-list-inspect-link {
+            display: inline-block;
+            padding: 2px 6px;
+            background: #3388ff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 11px;
+        }
+
+        .bbox-list-inspect-link:hover {
+            background: #2563eb;
+        }
+
     </style>
 </head>
 <body>
@@ -528,6 +576,7 @@
             <li><a href="#" id="navReview" onclick="showReviewView(); return false;">Review</a></li>
             <li><a href="#" id="navQuality" onclick="showQualityView(); return false;">Qualität</a></li>
             <li><a href="#" id="navDeskew" onclick="showDeskewView(); return false;">Winkel</a></li>
+            <li><a href="#" id="navBboxList" onclick="showBboxListView(); return false;">BBox-Liste</a></li>
         </ul>
     </nav>
 
@@ -729,6 +778,127 @@
         </div>
     </div>
 
+    <!-- BBox-Liste View -->
+    <div id="bboxListView" class="container" style="display: none;">
+        <h1>BBox-Liste</h1>
+        <p class="subtitle">Alle BBoxen mit Qualitätsmetriken, filterbar und in 200er-Gruppen</p>
+
+        <div id="bboxListMessages" style="margin-bottom: 10px;"></div>
+
+        <!-- Filter -->
+        <div style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px;">
+            <h3 style="margin-top: 0; margin-bottom: 12px;">Filter (Bereich pro Eigenschaft)</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; align-items: end;">
+                <div style="grid-column: 1 / -1;">
+                    <label style="display: block; margin-bottom: 4px; font-size: 12px;">Text enthält (Suche im erkannten BBox-Text)</label>
+                    <input type="text" id="bboxFilterTextSearch" placeholder="z. B. Wort oder Phrase …" style="width: 100%; max-width: 400px; padding: 6px; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 12px;">Zeichen / 1000 px (min)</label>
+                    <input type="number" id="bboxFilterMinChars1k" placeholder="—" step="any" style="width: 100%; padding: 6px; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 12px;">Zeichen / 1000 px (max)</label>
+                    <input type="number" id="bboxFilterMaxChars1k" placeholder="—" step="any" style="width: 100%; padding: 6px; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 12px;">Schwarze px / Zeichen (min)</label>
+                    <input type="number" id="bboxFilterMinBlackPc" placeholder="—" step="any" style="width: 100%; padding: 6px; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 12px;">Schwarze px / Zeichen (max)</label>
+                    <input type="number" id="bboxFilterMaxBlackPc" placeholder="—" step="any" style="width: 100%; padding: 6px; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 12px;">Schwarze px pro Box (min)</label>
+                    <input type="number" id="bboxFilterMinBlackPx" placeholder="—" step="1" style="width: 100%; padding: 6px; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 12px;">Schwarze px pro Box (max)</label>
+                    <input type="number" id="bboxFilterMaxBlackPx" placeholder="—" step="1" style="width: 100%; padding: 6px; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 12px;">Zeichen (min)</label>
+                    <input type="number" id="bboxFilterMinCharCount" placeholder="—" step="1" style="width: 100%; padding: 6px; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 12px;">Zeichen (max)</label>
+                    <input type="number" id="bboxFilterMaxCharCount" placeholder="—" step="1" style="width: 100%; padding: 6px; box-sizing: border-box;">
+                </div>
+                <div style="grid-column: 1 / -1;">
+                    <label style="display: block; margin-bottom: 8px; font-size: 12px; font-weight: 600;">Review-Status (mehrfach auswählbar)</label>
+                    <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+                        <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                            <input type="checkbox" id="bboxFilterReviewStatusPending" value="pending" checked>
+                            <span>Ausstehend</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                            <input type="checkbox" id="bboxFilterReviewStatusConfirmed" value="confirmed" checked>
+                            <span>Geprüft</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                            <input type="checkbox" id="bboxFilterReviewStatusRejected" value="rejected" checked>
+                            <span>Abgelehnt</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                            <input type="checkbox" id="bboxFilterReviewStatusAutoConfirmed" value="auto_confirmed" checked>
+                            <span>Auto-bestätigt</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                            <input type="checkbox" id="bboxFilterReviewStatusIgnored" value="ignored" checked>
+                            <span>Ignoriert</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                            <input type="checkbox" id="bboxFilterReviewStatusNew" value="new" checked>
+                            <span>Neu</span>
+                        </label>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button type="button" class="btn btn-primary" onclick="applyBboxListFilter()">Filtern</button>
+                    <button type="button" class="btn btn-secondary" onclick="resetBboxListFilter()">Zurücksetzen</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Auswahl & Pagination -->
+        <div style="margin-bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+            <button type="button" class="btn btn-secondary" onclick="bboxListSelectCurrentPage()">Alle (diese Seite) auswählen</button>
+            <button type="button" class="btn btn-secondary" onclick="bboxListSelectAllMatching()">Alle (Filter) auswählen</button>
+            <span id="bboxListSelectionCount" style="font-weight: 600;"></span>
+        </div>
+
+        <!-- Batch-Aktionen -->
+        <div id="bboxListBatchActions" style="margin-bottom: 12px; padding: 12px; background: #f5f5f5; border-radius: 4px; display: none;">
+            <div style="margin-bottom: 8px; font-weight: 600;">Batch-Aktionen:</div>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label for="bboxListStatusChange" style="font-weight: 500;">Status ändern:</label>
+                    <select id="bboxListStatusChange" style="padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <option value="pending">Ausstehend</option>
+                        <option value="confirmed">Geprüft</option>
+                        <option value="rejected">Abgelehnt</option>
+                        <option value="auto_confirmed">Auto-bestätigt</option>
+                        <option value="ignored">Ignoriert</option>
+                        <option value="new">Neu</option>
+                    </select>
+                    <button type="button" class="btn btn-primary" onclick="bboxListBatchChangeStatus()" style="padding: 4px 12px;">Status ändern</button>
+                </div>
+                <button type="button" class="btn btn-secondary" onclick="bboxListBatchDiscardAndRecalc()">OCR verwerfen und neu berechnen</button>
+                <button type="button" class="btn btn-danger" onclick="bboxListBatchDelete()">Ausgewählte löschen</button>
+            </div>
+        </div>
+        <div id="bboxListPagination" style="margin-bottom: 8px; display: flex; align-items: center; gap: 12px;">
+            <span id="bboxListPaginationText" style="color: #666;"></span>
+            <button type="button" class="btn btn-secondary" id="bboxListPrevBtn" onclick="bboxListPrevPage()" style="display: none;">← Zurück</button>
+            <button type="button" class="btn btn-secondary" id="bboxListNextBtn" onclick="bboxListNextPage()" style="display: none;">Weiter →</button>
+        </div>
+
+        <div id="bboxListContainer">
+            <p style="color: #666;">Filter setzen und „Filtern“ klicken.</p>
+        </div>
+    </div>
+
     <!-- Page Inspect View -->
     <div id="pageInspectView" class="container" style="display: none;">
         <div class="inspect-header">
@@ -770,6 +940,7 @@
             </div>
             <div class="dialog-buttons">
                 <button class="btn btn-secondary" onclick="closeEditDialog()">Abbrechen</button>
+                <button class="btn btn-warning" onclick="recalcBBoxOCR()" style="background: #ff9800; color: white;">OCR neu berechnen</button>
                 <button class="btn btn-success" onclick="saveReviewedText()">Geprüft speichern</button>
                 <button class="btn btn-primary" onclick="saveReviewedTextAndNext()">& Next</button>
             </div>
@@ -792,6 +963,15 @@
         let currentStatusFilter = 'all'; // 'all', 'pending', 'running', 'completed', 'failed', 'paused', 'cancelled'
         let selectedJobIds = new Set(); // Set von ausgewählten Job-IDs
         let lastClickedIndex = -1; // Index der zuletzt angeklickten Zeile (für Shift-Range)
+        let bboxListCurrentTotal = 0;
+        let bboxListCurrentItems = [];
+        let bboxListCurrentOffset = 0;
+        let bboxListCurrentLimit = 200;
+        let bboxListSelectedIds = new Set();
+        let bboxListSelectedAllMatching = false;
+        let bboxListLastClickedIndex = -1;
+        let bboxListSortBy = null;
+        let bboxListSortDir = 'asc';
 
         // Quality-Metriken Config
         const qualityBBoxCache = {}; // BBox-Daten pro page_id nach Aufklappen
@@ -1149,6 +1329,8 @@
                 showQualityView(pageId);
             } else if (hash === '#/deskew') {
                 showDeskewView();
+            } else if (hash === '#/bbox-list') {
+                showBboxListView();
             } else {
                 showImportView(); // Diese Funktion startet das Polling automatisch
             }
@@ -1163,6 +1345,7 @@
             const pageInspectView = document.getElementById('pageInspectView');
             const qualityView = document.getElementById('qualityView');
             const deskewView = document.getElementById('deskewView');
+            const bboxListView = document.getElementById('bboxListView');
 
             if (importView) importView.style.display = 'block';
             if (reviewView) reviewView.style.display = 'none';
@@ -1172,15 +1355,18 @@
             }
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'none';
+            if (bboxListView) bboxListView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
             const navQuality = document.getElementById('navQuality');
             const navDeskew = document.getElementById('navDeskew');
+            const navBboxList = document.getElementById('navBboxList');
             if (navImport) navImport.classList.add('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.remove('active');
             if (navDeskew) navDeskew.classList.remove('active');
+            if (navBboxList) navBboxList.classList.remove('active');
 
             // Starte Polling für Queue (falls noch nicht gestartet)
             if (!pollInterval) {
@@ -1197,6 +1383,7 @@
             const pageInspectView = document.getElementById('pageInspectView');
             const qualityView = document.getElementById('qualityView');
             const deskewView = document.getElementById('deskewView');
+            const bboxListView = document.getElementById('bboxListView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'block';
@@ -1206,15 +1393,18 @@
             }
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'none';
+            if (bboxListView) bboxListView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
             const navQuality = document.getElementById('navQuality');
             const navDeskew = document.getElementById('navDeskew');
+            const navBboxList = document.getElementById('navBboxList');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.add('active');
             if (navQuality) navQuality.classList.remove('active');
             if (navDeskew) navDeskew.classList.remove('active');
+            if (navBboxList) navBboxList.classList.remove('active');
 
             // Stoppe Queue-Polling wenn Review-View angezeigt wird
             if (pollInterval) {
@@ -1232,6 +1422,7 @@
             const pageInspectView = document.getElementById('pageInspectView');
             const qualityView = document.getElementById('qualityView');
             const deskewView = document.getElementById('deskewView');
+            const bboxListView = document.getElementById('bboxListView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -1241,15 +1432,18 @@
             }
             if (qualityView) qualityView.style.display = 'block';
             if (deskewView) deskewView.style.display = 'none';
+            if (bboxListView) bboxListView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
             const navQuality = document.getElementById('navQuality');
             const navDeskew = document.getElementById('navDeskew');
+            const navBboxList = document.getElementById('navBboxList');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.add('active');
             if (navDeskew) navDeskew.classList.remove('active');
+            if (navBboxList) navBboxList.classList.remove('active');
 
             // Stoppe Queue-Polling wenn Quality-View angezeigt wird
             if (pollInterval) {
@@ -1274,6 +1468,7 @@
             const pageInspectView = document.getElementById('pageInspectView');
             const qualityView = document.getElementById('qualityView');
             const deskewView = document.getElementById('deskewView');
+            const bboxListView = document.getElementById('bboxListView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -1283,15 +1478,18 @@
             }
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'block';
+            if (bboxListView) bboxListView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
             const navQuality = document.getElementById('navQuality');
             const navDeskew = document.getElementById('navDeskew');
+            const navBboxList = document.getElementById('navBboxList');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.remove('active');
             if (navDeskew) navDeskew.classList.add('active');
+            if (navBboxList) navBboxList.classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -1300,6 +1498,538 @@
 
             window.location.hash = '#/deskew';
             loadDeskewOverview();
+        }
+
+        function showBboxListView() {
+            const importView = document.getElementById('importView');
+            const reviewView = document.getElementById('reviewView');
+            const pageInspectView = document.getElementById('pageInspectView');
+            const qualityView = document.getElementById('qualityView');
+            const deskewView = document.getElementById('deskewView');
+            const bboxListView = document.getElementById('bboxListView');
+
+            if (importView) importView.style.display = 'none';
+            if (reviewView) reviewView.style.display = 'none';
+            if (pageInspectView) {
+                pageInspectView.style.display = 'none';
+                pageInspectView.classList.remove('active');
+            }
+            if (qualityView) qualityView.style.display = 'none';
+            if (deskewView) deskewView.style.display = 'none';
+            if (bboxListView) bboxListView.style.display = 'block';
+
+            const navImport = document.getElementById('navImport');
+            const navReview = document.getElementById('navReview');
+            const navQuality = document.getElementById('navQuality');
+            const navDeskew = document.getElementById('navDeskew');
+            const navBboxList = document.getElementById('navBboxList');
+            if (navImport) navImport.classList.remove('active');
+            if (navReview) navReview.classList.remove('active');
+            if (navQuality) navQuality.classList.remove('active');
+            if (navDeskew) navDeskew.classList.remove('active');
+            if (navBboxList) navBboxList.classList.add('active');
+
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+
+            window.location.hash = '#/bbox-list';
+            applyBboxListFilter();
+        }
+
+        function bboxListSortItems(items) {
+            if (!bboxListSortBy) return items;
+            const sorted = items.slice();
+            sorted.sort(function (a, b) {
+                let valA = a[bboxListSortBy];
+                let valB = b[bboxListSortBy];
+                if (valA == null) valA = '';
+                if (valB == null) valB = '';
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+                if (valA < valB) return bboxListSortDir === 'asc' ? -1 : 1;
+                if (valA > valB) return bboxListSortDir === 'asc' ? 1 : -1;
+                return 0;
+            });
+            return sorted;
+        }
+
+        function bboxListSortColumn(columnKey) {
+            if (bboxListSortBy === columnKey) {
+                bboxListSortDir = bboxListSortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                bboxListSortBy = columnKey;
+                bboxListSortDir = 'asc';
+            }
+            bboxListCurrentItems = bboxListSortItems(bboxListCurrentItems);
+            bboxListRenderTable();
+        }
+
+        function bboxListGetSortIcon(columnKey) {
+            if (bboxListSortBy !== columnKey) return '↕';
+            return bboxListSortDir === 'asc' ? '▲' : '▼';
+        }
+
+        function bboxListRenderTable() {
+            const container = document.getElementById('bboxListContainer');
+            if (!container) return;
+            const items = bboxListCurrentItems;
+            let html = '<table class="review-table bbox-list-table" style="width: 100%; border-collapse: collapse;"><thead><tr>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; width: 36px;"><input type="checkbox" id="bboxListSelectPage" title="Alle (diese Seite) auswählen" onclick="bboxListSelectCurrentPage()"></th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'document_title\'); return false;">Dokument <span class="sort-icon">' + bboxListGetSortIcon('document_title') + '</span></th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'page_number\'); return false;">Seite <span class="sort-icon">' + bboxListGetSortIcon('page_number') + '</span></th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'bbox_index\'); return false;">Box <span class="sort-icon">' + bboxListGetSortIcon('bbox_index') + '</span></th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'text_preview\'); return false;">Text (Vorschau) <span class="sort-icon">' + bboxListGetSortIcon('text_preview') + '</span></th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'char_count\'); return false;">Zeichen <span class="sort-icon">' + bboxListGetSortIcon('char_count') + '</span></th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'chars_per_1k_px\'); return false;">Zeichen/1k px <span class="sort-icon">' + bboxListGetSortIcon('chars_per_1k_px') + '</span></th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'black_pixels\'); return false;">Schwarze px <span class="sort-icon">' + bboxListGetSortIcon('black_pixels') + '</span></th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'black_pixels_per_char\'); return false;">Schwarze px/Zeichen <span class="sort-icon">' + bboxListGetSortIcon('black_pixels_per_char') + '</span></th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'review_status\'); return false;">Review <span class="sort-icon">' + bboxListGetSortIcon('review_status') + '</span></th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc;">Inspect</th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc;">Aktionen</th></tr></thead><tbody>';
+            items.forEach(function (it, idx) {
+                const id = it.id || (it.page_id + '_' + it.bbox_index);
+                const checked = bboxListSelectedIds.has(id) ? ' checked' : '';
+                const chars1k = it.chars_per_1k_px != null ? it.chars_per_1k_px : '-';
+                const blackPx = it.black_pixels != null ? it.black_pixels : '-';
+                const blackPc = it.black_pixels_per_char != null ? it.black_pixels_per_char : '-';
+                const charCount = it.char_count != null ? it.char_count : '-';
+                const rowIdx = idx;
+                html += '<tr data-bbox-id="' + escapeHtml(id) + '" data-row-index="' + rowIdx + '" onclick="bboxListRowClick(event, \'' + escapeHtml(id) + '\', ' + rowIdx + ')">' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;" onclick="event.stopPropagation()"><input type="checkbox" class="bbox-list-cb" data-bbox-id="' + escapeHtml(id) + '"' + checked + ' onclick="bboxListCheckboxClick(event, \'' + escapeHtml(id) + '\', ' + rowIdx + ')"></td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;">' + escapeHtml(it.document_title || '-') + '</td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;">Seite ' + (it.page_number != null ? it.page_number : '-') + '</td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;">' + (it.bbox_index != null ? it.bbox_index : '-') + '</td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc; max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="' + escapeHtml(it.text_preview || '') + '">' + escapeHtml((it.text_preview || '').slice(0, 60)) + (it.text_preview && it.text_preview.length > 60 ? '…' : '') + '</td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;">' + charCount + '</td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;">' + chars1k + '</td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;">' + blackPx + '</td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;">' + blackPc + '</td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;">' + escapeHtml(it.review_status || 'pending') + '</td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;" onclick="event.stopPropagation()"><a href="#" class="bbox-list-inspect-link" onclick="event.stopPropagation(); showPageInspect(' + it.page_id + '); return false;">I</a></td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;" onclick="event.stopPropagation()"><button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white;" onclick="event.stopPropagation(); editBBox(' + it.page_id + ', ' + it.bbox_index + '); return false;">Bearbeiten</button></td></tr>';
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+            syncBboxListCheckboxes();
+        }
+
+        function bboxListBuildQueryParams(offset) {
+            const o = offset !== undefined ? offset : bboxListCurrentOffset;
+            const params = new URLSearchParams();
+            params.set('limit', String(bboxListCurrentLimit));
+            params.set('offset', String(o));
+            const min1k = document.getElementById('bboxFilterMinChars1k');
+            const max1k = document.getElementById('bboxFilterMaxChars1k');
+            const minPc = document.getElementById('bboxFilterMinBlackPc');
+            const maxPc = document.getElementById('bboxFilterMaxBlackPc');
+            const minPx = document.getElementById('bboxFilterMinBlackPx');
+            const maxPx = document.getElementById('bboxFilterMaxBlackPx');
+            const minCharCount = document.getElementById('bboxFilterMinCharCount');
+            const maxCharCount = document.getElementById('bboxFilterMaxCharCount');
+            const textSearch = document.getElementById('bboxFilterTextSearch');
+            const reviewStatusCheckboxes = [
+                document.getElementById('bboxFilterReviewStatusPending'),
+                document.getElementById('bboxFilterReviewStatusConfirmed'),
+                document.getElementById('bboxFilterReviewStatusRejected'),
+                document.getElementById('bboxFilterReviewStatusAutoConfirmed'),
+                document.getElementById('bboxFilterReviewStatusIgnored'),
+                document.getElementById('bboxFilterReviewStatusNew')
+            ];
+            if (min1k && min1k.value !== '') params.set('min_chars_per_1k_px', min1k.value);
+            if (max1k && max1k.value !== '') params.set('max_chars_per_1k_px', max1k.value);
+            if (minPc && minPc.value !== '') params.set('min_black_pixels_per_char', minPc.value);
+            if (maxPc && maxPc.value !== '') params.set('max_black_pixels_per_char', maxPc.value);
+            if (minPx && minPx.value !== '') params.set('min_black_pixels', minPx.value);
+            if (maxPx && maxPx.value !== '') params.set('max_black_pixels', maxPx.value);
+            if (minCharCount && minCharCount.value !== '') params.set('min_char_count', minCharCount.value);
+            if (maxCharCount && maxCharCount.value !== '') params.set('max_char_count', maxCharCount.value);
+            if (textSearch && textSearch.value.trim() !== '') params.set('text_search', textSearch.value.trim());
+            const selectedStatuses = reviewStatusCheckboxes.filter(function (cb) { return cb && cb.checked; }).map(function (cb) { return cb.value; });
+            if (selectedStatuses.length > 0) {
+                selectedStatuses.forEach(function (status) {
+                    params.append('review_status', status);
+                });
+            }
+            return params;
+        }
+
+        async function loadBboxList(offset) {
+            const container = document.getElementById('bboxListContainer');
+            const msgEl = document.getElementById('bboxListMessages');
+            if (!container) return;
+            container.innerHTML = '<p style="color: #666;">Lade BBoxen...</p>';
+            if (msgEl) msgEl.innerHTML = '';
+            const o = offset !== undefined ? offset : 0;
+            try {
+                const params = bboxListBuildQueryParams(o);
+                const response = await fetch(`${API_BASE}/api/quality/bbox-list?${params.toString()}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                const data = await response.json();
+                const total = data.total != null ? data.total : 0;
+                const items = data.items || [];
+                bboxListCurrentTotal = total;
+                bboxListCurrentItems = items;
+                bboxListCurrentOffset = o;
+                if (total === 0) {
+                    container.innerHTML = '<p style="color: #666;">Keine BBoxen entsprechen dem Filter.</p>';
+                    const paginationText = document.getElementById('bboxListPaginationText');
+                    const prevBtn = document.getElementById('bboxListPrevBtn');
+                    const nextBtn = document.getElementById('bboxListNextBtn');
+                    if (paginationText) paginationText.textContent = '';
+                    if (prevBtn) prevBtn.style.display = 'none';
+                    if (nextBtn) nextBtn.style.display = 'none';
+                } else {
+                    const start = o + 1;
+                    const end = Math.min(o + items.length, total);
+                    const paginationText = document.getElementById('bboxListPaginationText');
+                    const prevBtn = document.getElementById('bboxListPrevBtn');
+                    const nextBtn = document.getElementById('bboxListNextBtn');
+                    if (paginationText) paginationText.textContent = 'Einträge ' + start + '–' + end + ' von ' + total + '.';
+                    if (prevBtn) { prevBtn.style.display = o > 0 ? 'inline-block' : 'none'; }
+                    if (nextBtn) { nextBtn.style.display = (o + items.length < total) ? 'inline-block' : 'none'; }
+                    bboxListCurrentItems = bboxListSortItems(bboxListCurrentItems);
+                    bboxListRenderTable();
+                }
+                updateBboxListSelectionCount();
+            } catch (err) {
+                container.innerHTML = '<p style="color: red;">Fehler: ' + escapeHtml(err.message) + '</p>';
+                if (msgEl) msgEl.innerHTML = '<span style="color: red;">' + escapeHtml(err.message) + '</span>';
+                console.error('loadBboxList error', err);
+            }
+        }
+
+        function bboxListCheckboxClick(event, id, rowIndex) {
+            event.stopPropagation();
+            if (bboxListSelectedIds.has(id)) {
+                bboxListSelectedIds.delete(id);
+            } else {
+                bboxListSelectedIds.add(id);
+            }
+            bboxListSelectedAllMatching = false;
+            bboxListLastClickedIndex = rowIndex;
+            updateBboxListSelectionCount();
+        }
+
+        function bboxListRowClick(event, id, rowIndex) {
+            if (event.shiftKey) {
+                event.preventDefault();
+                const from = Math.min(bboxListLastClickedIndex >= 0 ? bboxListLastClickedIndex : rowIndex, rowIndex);
+                const to = Math.max(bboxListLastClickedIndex >= 0 ? bboxListLastClickedIndex : rowIndex, rowIndex);
+                for (let i = from; i <= to; i++) {
+                    if (i < bboxListCurrentItems.length) {
+                        const it = bboxListCurrentItems[i];
+                        const bid = it.id || (it.page_id + '_' + it.bbox_index);
+                        bboxListSelectedIds.add(bid);
+                    }
+                }
+                bboxListSelectedAllMatching = false;
+                updateBboxListSelectionCount();
+                syncBboxListCheckboxes();
+            } else if (event.ctrlKey || event.metaKey) {
+                if (bboxListSelectedIds.has(id)) bboxListSelectedIds.delete(id);
+                else bboxListSelectedIds.add(id);
+                bboxListSelectedAllMatching = false;
+                bboxListLastClickedIndex = rowIndex;
+                updateBboxListSelectionCount();
+                syncBboxListCheckboxes();
+            } else {
+                bboxListLastClickedIndex = rowIndex;
+            }
+        }
+
+        function syncBboxListCheckboxes() {
+            document.querySelectorAll('.bbox-list-cb').forEach(function (cb) {
+                const id = cb.getAttribute('data-bbox-id');
+                if (id) cb.checked = bboxListSelectedIds.has(id);
+            });
+            const selectPage = document.getElementById('bboxListSelectPage');
+            if (selectPage && bboxListCurrentItems.length) {
+                const allSelected = bboxListCurrentItems.every(function (it) {
+                    const id = it.id || (it.page_id + '_' + it.bbox_index);
+                    return bboxListSelectedIds.has(id);
+                });
+                selectPage.checked = allSelected;
+            }
+        }
+
+        function applyBboxListFilter() {
+            bboxListCurrentOffset = 0;
+            bboxListSortBy = null;
+            bboxListSortDir = 'asc';
+            loadBboxList(0);
+        }
+
+        function resetBboxListFilter() {
+            const ids = ['bboxFilterTextSearch', 'bboxFilterMinChars1k', 'bboxFilterMaxChars1k', 'bboxFilterMinBlackPc', 'bboxFilterMaxBlackPc', 'bboxFilterMinBlackPx', 'bboxFilterMaxBlackPx', 'bboxFilterMinCharCount', 'bboxFilterMaxCharCount'];
+            ids.forEach(function (id) {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            const reviewStatusCheckboxes = [
+                document.getElementById('bboxFilterReviewStatusPending'),
+                document.getElementById('bboxFilterReviewStatusConfirmed'),
+                document.getElementById('bboxFilterReviewStatusRejected'),
+                document.getElementById('bboxFilterReviewStatusAutoConfirmed'),
+                document.getElementById('bboxFilterReviewStatusIgnored'),
+                document.getElementById('bboxFilterReviewStatusNew')
+            ];
+            reviewStatusCheckboxes.forEach(function (cb) {
+                if (cb) cb.checked = true;
+            });
+            bboxListSelectedIds.clear();
+            bboxListSelectedAllMatching = false;
+            bboxListCurrentOffset = 0;
+            bboxListSortBy = null;
+            bboxListSortDir = 'asc';
+            loadBboxList(0);
+        }
+
+        function bboxListSelectCurrentPage() {
+            bboxListSelectedAllMatching = false;
+            bboxListCurrentItems.forEach(function (it) {
+                const id = it.id || (it.page_id + '_' + it.bbox_index);
+                bboxListSelectedIds.add(id);
+            });
+            updateBboxListSelectionCount();
+            syncBboxListCheckboxes();
+        }
+
+        function bboxListSelectAllMatching() {
+            bboxListSelectedAllMatching = true;
+            bboxListSelectedIds.clear();
+            updateBboxListSelectionCount();
+            const countEl = document.getElementById('bboxListSelectionCount');
+            if (countEl) countEl.textContent = bboxListCurrentTotal + ' BBoxen ausgewählt (alle der Filter-Kriterien).';
+        }
+
+        function updateBboxListSelectionCount() {
+            const countEl = document.getElementById('bboxListSelectionCount');
+            if (!countEl) return;
+            if (bboxListSelectedAllMatching) {
+                countEl.textContent = bboxListCurrentTotal + ' BBoxen ausgewählt (alle der Filter-Kriterien).';
+            } else {
+                const n = bboxListSelectedIds.size;
+                countEl.textContent = n ? n + ' ausgewählt' : '';
+            }
+            // Batch-Aktionen anzeigen/verstecken
+            const batchActionsEl = document.getElementById('bboxListBatchActions');
+            if (batchActionsEl) {
+                batchActionsEl.style.display = (bboxListSelectedIds.size > 0 || bboxListSelectedAllMatching) ? 'block' : 'none';
+            }
+        }
+
+        async function bboxListGetSelectedBBoxes() {
+            if (bboxListSelectedAllMatching) {
+                // Lade alle Filter-Matching BBoxen von der API (ohne Pagination)
+                const params = bboxListBuildQueryParams(0);
+                params.set('limit', '100000'); // Sehr hohes Limit für alle Ergebnisse
+                params.set('offset', '0');
+                const url = `${API_BASE}/api/quality/bbox-list?${params.toString()}`;
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const data = await response.json();
+                    return (data.items || []).map(it => ({
+                        page_id: it.page_id,
+                        bbox_index: it.bbox_index
+                    }));
+                } catch (err) {
+                    console.error('Fehler beim Laden aller Filter-Matching BBoxen:', err);
+                    throw err;
+                }
+            } else {
+                // Parse bboxListSelectedIds (Format: "page_id_bbox_index")
+                return Array.from(bboxListSelectedIds).map(id => {
+                    const parts = id.split('_');
+                    const pageId = parseInt(parts[0]);
+                    const bboxIndex = parseInt(parts.slice(1).join('_')); // Falls bbox_index selbst Unterstriche enthält
+                    return { page_id: pageId, bbox_index: bboxIndex };
+                }).filter(ref => !isNaN(ref.page_id) && !isNaN(ref.bbox_index));
+            }
+        }
+
+        async function bboxListBatchChangeStatus() {
+            const statusSelect = document.getElementById('bboxListStatusChange');
+            if (!statusSelect) return;
+            const newStatus = statusSelect.value;
+            if (!newStatus) {
+                alert('Bitte einen Status auswählen.');
+                return;
+            }
+
+            let bboxes;
+            try {
+                bboxes = await bboxListGetSelectedBBoxes();
+            } catch (err) {
+                alert('Fehler beim Sammeln der ausgewählten BBoxen: ' + err.message);
+                return;
+            }
+
+            if (bboxes.length === 0) {
+                alert('Keine BBoxen ausgewählt.');
+                return;
+            }
+
+            const btn = event?.target || statusSelect.nextElementSibling;
+            if (btn) btn.disabled = true;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/review/batch-change-status`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bboxes, new_status: newStatus })
+                });
+
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.detail || response.statusText || 'Fehler beim Ändern des Status');
+                }
+
+                const updated = data.updated || 0;
+                const errors = data.errors || [];
+                let msg = `${updated} BBoxen aktualisiert.`;
+                if (errors.length > 0) {
+                    msg += ` Fehler bei ${errors.length} BBoxen: ` + errors.slice(0, 5).map(e => `Seite ${e.page_id}, Box ${e.bbox_index}`).join(', ');
+                    if (errors.length > 5) msg += ` ... (${errors.length - 5} weitere)`;
+                }
+                alert(msg);
+
+                // Auswahl zurücksetzen und Liste neu laden
+                bboxListSelectedIds.clear();
+                bboxListSelectedAllMatching = false;
+                loadBboxList(bboxListCurrentOffset);
+            } catch (err) {
+                alert('Fehler: ' + err.message);
+                console.error('bboxListBatchChangeStatus error', err);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function bboxListBatchDiscardAndRecalc() {
+            let bboxes;
+            try {
+                bboxes = await bboxListGetSelectedBBoxes();
+            } catch (err) {
+                alert('Fehler beim Sammeln der ausgewählten BBoxen: ' + err.message);
+                return;
+            }
+
+            if (bboxes.length === 0) {
+                alert('Keine BBoxen ausgewählt.');
+                return;
+            }
+
+            const confirmed = confirm(`OCR-Inhalte verwerfen und neu berechnen für ${bboxes.length} BBoxen?`);
+            if (!confirmed) return;
+
+            const btn = event?.target;
+            if (btn) btn.disabled = true;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/review/batch-discard-and-recalc`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bboxes })
+                });
+
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.detail || response.statusText || 'Fehler beim Verwerfen und Neuberechnen');
+                }
+
+                const discarded = data.discarded || 0;
+                const jobsCreated = data.jobs_created || 0;
+                const jobsExisting = data.jobs_existing || 0;
+                const errors = data.errors || [];
+                let msg = `${discarded} BBoxen verworfen. ${jobsCreated} Review-Jobs erstellt`;
+                if (jobsExisting > 0) {
+                    msg += `, ${jobsExisting} Jobs bereits vorhanden`;
+                }
+                msg += '.';
+                if (errors.length > 0) {
+                    msg += ` Fehler bei ${errors.length} BBoxen: ` + errors.slice(0, 5).map(e => `Seite ${e.page_id}, Box ${e.bbox_index}`).join(', ');
+                    if (errors.length > 5) msg += ` ... (${errors.length - 5} weitere)`;
+                }
+                alert(msg);
+
+                // Auswahl zurücksetzen und Liste neu laden
+                bboxListSelectedIds.clear();
+                bboxListSelectedAllMatching = false;
+                loadBboxList(bboxListCurrentOffset);
+            } catch (err) {
+                alert('Fehler: ' + err.message);
+                console.error('bboxListBatchDiscardAndRecalc error', err);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function bboxListBatchDelete() {
+            let bboxes;
+            try {
+                bboxes = await bboxListGetSelectedBBoxes();
+            } catch (err) {
+                alert('Fehler beim Sammeln der ausgewählten BBoxen: ' + err.message);
+                return;
+            }
+
+            if (bboxes.length === 0) {
+                alert('Keine BBoxen ausgewählt.');
+                return;
+            }
+
+            const confirmed = confirm(`${bboxes.length} BBoxen wirklich löschen? Dies kann nicht rückgängig gemacht werden.`);
+            if (!confirmed) return;
+
+            const btn = event?.target;
+            if (btn) btn.disabled = true;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/review/batch-delete`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bboxes })
+                });
+
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.detail || response.statusText || 'Fehler beim Löschen');
+                }
+
+                const deleted = data.deleted || 0;
+                const errors = data.errors || [];
+                let msg = `${deleted} BBoxen gelöscht.`;
+                if (errors.length > 0) {
+                    msg += ` Fehler bei ${errors.length} BBoxen: ` + errors.slice(0, 5).map(e => `Seite ${e.page_id}, Box ${e.bbox_index}`).join(', ');
+                    if (errors.length > 5) msg += ` ... (${errors.length - 5} weitere)`;
+                }
+                alert(msg);
+
+                // Auswahl zurücksetzen und Liste neu laden
+                bboxListSelectedIds.clear();
+                bboxListSelectedAllMatching = false;
+                loadBboxList(bboxListCurrentOffset);
+            } catch (err) {
+                alert('Fehler: ' + err.message);
+                console.error('bboxListBatchDelete error', err);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        function bboxListPrevPage() {
+            if (bboxListCurrentOffset <= 0) return;
+            bboxListCurrentOffset = Math.max(0, bboxListCurrentOffset - bboxListCurrentLimit);
+            loadBboxList(bboxListCurrentOffset);
+        }
+
+        function bboxListNextPage() {
+            if (bboxListCurrentOffset + bboxListCurrentItems.length >= bboxListCurrentTotal) return;
+            bboxListCurrentOffset += bboxListCurrentLimit;
+            loadBboxList(bboxListCurrentOffset);
         }
 
         async function loadDeskewOverview() {
@@ -1388,11 +2118,13 @@
             const pageInspectView = document.getElementById('pageInspectView');
             const qualityView = document.getElementById('qualityView');
             const deskewView = document.getElementById('deskewView');
+            const bboxListView = document.getElementById('bboxListView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'none';
+            if (bboxListView) bboxListView.style.display = 'none';
             if (pageInspectView) {
                 pageInspectView.style.display = 'block';
                 pageInspectView.classList.add('active');
@@ -2866,6 +3598,58 @@
                 currentEditPageId = null;
                 currentEditBboxIndex = null;
                 currentBboxData = null;
+            }
+        }
+
+        async function recalcBBoxOCR() {
+            const pageId = currentEditPageId;
+            const bboxIndex = currentEditBboxIndex;
+
+            if (pageId === null || bboxIndex === null) {
+                showMessage('Keine BBox zum Neuberechnen ausgewählt', 'error');
+                return;
+            }
+
+            const confirmed = confirm('OCR-Inhalte verwerfen und neu berechnen für diese BBox?');
+            if (!confirmed) return;
+
+            try {
+                // Verwende die Batch-API für eine einzelne BBox
+                const response = await fetch(`${API_BASE}/api/review/batch-discard-and-recalc`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bboxes: [{ page_id: pageId, bbox_index: bboxIndex }]
+                    })
+                });
+
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.detail || response.statusText || 'Fehler beim Verwerfen und Neuberechnen');
+                }
+
+                const discarded = data.discarded || 0;
+                const jobsCreated = data.jobs_created || 0;
+                const jobsExisting = data.jobs_existing || 0;
+                let msg = `OCR verworfen. ${jobsCreated} Review-Job erstellt`;
+                if (jobsExisting > 0) {
+                    msg += ` (${jobsExisting} Job bereits vorhanden)`;
+                }
+                msg += '.';
+                showMessage(msg, 'success');
+
+                // Dialog schließen
+                closeEditDialog();
+
+                // Seite neu laden, um die Änderungen zu sehen
+                if (currentEditPageId) {
+                    setTimeout(() => {
+                        showPageInspect(currentEditPageId);
+                    }, 500);
+                }
+            } catch (err) {
+                showMessage('Fehler: ' + err.message, 'error');
+                console.error('recalcBBoxOCR error', err);
             }
         }
 

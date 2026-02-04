@@ -4,6 +4,9 @@ Background-Job-Processor für OCR-Verarbeitung
 
 from datetime import datetime
 import json
+import logging
+
+from sqlalchemy.orm.attributes import flag_modified
 
 from src.rotary_archiv.core.database import SessionLocal
 from src.rotary_archiv.core.models import (
@@ -23,6 +26,8 @@ from src.rotary_archiv.utils.quality_metrics import (
     compute_coverage,
     compute_density,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def process_ocr_job(job_id: int) -> None:
@@ -290,18 +295,19 @@ async def process_bbox_review_job(job_id: int) -> None:
             db.commit()
             return
 
-        # Filtere ignorierte BBoxes heraus (diese müssen nicht gereviewt werden)
+        # Verarbeite nur BBoxes mit review_status == "new" (z.B. nach "OCR verwerfen")
+        # Ignorierte BBoxes werden übersprungen
         bboxes_to_process = [
             (idx, bbox_item)
             for idx, bbox_item in enumerate(bbox_list)
-            if bbox_item.get("review_status") != "ignored"
+            if bbox_item.get("review_status") == "new"
         ]
 
         if len(bboxes_to_process) == 0:
             job.status = OCRJobStatus.COMPLETED
             job.progress = 100.0
             job.completed_at = datetime.now()
-            job.current_step = "Alle BBoxes sind ignoriert"
+            job.current_step = "Keine neuen BBoxes zu verarbeiten"
             db.commit()
             return
 
@@ -313,12 +319,12 @@ async def process_bbox_review_job(job_id: int) -> None:
         pdf_path = document.file_path
         page_number = page.page_number
 
-        # Verarbeite jede BBox (nur nicht-ignorierte)
+        # Verarbeite jede BBox (nur "new" BBoxes)
         updated_bboxes = bbox_list.copy()  # Behalte alle BBoxes, auch ignorierte
-        for idx, bbox_item in bboxes_to_process:
-            # Update Fortschritt
-            job.progress = idx * progress_per_bbox
-            job.current_step = f"Verarbeite BBox {idx + 1}/{total_bboxes}"
+        for processed_idx, (idx, bbox_item) in enumerate(bboxes_to_process):
+            # Update Fortschritt (processed_idx ist der Index in der gefilterten Liste)
+            job.progress = processed_idx * progress_per_bbox
+            job.current_step = f"Verarbeite BBox {processed_idx + 1}/{total_bboxes}"
             db.commit()
 
             # Führe OCR für diese BBox durch
@@ -332,15 +338,82 @@ async def process_bbox_review_job(job_id: int) -> None:
                 bbox_index=idx,  # Für Debug-Dateinamen
             )
 
-            # Aktualisiere BBox-Item mit Review-Daten (nur wenn nicht ignoriert)
-            if updated_bboxes[idx].get("review_status") != "ignored":
+            # Aktualisiere BBox-Item mit Review-Daten (sollte "new" sein, da wir bereits gefiltert haben)
+            if updated_bboxes[idx].get("review_status") == "new":
                 updated_bbox = updated_bboxes[idx].copy()
 
-                if "error" in ocr_results:
+                # Prüfe auf Fehler in OCR-Ergebnissen
+                ollama_result = ocr_results.get("ollama_vision")
+                tesseract_result = ocr_results.get("tesseract")
+
+                # Log OCR-Ergebnisse für Debugging
+                logger.info(
+                    f"OCR-Ergebnisse für BBox {idx}: ollama_result={ollama_result is not None}, "
+                    f"tesseract_result={tesseract_result is not None}, "
+                    f"auto_confirmed={ocr_results.get('auto_confirmed', False)}"
+                )
+                if ollama_result:
+                    ollama_text_raw = ollama_result.get("text", "")
+                    logger.info(
+                        f"Ollama-Text-Länge: {len(ollama_text_raw)}, "
+                        f"Ollama-Text (erste 100 Zeichen): '{ollama_text_raw[:100]}', "
+                        f"Ollama-Fehler: {ollama_result.get('error', 'None')}"
+                    )
+                if tesseract_result:
+                    tesseract_text_raw = tesseract_result.get("text", "")
+                    logger.info(
+                        f"Tesseract-Text-Länge: {len(tesseract_text_raw)}, "
+                        f"Tesseract-Text (erste 100 Zeichen): '{tesseract_text_raw[:100]}', "
+                        f"Tesseract-Fehler: {tesseract_result.get('error', 'None')}"
+                    )
+
+                # Prüfe auf Fehler: Ollama muss vorhanden sein und keinen Fehler haben
+                has_error = (
+                    not ollama_result
+                    or (ollama_result and ollama_result.get("error"))
+                    or (tesseract_result and tesseract_result.get("error"))
+                )
+
+                if has_error:
                     updated_bbox["review_status"] = "pending"
                     updated_bbox["ocr_results"] = None
                     updated_bbox["differences"] = None
+                    updated_bbox["text"] = ""  # Leer bei Fehler
+                    logger.warning(
+                        f"OCR-Fehler für BBox {idx} auf Seite {job.document_page_id}: "
+                        f"ollama_result={ollama_result is not None}, "
+                        f"ollama_error={ollama_result.get('error') if ollama_result else 'None'}"
+                    )
                 else:
+                    # Setze Text aus Ollama Vision (primärer OCR-Engine)
+                    # Falls Ollama leer ist, verwende Tesseract als Fallback
+                    ollama_text = (
+                        ollama_result.get("text", "").strip() if ollama_result else ""
+                    )
+                    tesseract_text = (
+                        tesseract_result.get("text", "").strip()
+                        if tesseract_result
+                        else ""
+                    )
+
+                    if ollama_text:
+                        final_text = ollama_text
+                        logger.info(
+                            f"BBox {idx} Text von Ollama: '{final_text[:50]}...' (Länge: {len(final_text)})"
+                        )
+                    elif tesseract_text:
+                        final_text = tesseract_text
+                        logger.info(
+                            f"BBox {idx} Text von Tesseract (Ollama war leer): '{final_text[:50]}...' (Länge: {len(final_text)})"
+                        )
+                    else:
+                        final_text = ""
+                        logger.warning(
+                            f"BBox {idx} beide OCR-Engines haben leeren Text zurückgegeben"
+                        )
+
+                    updated_bbox["text"] = final_text
+
                     # Setze Review-Status basierend auf auto_confirmed
                     if ocr_results.get("auto_confirmed", False):
                         updated_bbox["review_status"] = "auto_confirmed"
@@ -358,10 +431,22 @@ async def process_bbox_review_job(job_id: int) -> None:
                     updated_bbox["differences"] = ocr_results.get("differences", [])
 
                 updated_bboxes[idx] = updated_bbox
+                logger.info(
+                    f"BBox {idx} aktualisiert: text='{updated_bbox.get('text', '')[:50]}...', "
+                    f"review_status={updated_bbox.get('review_status')}"
+                )
 
         # Aktualisiere OCRResult mit neuen BBox-Daten
         ocr_result.bbox_data = updated_bboxes
+        flag_modified(ocr_result, "bbox_data")
+        logger.info(
+            f"Speichere BBox-Daten für Seite {job.document_page_id}: "
+            f"{len(updated_bboxes)} BBoxen, davon {len(bboxes_to_process)} verarbeitet"
+        )
         db.commit()
+        logger.info(
+            f"BBox-Daten erfolgreich in Datenbank gespeichert für Seite {job.document_page_id}"
+        )
 
         # Abschluss
         job.current_step = f"Abgeschlossen - {total_bboxes} BBoxes verarbeitet"
@@ -384,8 +469,11 @@ async def process_bbox_review_job(job_id: int) -> None:
             job.completed_at = datetime.now()
             db.commit()
 
-        # Log Fehler
-        print(f"BBox Review Job {job_id} fehlgeschlagen: {e}")
+        # Log Fehler mit Details
+        logger.error(
+            f"BBox Review Job {job_id} fehlgeschlagen: {e}",
+            exc_info=True,
+        )
 
     finally:
         db.close()

@@ -312,6 +312,199 @@ def get_quality_pages(
         ) from None
 
 
+def _iter_matching_bboxes(
+    rows,
+    min_chars_per_1k_px,
+    max_chars_per_1k_px,
+    min_black_pixels_per_char,
+    max_black_pixels_per_char,
+    min_black_pixels,
+    max_black_pixels,
+    text_search=None,
+    min_char_count=None,
+    max_char_count=None,
+    review_status_filter=None,
+):
+    """Iteriert über alle BBoxen mit Qualitätsmetriken, gefiltert nach Optionen."""
+    for ocr_result, page, document in rows:
+        if not ocr_result.quality_metrics:
+            continue
+        quality_metrics = ocr_result.quality_metrics
+        density = quality_metrics.get("density", {})
+        black_pc = quality_metrics.get("black_pixels_per_char", {})
+        bbox_densities = list(density.get("bboxes", []))
+        bbox_black_pc = {b["index"]: b for b in black_pc.get("bboxes", [])}
+        bbox_data_list = ocr_result.bbox_data
+        if isinstance(bbox_data_list, str):
+            try:
+                bbox_data_list = json.loads(bbox_data_list) if bbox_data_list else []
+            except json.JSONDecodeError:
+                bbox_data_list = []
+        bbox_data_list = bbox_data_list if isinstance(bbox_data_list, list) else []
+        document_title = (
+            document.title or document.filename or f"Dokument #{page.document_id}"
+        )
+        for bbox in bbox_densities:
+            idx = bbox.get("index")
+            chars_per_1k = bbox.get("chars_per_1k_px")
+            if chars_per_1k is None:
+                continue
+            char_count = bbox.get("char_count", 0)
+            if min_char_count is not None and char_count < min_char_count:
+                continue
+            if max_char_count is not None and char_count > max_char_count:
+                continue
+            bp = bbox_black_pc.get(idx, {})
+            black_px = bp.get("black_pixels")
+            black_pc_val = bp.get("black_pixels_per_char")
+            if min_chars_per_1k_px is not None and chars_per_1k < min_chars_per_1k_px:
+                continue
+            if max_chars_per_1k_px is not None and chars_per_1k > max_chars_per_1k_px:
+                continue
+            if min_black_pixels_per_char is not None:
+                if black_pc_val is None:
+                    continue
+                if black_pc_val < min_black_pixels_per_char:
+                    continue
+            if max_black_pixels_per_char is not None:
+                if black_pc_val is None:
+                    continue
+                if black_pc_val > max_black_pixels_per_char:
+                    continue
+            if min_black_pixels is not None:
+                if black_px is None:
+                    continue
+                if black_px < min_black_pixels:
+                    continue
+            if max_black_pixels is not None:
+                if black_px is None:
+                    continue
+                if black_px > max_black_pixels:
+                    continue
+            if text_search and text_search.strip():
+                search_lower = text_search.strip().lower()
+                full_text = ""
+                if idx < len(bbox_data_list):
+                    bd = bbox_data_list[idx]
+                    full_text = (
+                        bd.get("reviewed_text") or bd.get("text") or ""
+                    ).strip()
+                if not full_text:
+                    full_text = (bbox.get("text_preview") or "").strip()
+                if search_lower not in full_text.lower():
+                    continue
+            review_status = "pending"
+            if idx < len(bbox_data_list):
+                review_status = bbox_data_list[idx].get("review_status", "pending")
+            if review_status_filter and review_status not in review_status_filter:
+                continue
+            yield {
+                "page_id": page.id,
+                "document_id": page.document_id,
+                "document_title": document_title,
+                "page_number": page.page_number,
+                "bbox_index": idx,
+                "id": f"{page.id}_{idx}",
+                "text_preview": bbox.get("text_preview", ""),
+                "chars_per_1k_px": round(chars_per_1k, 2),
+                "black_pixels": black_px,
+                "black_pixels_per_char": round(black_pc_val, 2)
+                if black_pc_val is not None
+                else None,
+                "review_status": review_status,
+            }
+
+
+@router.get("/bbox-list")
+def get_bbox_list(
+    document_id: int | None = Query(None, description="Optional: nur dieses Dokument"),
+    min_chars_per_1k_px: float | None = Query(
+        None, description="Filter: Mindestwert Zeichen/1000 px"
+    ),
+    max_chars_per_1k_px: float | None = Query(
+        None, description="Filter: Maximalwert Zeichen/1000 px"
+    ),
+    min_black_pixels_per_char: float | None = Query(
+        None, description="Filter: Mindestwert schwarze px/Zeichen"
+    ),
+    max_black_pixels_per_char: float | None = Query(
+        None, description="Filter: Maximalwert schwarze px/Zeichen"
+    ),
+    min_black_pixels: int | None = Query(
+        None, description="Filter: Mindestwert schwarze Pixel pro Box"
+    ),
+    max_black_pixels: int | None = Query(
+        None, description="Filter: Maximalwert schwarze Pixel pro Box"
+    ),
+    text_search: str | None = Query(
+        None,
+        description="Filter: erkannten Text durchsuchen (Vorkommen im BBox-Text)",
+    ),
+    min_char_count: int | None = Query(
+        None, description="Filter: Mindestwert Zeichenanzahl pro Box"
+    ),
+    max_char_count: int | None = Query(
+        None, description="Filter: Maximalwert Zeichenanzahl pro Box"
+    ),
+    review_status: list[str] | None = Query(
+        None, description="Filter: Review-Status (kann mehrfach angegeben werden)"
+    ),
+    limit: int = Query(200, ge=1, le=500, description="Anzahl pro Seite"),
+    offset: int = Query(0, ge=0, description="Offset für Paginierung"),
+    db: Session = Depends(get_db),
+):
+    """
+    Liste aller BBoxen mit Qualitätsmetriken (Dichte, schwarze px, schwarze px/Zeichen).
+    Gefiltert und paginiert (z. B. 200 pro Seite).
+    """
+    try:
+        latest_ocr_subq = (
+            db.query(
+                OCRResult.document_page_id,
+                sqlfunc.max(OCRResult.created_at).label("max_created_at"),
+            )
+            .filter(OCRResult.quality_metrics.isnot(None))
+            .group_by(OCRResult.document_page_id)
+        ).subquery("latest_ocr")
+        query = (
+            db.query(OCRResult, DocumentPage, Document)
+            .join(
+                latest_ocr_subq,
+                (OCRResult.document_page_id == latest_ocr_subq.c.document_page_id)
+                & (OCRResult.created_at == latest_ocr_subq.c.max_created_at),
+            )
+            .join(DocumentPage, DocumentPage.id == OCRResult.document_page_id)
+            .join(Document, Document.id == DocumentPage.document_id)
+        )
+        if document_id is not None:
+            query = query.filter(DocumentPage.document_id == document_id)
+        rows = query.order_by(DocumentPage.document_id, DocumentPage.page_number).all()
+
+        it = _iter_matching_bboxes(
+            rows,
+            min_chars_per_1k_px,
+            max_chars_per_1k_px,
+            min_black_pixels_per_char,
+            max_black_pixels_per_char,
+            min_black_pixels,
+            max_black_pixels,
+            text_search=text_search,
+            min_char_count=min_char_count,
+            max_char_count=max_char_count,
+            review_status_filter=review_status if review_status else None,
+        )
+        all_matching = list(it)
+        total = len(all_matching)
+        items = all_matching[offset : offset + limit]
+        return {"total": total, "items": items}
+    except Exception as e:
+        logger.error(f"Fehler im BBox-List-Endpoint: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der BBox-Liste: {e!s}",
+        ) from None
+
+
 @router.get("/pages/{page_id}")
 def get_page_quality_metrics(page_id: int, db: Session = Depends(get_db)):
     """

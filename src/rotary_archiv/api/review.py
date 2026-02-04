@@ -40,6 +40,32 @@ class AddBBoxRequest(BaseModel):
     bbox_pixel: list[int]  # [x1, y1, x2, y2] Pixel-Koordinaten
 
 
+class BBoxRef(BaseModel):
+    """Referenz auf eine BBox"""
+
+    page_id: int
+    bbox_index: int
+
+
+class BatchChangeStatusRequest(BaseModel):
+    """Request-Schema für Batch-Status-Änderung"""
+
+    bboxes: list[BBoxRef]
+    new_status: str  # pending, confirmed, rejected, auto_confirmed, ignored, new
+
+
+class BatchDiscardAndRecalcRequest(BaseModel):
+    """Request-Schema für Batch-OCR verwerfen und neu berechnen"""
+
+    bboxes: list[BBoxRef]
+
+
+class BatchDeleteRequest(BaseModel):
+    """Request-Schema für Batch-BBoxen löschen"""
+
+    bboxes: list[BBoxRef]
+
+
 @router.get("/pages/{page_id}/bboxes")
 async def get_page_bboxes(
     page_id: int, db: Session = Depends(get_db)
@@ -340,6 +366,346 @@ async def delete_bbox(
     db.commit()
 
     return {"success": True, "message": "BBox gelöscht"}
+
+
+@router.post("/batch-change-status")
+async def batch_change_status(
+    request: BatchChangeStatusRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Ändert den Review-Status mehrerer BBoxen in einem Batch.
+
+    Args:
+        request: Liste von BBox-Referenzen und neuer Status
+
+    Returns:
+        {"success": True, "updated": int, "errors": [...]}
+    """
+    valid_statuses = {
+        "pending",
+        "confirmed",
+        "rejected",
+        "auto_confirmed",
+        "ignored",
+        "new",
+    }
+    if request.new_status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ungültiger Status: {request.new_status}. Erlaubt: {valid_statuses}",
+        )
+
+    updated = 0
+    errors = []
+
+    # Gruppiere BBoxen nach page_id für effiziente DB-Zugriffe
+    from collections import defaultdict
+
+    bboxes_by_page = defaultdict(list)
+    for bbox_ref in request.bboxes:
+        bboxes_by_page[bbox_ref.page_id].append(bbox_ref.bbox_index)
+
+    for page_id, bbox_indices in bboxes_by_page.items():
+        # Hole Seite
+        page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+        if not page:
+            for idx in bbox_indices:
+                errors.append(
+                    {
+                        "page_id": page_id,
+                        "bbox_index": idx,
+                        "error": "Seite nicht gefunden",
+                    }
+                )
+            continue
+
+        # Hole OCRResult
+        ocr_result = (
+            db.query(OCRResult)
+            .filter(
+                OCRResult.document_page_id == page_id,
+                OCRResult.source == OCRSource.OLLAMA_VISION,
+            )
+            .order_by(OCRResult.created_at.desc())
+            .first()
+        )
+
+        if not ocr_result or not ocr_result.bbox_data:
+            for idx in bbox_indices:
+                errors.append(
+                    {
+                        "page_id": page_id,
+                        "bbox_index": idx,
+                        "error": "Keine BBox-Daten für diese Seite gefunden",
+                    }
+                )
+            continue
+
+        # Parse bbox_data
+        if isinstance(ocr_result.bbox_data, str):
+            bbox_list = json.loads(ocr_result.bbox_data)
+        else:
+            bbox_list = ocr_result.bbox_data.copy()
+
+        # Aktualisiere alle BBoxen dieser Seite
+        modified = False
+        for bbox_index in bbox_indices:
+            if bbox_index < 0 or bbox_index >= len(bbox_list):
+                errors.append(
+                    {
+                        "page_id": page_id,
+                        "bbox_index": bbox_index,
+                        "error": "BBox-Index außerhalb des Bereichs",
+                    }
+                )
+                continue
+
+            bbox_list[bbox_index]["review_status"] = request.new_status
+            if request.new_status in ("pending", "new"):
+                bbox_list[bbox_index]["reviewed_at"] = None
+                bbox_list[bbox_index]["reviewed_by"] = None
+            else:
+                bbox_list[bbox_index]["reviewed_at"] = datetime.now().isoformat()
+                bbox_list[bbox_index]["reviewed_by"] = None  # TODO: User-ID aus Session
+            modified = True
+            updated += 1
+
+        if modified:
+            ocr_result.bbox_data = bbox_list
+            flag_modified(ocr_result, "bbox_data")
+            db.commit()
+
+    return {"success": True, "updated": updated, "errors": errors}
+
+
+@router.post("/batch-discard-and-recalc")
+async def batch_discard_and_recalc(
+    request: BatchDiscardAndRecalcRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Verwirft OCR-Inhalte mehrerer BBoxen und erstellt Review-Jobs für Neuberechnung.
+
+    Schritt 1: Setzt text="", ocr_results=None, differences=[], review_status="new"
+    Schritt 2: Erstellt Review-Jobs (gruppiert nach Seite)
+
+    Args:
+        request: Liste von BBox-Referenzen
+
+    Returns:
+        {"success": True, "discarded": int, "jobs_created": int, "jobs_existing": int, "errors": [...]}
+    """
+    discarded = 0
+    errors = []
+    jobs_created = 0
+    jobs_existing = 0
+
+    # Gruppiere BBoxen nach page_id
+    from collections import defaultdict
+
+    bboxes_by_page = defaultdict(list)
+    for bbox_ref in request.bboxes:
+        bboxes_by_page[bbox_ref.page_id].append(bbox_ref.bbox_index)
+
+    # Schritt 1: Verwerfen
+    for page_id, bbox_indices in bboxes_by_page.items():
+        page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+        if not page:
+            for idx in bbox_indices:
+                errors.append(
+                    {
+                        "page_id": page_id,
+                        "bbox_index": idx,
+                        "error": "Seite nicht gefunden",
+                    }
+                )
+            continue
+
+        ocr_result = (
+            db.query(OCRResult)
+            .filter(
+                OCRResult.document_page_id == page_id,
+                OCRResult.source == OCRSource.OLLAMA_VISION,
+            )
+            .order_by(OCRResult.created_at.desc())
+            .first()
+        )
+
+        if not ocr_result or not ocr_result.bbox_data:
+            for idx in bbox_indices:
+                errors.append(
+                    {
+                        "page_id": page_id,
+                        "bbox_index": idx,
+                        "error": "Keine BBox-Daten für diese Seite gefunden",
+                    }
+                )
+            continue
+
+        if isinstance(ocr_result.bbox_data, str):
+            bbox_list = json.loads(ocr_result.bbox_data)
+        else:
+            bbox_list = ocr_result.bbox_data.copy()
+
+        modified = False
+        for bbox_index in bbox_indices:
+            if bbox_index < 0 or bbox_index >= len(bbox_list):
+                errors.append(
+                    {
+                        "page_id": page_id,
+                        "bbox_index": bbox_index,
+                        "error": "BBox-Index außerhalb des Bereichs",
+                    }
+                )
+                continue
+
+            bbox_list[bbox_index]["text"] = ""
+            bbox_list[bbox_index]["ocr_results"] = None
+            bbox_list[bbox_index]["differences"] = []
+            bbox_list[bbox_index]["review_status"] = "new"
+            bbox_list[bbox_index]["reviewed_at"] = None
+            bbox_list[bbox_index]["reviewed_by"] = None
+            modified = True
+            discarded += 1
+
+        if modified:
+            ocr_result.bbox_data = bbox_list
+            flag_modified(ocr_result, "bbox_data")
+            db.commit()
+
+    # Schritt 2: Review-Jobs erstellen (ein Job pro Seite)
+    for page_id in bboxes_by_page:
+        page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+        if not page:
+            continue
+
+        # Prüfe ob bereits ein Review-Job existiert
+        existing_job = (
+            db.query(OCRJob)
+            .filter(
+                OCRJob.document_page_id == page_id,
+                OCRJob.job_type == "bbox_review",
+                OCRJob.status.in_([OCRJobStatus.PENDING, OCRJobStatus.RUNNING]),
+            )
+            .first()
+        )
+
+        if existing_job:
+            jobs_existing += 1
+        else:
+            # Erstelle neuen Review-Job
+            review_job = OCRJob(
+                document_id=page.document_id,
+                document_page_id=page_id,
+                job_type="bbox_review",
+                status=OCRJobStatus.PENDING,
+                language="deu+eng",
+                use_correction=False,
+                progress=0.0,
+            )
+            db.add(review_job)
+            db.commit()
+            jobs_created += 1
+
+    return {
+        "success": True,
+        "discarded": discarded,
+        "jobs_created": jobs_created,
+        "jobs_existing": jobs_existing,
+        "errors": errors,
+    }
+
+
+@router.post("/batch-delete")
+async def batch_delete(
+    request: BatchDeleteRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Löscht mehrere BBoxen in einem Batch.
+
+    Args:
+        request: Liste von BBox-Referenzen
+
+    Returns:
+        {"success": True, "deleted": int, "errors": [...]}
+    """
+    deleted = 0
+    errors = []
+
+    # Gruppiere BBoxen nach page_id
+    from collections import defaultdict
+
+    bboxes_by_page = defaultdict(list)
+    for bbox_ref in request.bboxes:
+        bboxes_by_page[bbox_ref.page_id].append(bbox_ref.bbox_index)
+
+    for page_id, bbox_indices in bboxes_by_page.items():
+        page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+        if not page:
+            for idx in bbox_indices:
+                errors.append(
+                    {
+                        "page_id": page_id,
+                        "bbox_index": idx,
+                        "error": "Seite nicht gefunden",
+                    }
+                )
+            continue
+
+        ocr_result = (
+            db.query(OCRResult)
+            .filter(
+                OCRResult.document_page_id == page_id,
+                OCRResult.source == OCRSource.OLLAMA_VISION,
+            )
+            .order_by(OCRResult.created_at.desc())
+            .first()
+        )
+
+        if not ocr_result or not ocr_result.bbox_data:
+            for idx in bbox_indices:
+                errors.append(
+                    {
+                        "page_id": page_id,
+                        "bbox_index": idx,
+                        "error": "Keine BBox-Daten für diese Seite gefunden",
+                    }
+                )
+            continue
+
+        if isinstance(ocr_result.bbox_data, str):
+            bbox_list = json.loads(ocr_result.bbox_data)
+        else:
+            bbox_list = ocr_result.bbox_data.copy()
+
+        # Sortiere Indizes in umgekehrter Reihenfolge, damit Löschung von hinten nach vorne erfolgt
+        sorted_indices = sorted(set(bbox_indices), reverse=True)
+        valid_indices = [idx for idx in sorted_indices if 0 <= idx < len(bbox_list)]
+
+        if len(valid_indices) != len(sorted_indices):
+            invalid = set(sorted_indices) - set(valid_indices)
+            for idx in invalid:
+                errors.append(
+                    {
+                        "page_id": page_id,
+                        "bbox_index": idx,
+                        "error": "BBox-Index außerhalb des Bereichs",
+                    }
+                )
+
+        # Lösche BBoxen (von hinten nach vorne)
+        for bbox_index in valid_indices:
+            bbox_list.pop(bbox_index)
+            deleted += 1
+
+        if valid_indices:
+            ocr_result.bbox_data = bbox_list
+            flag_modified(ocr_result, "bbox_data")
+            db.commit()
+
+    return {"success": True, "deleted": deleted, "errors": errors}
 
 
 @router.get("/pages/{page_id}/bboxes/{bbox_index}/crop-preview")

@@ -11,9 +11,15 @@ import signal
 import sys
 from typing import Optional
 
-from src.rotary_archiv.core.database import SessionLocal
-from src.rotary_archiv.core.models import OCRJob, OCRJobStatus
-from src.rotary_archiv.ocr.job_processor import (
+# SQLAlchemy SQL-Query-Logging DEAKTIVIEREN, bevor die Engine importiert wird
+# Das verhindert, dass echo=True in database.py SQL-Queries loggt
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)
+
+from src.rotary_archiv.core.database import SessionLocal  # noqa: E402
+from src.rotary_archiv.core.models import OCRJob, OCRJobStatus  # noqa: E402
+from src.rotary_archiv.ocr.job_processor import (  # noqa: E402
     process_bbox_review_job,
     process_ocr_job,
     process_quality_job,
@@ -25,6 +31,25 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Deaktiviere SQLAlchemy SQL-Query-Logging komplett
+# echo=True in SQLAlchemy schreibt direkt an stdout/stderr, daher müssen wir
+# die Logger-Handler entfernen oder einen Null-Handler hinzufügen
+sqlalchemy_loggers = [
+    "sqlalchemy.engine",
+    "sqlalchemy.pool",
+    "sqlalchemy.dialects",
+    "sqlalchemy.engine.Engine",
+]
+for logger_name in sqlalchemy_loggers:
+    sql_logger = logging.getLogger(logger_name)
+    sql_logger.setLevel(logging.CRITICAL)  # Setze auf höchstes Level
+    sql_logger.propagate = False  # Verhindere Weiterleitung an Root-Logger
+    # Entferne alle Handler
+    for handler in sql_logger.handlers[:]:
+        sql_logger.removeHandler(handler)
+    # Füge Null-Handler hinzu, der alle Logs verschluckt
+    sql_logger.addHandler(logging.NullHandler())
 
 # Globaler Flag für sauberes Shutdown
 shutdown_requested = False
@@ -66,21 +91,21 @@ async def worker_loop(poll_interval: int = 5):
                 current_job_id = job.id
                 job_type = job.job_type or "ocr"  # Fallback zu "ocr" für alte Jobs
                 logger.info(
-                    f"Verarbeite {job_type}-Job {job.id} (Dokument {job.document_id})"
+                    f"[{job_type.upper()}] Starte Job {job.id} (Dokument {job.document_id}, Seite {job.document_page_id or 'N/A'})"
                 )
                 try:
                     # Unterscheide nach Job-Typ
                     if job_type == "bbox_review":
                         await process_bbox_review_job(job.id)
                         logger.info(
-                            f"BBox-Review-Job {job.id} erfolgreich abgeschlossen"
+                            f"[BBOX_REVIEW] Job {job.id} erfolgreich abgeschlossen"
                         )
                     elif job_type == "quality":
                         await process_quality_job(job.id)
-                        logger.info(f"Quality-Job {job.id} erfolgreich abgeschlossen")
+                        logger.info(f"[QUALITY] Job {job.id} erfolgreich abgeschlossen")
                     else:
                         await process_ocr_job(job.id)
-                        logger.info(f"OCR-Job {job.id} erfolgreich abgeschlossen")
+                        logger.info(f"[OCR] Job {job.id} erfolgreich abgeschlossen")
                 except asyncio.CancelledError:
                     logger.warning(f"{job_type}-Job {job.id} wurde abgebrochen")
                     # Setze Job zurück auf PENDING für erneute Verarbeitung
@@ -90,7 +115,7 @@ async def worker_loop(poll_interval: int = 5):
                     raise
                 except Exception as e:
                     logger.error(
-                        f"Fehler beim Verarbeiten von {job_type}-Job {job.id}: {e}",
+                        f"[{job_type.upper()}] FEHLER bei Job {job.id}: {e}",
                         exc_info=True,
                     )
                 finally:
