@@ -6,6 +6,7 @@ aus der Datenbank. Er kann unabhängig gestartet/gestoppt werden.
 """
 
 import asyncio
+from contextlib import suppress
 import logging
 import signal
 import sys
@@ -88,31 +89,60 @@ async def worker_loop(poll_interval: int = 5):
             )
 
             if job:
+                # Prüfe Shutdown vor Job-Start
+                if shutdown_requested:
+                    logger.info("Shutdown angefordert, beende Worker-Loop")
+                    break
+
                 current_job_id = job.id
                 job_type = job.job_type or "ocr"  # Fallback zu "ocr" für alte Jobs
                 logger.info(
                     f"[{job_type.upper()}] Starte Job {job.id} (Dokument {job.document_id}, Seite {job.document_page_id or 'N/A'})"
                 )
                 try:
-                    # Unterscheide nach Job-Typ
+                    # Erstelle Task für Job-Verarbeitung, damit wir ihn abbrechen können
                     if job_type == "bbox_review":
-                        await process_bbox_review_job(job.id)
-                        logger.info(
-                            f"[BBOX_REVIEW] Job {job.id} erfolgreich abgeschlossen"
-                        )
+                        task = asyncio.create_task(process_bbox_review_job(job.id))  # noqa: RUF006
                     elif job_type == "quality":
-                        await process_quality_job(job.id)
-                        logger.info(f"[QUALITY] Job {job.id} erfolgreich abgeschlossen")
+                        task = asyncio.create_task(process_quality_job(job.id))  # noqa: RUF006
                     else:
-                        await process_ocr_job(job.id)
-                        logger.info(f"[OCR] Job {job.id} erfolgreich abgeschlossen")
+                        task = asyncio.create_task(process_ocr_job(job.id))
+
+                    # Warte auf Task-Abschluss, prüfe aber regelmäßig auf Shutdown
+                    while not task.done():
+                        if shutdown_requested:
+                            logger.warning(
+                                f"Shutdown während Job-Verarbeitung angefordert. Breche Job {job.id} ab..."
+                            )
+                            task.cancel()
+                            # Warte kurz auf Task-Abbruch
+                            with suppress(asyncio.CancelledError, asyncio.TimeoutError):
+                                await asyncio.wait_for(task, timeout=2.0)
+                            # Setze Job zurück auf PENDING für erneute Verarbeitung
+                            db.refresh(job)
+                            job.status = OCRJobStatus.PENDING
+                            job.error_message = (
+                                "Job wurde abgebrochen (Worker-Shutdown)"
+                            )
+                            db.commit()
+                            raise asyncio.CancelledError(
+                                f"Job {job.id} wurde abgebrochen"
+                            )
+                        await asyncio.sleep(0.1)  # Kurze Pause zwischen Checks
+
+                    # Task ist fertig, hole Ergebnis
+                    await task
+                    logger.info(
+                        f"[{job_type.upper()}] Job {job.id} erfolgreich abgeschlossen"
+                    )
                 except asyncio.CancelledError:
                     logger.warning(f"{job_type}-Job {job.id} wurde abgebrochen")
                     # Setze Job zurück auf PENDING für erneute Verarbeitung
+                    db.refresh(job)
                     job.status = OCRJobStatus.PENDING
                     job.error_message = "Job wurde abgebrochen (Worker-Shutdown)"
                     db.commit()
-                    raise
+                    break  # Verlasse Loop bei Shutdown
                 except Exception as e:
                     logger.error(
                         f"[{job_type.upper()}] FEHLER bei Job {job.id}: {e}",
@@ -121,8 +151,15 @@ async def worker_loop(poll_interval: int = 5):
                 finally:
                     current_job_id = None
             else:
-                # Keine Jobs vorhanden, warte
-                await asyncio.sleep(poll_interval)
+                # Keine Jobs vorhanden, warte (mit Shutdown-Check)
+                if shutdown_requested:
+                    logger.info("Shutdown angefordert, beende Worker-Loop")
+                    break
+                # Warte in kleinen Schritten, um auf Shutdown reagieren zu können
+                for _ in range(poll_interval * 10):  # 10 Checks pro Sekunde
+                    if shutdown_requested:
+                        break
+                    await asyncio.sleep(0.1)
 
         except Exception as e:
             logger.error(f"Fehler im Worker-Loop: {e}", exc_info=True)

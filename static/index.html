@@ -865,6 +865,7 @@
         <div style="margin-bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
             <button type="button" class="btn btn-secondary" onclick="bboxListSelectCurrentPage()">Alle (diese Seite) auswählen</button>
             <button type="button" class="btn btn-secondary" onclick="bboxListSelectAllMatching()">Alle (Filter) auswählen</button>
+            <button type="button" class="btn btn-primary" id="bboxListPreviewBtn" onclick="bboxListTogglePreviews()">Vorschau</button>
             <span id="bboxListSelectionCount" style="font-weight: 600;"></span>
         </div>
 
@@ -972,6 +973,7 @@
         let bboxListLastClickedIndex = -1;
         let bboxListSortBy = null;
         let bboxListSortDir = 'asc';
+        let bboxListShowPreviews = false;  // Ob Vorschaubilder angezeigt werden sollen
 
         // Quality-Metriken Config
         const qualityBBoxCache = {}; // BBox-Daten pro page_id nach Aufklappen
@@ -1535,7 +1537,43 @@
             }
 
             window.location.hash = '#/bbox-list';
+
+            // Füge Enter-Taste Event-Listener für Filter-Felder hinzu
+            setupBboxListFilterEnterHandlers();
+
             applyBboxListFilter();
+        }
+
+        function setupBboxListFilterEnterHandlers() {
+            // Liste aller Filter-Input-Felder
+            const filterInputs = [
+                'bboxFilterTextSearch',
+                'bboxFilterMinChars1k',
+                'bboxFilterMaxChars1k',
+                'bboxFilterMinBlackPc',
+                'bboxFilterMaxBlackPc',
+                'bboxFilterMinBlackPx',
+                'bboxFilterMaxBlackPx',
+                'bboxFilterMinCharCount',
+                'bboxFilterMaxCharCount'
+            ];
+
+            filterInputs.forEach(function(inputId) {
+                const input = document.getElementById(inputId);
+                if (input) {
+                    // Entferne alte Listener falls vorhanden
+                    input.removeEventListener('keydown', handleFilterEnterKey);
+                    // Füge neuen Listener hinzu
+                    input.addEventListener('keydown', handleFilterEnterKey);
+                }
+            });
+        }
+
+        function handleFilterEnterKey(event) {
+            if (event.key === 'Enter' || event.keyCode === 13) {
+                event.preventDefault();
+                applyBboxListFilter();
+            }
         }
 
         function bboxListSortItems(items) {
@@ -1576,8 +1614,11 @@
             if (!container) return;
             const items = bboxListCurrentItems;
             let html = '<table class="review-table bbox-list-table" style="width: 100%; border-collapse: collapse;"><thead><tr>' +
-                '<th style="padding: 6px; border: 1px solid #ccc; width: 36px;"><input type="checkbox" id="bboxListSelectPage" title="Alle (diese Seite) auswählen" onclick="bboxListSelectCurrentPage()"></th>' +
-                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'document_title\'); return false;">Dokument <span class="sort-icon">' + bboxListGetSortIcon('document_title') + '</span></th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; width: 36px;"><input type="checkbox" id="bboxListSelectPage" title="Alle (diese Seite) auswählen" onclick="bboxListSelectCurrentPage()"></th>';
+            if (bboxListShowPreviews) {
+                html += '<th style="padding: 6px; border: 1px solid #ccc; width: 120px;">Vorschau</th>';
+            }
+            html += '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'document_title\'); return false;">Dokument <span class="sort-icon">' + bboxListGetSortIcon('document_title') + '</span></th>' +
                 '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'page_number\'); return false;">Seite <span class="sort-icon">' + bboxListGetSortIcon('page_number') + '</span></th>' +
                 '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'bbox_index\'); return false;">Box <span class="sort-icon">' + bboxListGetSortIcon('bbox_index') + '</span></th>' +
                 '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'text_preview\'); return false;">Text (Vorschau) <span class="sort-icon">' + bboxListGetSortIcon('text_preview') + '</span></th>' +
@@ -1597,8 +1638,15 @@
                 const charCount = it.char_count != null ? it.char_count : '-';
                 const rowIdx = idx;
                 html += '<tr data-bbox-id="' + escapeHtml(id) + '" data-row-index="' + rowIdx + '" onclick="bboxListRowClick(event, \'' + escapeHtml(id) + '\', ' + rowIdx + ')">' +
-                    '<td style="padding: 6px; border: 1px solid #ccc;" onclick="event.stopPropagation()"><input type="checkbox" class="bbox-list-cb" data-bbox-id="' + escapeHtml(id) + '"' + checked + ' onclick="bboxListCheckboxClick(event, \'' + escapeHtml(id) + '\', ' + rowIdx + ')"></td>' +
-                    '<td style="padding: 6px; border: 1px solid #ccc;">' + escapeHtml(it.document_title || '-') + '</td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;" onclick="event.stopPropagation()"><input type="checkbox" class="bbox-list-cb" data-bbox-id="' + escapeHtml(id) + '"' + checked + ' onclick="bboxListCheckboxClick(event, \'' + escapeHtml(id) + '\', ' + rowIdx + ')"></td>';
+                if (bboxListShowPreviews) {
+                    html += '<td style="padding: 6px; border: 1px solid #ccc; text-align: center;" onclick="event.stopPropagation()">' +
+                        '<span id="bbox-preview-loading-' + escapeHtml(id) + '" style="color: #666; font-size: 11px;">Lädt...</span>' +
+                        '<img id="bbox-preview-' + escapeHtml(id) + '" src="" alt="Vorschau" style="max-width: 300px; max-height: 200px; cursor: pointer; display: none;" ' +
+                        'onclick="event.stopPropagation(); window.open(\'' + API_BASE + '/api/review/pages/' + it.page_id + '/bboxes/' + it.bbox_index + '/crop-preview\', \'_blank\');" />' +
+                        '</td>';
+                }
+                html += '<td style="padding: 6px; border: 1px solid #ccc;">' + escapeHtml(it.document_title || '-') + '</td>' +
                     '<td style="padding: 6px; border: 1px solid #ccc;">Seite ' + (it.page_number != null ? it.page_number : '-') + '</td>' +
                     '<td style="padding: 6px; border: 1px solid #ccc;">' + (it.bbox_index != null ? it.bbox_index : '-') + '</td>' +
                     '<td style="padding: 6px; border: 1px solid #ccc; max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="' + escapeHtml(it.text_preview || '') + '">' + escapeHtml((it.text_preview || '').slice(0, 60)) + (it.text_preview && it.text_preview.length > 60 ? '…' : '') + '</td>' +
@@ -1613,6 +1661,64 @@
             html += '</tbody></table>';
             container.innerHTML = html;
             syncBboxListCheckboxes();
+
+            // Lade Vorschaubilder, falls aktiviert (immer neu laden, auch beim Neuladen)
+            if (bboxListShowPreviews) {
+                // Kurze Verzögerung, damit die Tabelle gerendert ist
+                setTimeout(() => {
+                    bboxListLoadPreviews();
+                }, 50);
+            }
+        }
+
+        async function bboxListLoadPreviews() {
+            const items = bboxListCurrentItems;
+            if (!items || items.length === 0) return;
+
+            // Warte kurz, damit die Tabelle vollständig gerendert ist
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            for (const item of items) {
+                const id = item.id || (item.page_id + '_' + item.bbox_index);
+                const img = document.getElementById('bbox-preview-' + id);
+                const loadingSpan = document.getElementById('bbox-preview-loading-' + id);
+
+                if (img && loadingSpan) {
+                    // Füge Timestamp hinzu, um Cache-Bypass zu erzwingen
+                    const timestamp = new Date().getTime();
+                    const previewUrl = `${API_BASE}/api/review/pages/${item.page_id}/bboxes/${item.bbox_index}/crop-preview?t=${timestamp}`;
+
+                    // Setze onload Handler
+                    img.onload = function() {
+                        // Verstecke "Lädt..." Span und zeige Bild
+                        loadingSpan.style.display = 'none';
+                        img.style.display = 'block';
+                    };
+
+                    // Setze onerror Handler
+                    img.onerror = function() {
+                        // Zeige Fehler an
+                        loadingSpan.textContent = 'Fehler';
+                        loadingSpan.style.color = '#dc3545';
+                        img.style.display = 'none';
+                    };
+
+                    // Lade Bild
+                    img.src = previewUrl;
+                }
+            }
+        }
+
+        function bboxListTogglePreviews() {
+            bboxListShowPreviews = !bboxListShowPreviews;
+            const btn = document.getElementById('bboxListPreviewBtn');
+            if (btn) {
+                btn.textContent = bboxListShowPreviews ? 'Vorschau ausblenden' : 'Vorschau';
+                btn.classList.toggle('btn-primary', !bboxListShowPreviews);
+                btn.classList.toggle('btn-secondary', bboxListShowPreviews);
+            }
+            // Rendere Tabelle neu, um Spalte hinzuzufügen/entfernen
+            bboxListRenderTable();
         }
 
         function bboxListBuildQueryParams(offset) {
@@ -1713,29 +1819,73 @@
         }
 
         function bboxListRowClick(event, id, rowIndex) {
+            // Verhindere Standard-Verhalten bei Shift-Click (Textauswahl)
             if (event.shiftKey) {
                 event.preventDefault();
-                const from = Math.min(bboxListLastClickedIndex >= 0 ? bboxListLastClickedIndex : rowIndex, rowIndex);
-                const to = Math.max(bboxListLastClickedIndex >= 0 ? bboxListLastClickedIndex : rowIndex, rowIndex);
+            }
+
+            // Prüfe ob Click direkt auf interaktive Elemente war
+            const target = event.target;
+
+            // Prüfe ob direkt auf Checkbox, Button oder Link geklickt wurde
+            if (target.type === 'checkbox' || target.tagName === 'BUTTON' ||
+                (target.tagName === 'A' && target.classList && target.classList.contains('bbox-list-inspect-link'))) {
+                return; // Lass diese Elemente ihre eigenen Handler ausführen
+            }
+
+            // Prüfe ob innerhalb eines Links oder Buttons geklickt wurde (für verschachtelte Elemente)
+            if (target.closest('a.bbox-list-inspect-link') || target.closest('button')) {
+                return;
+            }
+
+            // Verhindere weiteres Bubbling für normale Clicks
+            event.stopPropagation();
+
+            if (event.shiftKey && bboxListLastClickedIndex >= 0) {
+                // Shift-Click: Toggle alle Zeilen zwischen letzter und aktueller
+                const from = Math.min(bboxListLastClickedIndex, rowIndex);
+                const to = Math.max(bboxListLastClickedIndex, rowIndex);
+
+                // Bestimme Toggle-Zustand basierend auf aktueller Zeile
+                const currentSelected = bboxListSelectedIds.has(id);
+
                 for (let i = from; i <= to; i++) {
                     if (i < bboxListCurrentItems.length) {
                         const it = bboxListCurrentItems[i];
                         const bid = it.id || (it.page_id + '_' + it.bbox_index);
-                        bboxListSelectedIds.add(bid);
+                        if (currentSelected) {
+                            bboxListSelectedIds.delete(bid);
+                        } else {
+                            bboxListSelectedIds.add(bid);
+                        }
                     }
                 }
                 bboxListSelectedAllMatching = false;
+                bboxListLastClickedIndex = rowIndex;
                 updateBboxListSelectionCount();
                 syncBboxListCheckboxes();
             } else if (event.ctrlKey || event.metaKey) {
-                if (bboxListSelectedIds.has(id)) bboxListSelectedIds.delete(id);
-                else bboxListSelectedIds.add(id);
+                // Ctrl/Cmd-Click: Toggle einzelne Zeile
+                if (bboxListSelectedIds.has(id)) {
+                    bboxListSelectedIds.delete(id);
+                } else {
+                    bboxListSelectedIds.add(id);
+                }
                 bboxListSelectedAllMatching = false;
                 bboxListLastClickedIndex = rowIndex;
                 updateBboxListSelectionCount();
                 syncBboxListCheckboxes();
             } else {
+                // Normaler Click: Toggle wie Checkbox
+                if (bboxListSelectedIds.has(id)) {
+                    bboxListSelectedIds.delete(id);
+                } else {
+                    bboxListSelectedIds.add(id);
+                }
+                bboxListSelectedAllMatching = false;
                 bboxListLastClickedIndex = rowIndex;
+                updateBboxListSelectionCount();
+                syncBboxListCheckboxes();
             }
         }
 
@@ -2207,6 +2357,7 @@
         let isAddingBBox = false;  // Modus: Box hinzufügen
         let drawingRectangle = null;  // Aktuell gezeichnetes Rectangle
         let drawingStartPoint = null;  // Startpunkt beim Zeichnen
+        let savedMapView = null;  // Gespeicherte Zoom- und Pan-Position
 
         async function loadPageInspect(pageId) {
             try {
@@ -2333,10 +2484,22 @@
                 L.imageOverlay(imageUrl, imageBounds).addTo(map);
 
                 // Setze Bounds und Zoom mit Padding für bessere Ansicht
-                map.fitBounds(imageBounds, {
-                    padding: [50, 50],  // Padding in Pixeln
-                    maxZoom: 0          // Standard-Zoom-Level (0 = weiter heraus)
-                });
+                // Stelle gespeicherte Ansicht wieder her, falls vorhanden
+                if (savedMapView) {
+                    // Verwende setTimeout, um sicherzustellen, dass die Karte vollständig initialisiert ist
+                    setTimeout(() => {
+                        if (map && savedMapView) {
+                            map.setView(savedMapView.center, savedMapView.zoom);
+                            savedMapView = null;  // Zurücksetzen nach Wiederherstellung
+                        }
+                    }, 100);
+                } else {
+                    // Nur beim ersten Laden: Standard-Ansicht setzen
+                    map.fitBounds(imageBounds, {
+                        padding: [50, 50],  // Padding in Pixeln
+                        maxZoom: 0          // Standard-Zoom-Level (0 = weiter heraus)
+                    });
+                }
 
                 // Füge Bounding Boxes hinzu
                 // bbox_pixel Format: [x1, y1, x2, y2] (Pixel-Koordinaten vom OCR-Bild)
@@ -4058,6 +4221,14 @@
 
                 const result = await addResponse.json();
                 showMessage('Neue Box hinzugefügt - OCR-Job erstellt', 'success');
+
+                // Speichere aktuelle Zoom- und Pan-Position
+                if (map) {
+                    savedMapView = {
+                        center: map.getCenter(),
+                        zoom: map.getZoom()
+                    };
+                }
 
                 // Verlasse Zeichnen-Modus
                 toggleAddBBoxMode();

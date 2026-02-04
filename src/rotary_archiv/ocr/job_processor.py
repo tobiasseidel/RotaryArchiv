@@ -455,6 +455,32 @@ async def process_bbox_review_job(job_id: int) -> None:
         job.completed_at = datetime.now()
         db.commit()
 
+        # Erstelle Quality-Job für diese Seite, um Metriken neu zu berechnen
+        existing_quality_job = (
+            db.query(OCRJob)
+            .filter(
+                OCRJob.document_page_id == job.document_page_id,
+                OCRJob.job_type == "quality",
+                OCRJob.status.in_([OCRJobStatus.PENDING, OCRJobStatus.RUNNING]),
+            )
+            .first()
+        )
+        if not existing_quality_job:
+            quality_job = OCRJob(
+                document_id=job.document_id,
+                document_page_id=job.document_page_id,
+                job_type="quality",
+                status=OCRJobStatus.PENDING,
+                language="deu+eng",
+                use_correction=False,
+                priority=0,
+            )
+            db.add(quality_job)
+            db.commit()
+            logger.info(
+                f"Quality-Job für Seite {job.document_page_id} erstellt (Job-ID: {quality_job.id})"
+            )
+
     except Exception as e:
         # Fehlerbehandlung
         if job:

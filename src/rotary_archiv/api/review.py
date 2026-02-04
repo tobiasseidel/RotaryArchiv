@@ -28,6 +28,50 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/review", tags=["review"])
 
 
+def _create_quality_job_if_needed(page_id: int, db: Session) -> None:
+    """
+    Erstellt einen Quality-Job für eine Seite, falls noch keiner pending/running ist.
+
+    Args:
+        page_id: ID der Seite
+        db: Datenbank-Session
+    """
+    # Prüfe ob bereits ein Quality-Job für diese Seite pending/running ist
+    existing_job = (
+        db.query(OCRJob)
+        .filter(
+            OCRJob.document_page_id == page_id,
+            OCRJob.job_type == "quality",
+            OCRJob.status.in_([OCRJobStatus.PENDING, OCRJobStatus.RUNNING]),
+        )
+        .first()
+    )
+
+    if existing_job:
+        return  # Job existiert bereits
+
+    # Hole Seite für document_id
+    page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+    if not page:
+        logger.warning(f"Seite {page_id} nicht gefunden für Quality-Job-Erstellung")
+        return
+
+    # Erstelle Quality-Job
+    quality_job = OCRJob(
+        document_id=page.document_id,
+        document_page_id=page_id,
+        job_type="quality",
+        status=OCRJobStatus.PENDING,
+        language="deu+eng",  # Nicht relevant für Quality, aber erforderlich
+        use_correction=False,  # Nicht relevant für Quality
+        priority=0,
+    )
+
+    db.add(quality_job)
+    db.commit()
+    logger.info(f"Quality-Job für Seite {page_id} erstellt (Job-ID: {quality_job.id})")
+
+
 class SaveReviewedBBoxRequest(BaseModel):
     """Request-Schema für gespeicherte Review-BBox"""
 
@@ -190,6 +234,9 @@ async def confirm_bbox(
     flag_modified(ocr_result, "bbox_data")
     db.commit()
 
+    # Erstelle Quality-Job für diese Seite
+    _create_quality_job_if_needed(page_id, db)
+
     return {
         "success": True,
         "message": f"BBox {bbox_index} bestätigt",
@@ -249,6 +296,9 @@ async def reject_bbox(
     ocr_result.bbox_data = bbox_list
     flag_modified(ocr_result, "bbox_data")
     db.commit()
+
+    # Erstelle Quality-Job für diese Seite
+    _create_quality_job_if_needed(page_id, db)
 
     return {
         "success": True,
@@ -310,6 +360,9 @@ async def ignore_bbox(
     flag_modified(ocr_result, "bbox_data")
     db.commit()
 
+    # Erstelle Quality-Job für diese Seite
+    _create_quality_job_if_needed(page_id, db)
+
     return {
         "success": True,
         "message": f"BBox {bbox_index} ignoriert",
@@ -364,6 +417,9 @@ async def delete_bbox(
     ocr_result.bbox_data = bbox_list
     flag_modified(ocr_result, "bbox_data")
     db.commit()
+
+    # Erstelle Quality-Job für diese Seite
+    _create_quality_job_if_needed(page_id, db)
 
     return {"success": True, "message": "BBox gelöscht"}
 
@@ -475,6 +531,8 @@ async def batch_change_status(
             ocr_result.bbox_data = bbox_list
             flag_modified(ocr_result, "bbox_data")
             db.commit()
+            # Erstelle Quality-Job für diese Seite
+            _create_quality_job_if_needed(page_id, db)
 
     return {"success": True, "updated": updated, "errors": errors}
 
@@ -573,6 +631,8 @@ async def batch_discard_and_recalc(
             ocr_result.bbox_data = bbox_list
             flag_modified(ocr_result, "bbox_data")
             db.commit()
+            # Erstelle Quality-Job für diese Seite
+            _create_quality_job_if_needed(page_id, db)
 
     # Schritt 2: Review-Jobs erstellen (ein Job pro Seite)
     for page_id in bboxes_by_page:
@@ -726,7 +786,6 @@ async def get_bbox_crop_preview(
     Returns:
         FileResponse mit dem Crop-Bild
     """
-    from pathlib import Path
     import tempfile
 
     from fastapi.responses import FileResponse
@@ -768,28 +827,11 @@ async def get_bbox_crop_preview(
 
     bbox_item = bbox_list[bbox_index]
 
-    # Suche zuerst nach gespeichertem Debug-Crop
-    debug_dir = Path(settings.debug_bbox_crops_path)
-    if debug_dir.exists():
-        # Suche nach Crop-Bildern für diese BBox (neuestes zuerst)
-        debug_files = sorted(
-            debug_dir.glob(f"page_{page_id}_bbox_{bbox_index}_*.png"),
-            key=lambda p: p.stat().st_mtime,
-            reverse=True,
-        )
-        if debug_files:
-            # Verwende das neueste Crop-Bild
-            return FileResponse(
-                path=str(debug_files[0]),
-                media_type="image/png",
-                filename=f"bbox_{bbox_index}_crop.png",
-            )
-
-    # Falls kein Debug-Crop vorhanden, erstelle es on-the-fly
+    # Erstelle Preview-Bild immer on-the-fly mit Padding und Box-Grenzen
+    # (ignoriere Debug-Crops, da diese kein Padding haben)
     # Verwende die GLEICHE Logik wie in bbox_ocr.py
     try:
         from src.rotary_archiv.utils.file_handler import get_file_path
-        from src.rotary_archiv.utils.image_utils import crop_bbox_from_image
         from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
 
         # Lade Seitenbild
@@ -856,8 +898,115 @@ async def get_bbox_crop_preview(
             bbox_pixel[3],  # y2 (unverändert)
         ]
 
-        # Croppe BBox aus Bild (OHNE padding, genau wie in bbox_ocr.py Zeile 309)
-        cropped_image = crop_bbox_from_image(page_image, bbox_pixel_adjusted)
+        # Padding für Preview (20 Pixel)
+        padding = 20
+
+        # Berechne Crop-Bereich mit Padding (kann über Seitenrand hinausgehen)
+        x1, y1, x2, y2 = bbox_pixel_adjusted
+        crop_x1 = x1 - padding
+        crop_y1 = y1 - padding
+        crop_x2 = x2 + padding
+        crop_y2 = y2 + padding
+
+        # Berechne tatsächliche Bild-Dimensionen für Crop
+        crop_width = crop_x2 - crop_x1
+        crop_height = crop_y2 - crop_y1
+
+        logger.debug(
+            f"Crop-Preview für BBox {bbox_index}: "
+            f"Box=({x1},{y1},{x2},{y2}), "
+            f"Crop=({crop_x1},{crop_y1},{crop_x2},{crop_y2}), "
+            f"Bild-Größe=({page_image.width},{page_image.height}), "
+            f"Crop-Größe=({crop_width},{crop_height})"
+        )
+
+        # Erstelle neues Bild mit grauem Hintergrund
+        from PIL import Image, ImageDraw
+
+        cropped_image = Image.new(
+            "RGB", (crop_width, crop_height), color=(200, 200, 200)
+        )
+
+        # Berechne Offset für das Seitenbild im Crop-Bereich
+        # Wenn crop_x1 < 0, dann ist Padding links vom Seitenrand -> Offset ist -crop_x1
+        # Wenn crop_y1 < 0, dann ist Padding oben vom Seitenrand -> Offset ist -crop_y1
+        image_offset_x = -crop_x1 if crop_x1 < 0 else 0
+        image_offset_y = -crop_y1 if crop_y1 < 0 else 0
+
+        # Berechne welche Teile des Seitenbilds sichtbar sind
+        source_x1 = max(0, crop_x1)
+        source_y1 = max(0, crop_y1)
+        source_x2 = min(page_image.width, crop_x2)
+        source_y2 = min(page_image.height, crop_y2)
+
+        # Croppe sichtbaren Teil des Seitenbilds
+        if source_x2 > source_x1 and source_y2 > source_y1:
+            visible_part = page_image.crop((source_x1, source_y1, source_x2, source_y2))
+            # Berechne Ziel-Position im Crop-Bild
+            # Wenn crop_x1 < 0, dann startet das Bild bei -crop_x1 im Crop-Bild
+            dest_x = image_offset_x
+            dest_y = image_offset_y
+
+            logger.debug(
+                f"Crop-Preview Einfügen: "
+                f"source=({source_x1},{source_y1},{source_x2},{source_y2}), "
+                f"dest=({dest_x},{dest_y}), "
+                f"visible_part.size={visible_part.size}"
+            )
+
+            # Füge sichtbaren Teil in das Crop-Bild ein
+            cropped_image.paste(visible_part, (dest_x, dest_y))
+
+        # Zeichne Box-Grenzen auf das Bild
+        draw = ImageDraw.Draw(cropped_image)
+
+        # Berechne relative Koordinaten für die aktuelle Box (bezogen auf den Crop-Bereich)
+        current_box_x1 = x1 - crop_x1
+        current_box_y1 = y1 - crop_y1
+        current_box_x2 = x2 - crop_x1
+        current_box_y2 = y2 - crop_y1
+
+        # Zeichne Grenzen der aktuellen Box (dick, rot)
+        draw.rectangle(
+            [current_box_x1, current_box_y1, current_box_x2, current_box_y2],
+            outline="red",
+            width=3,
+        )
+
+        # Zeichne Grenzen der umliegenden Boxen (dünn, blau)
+        for idx, other_bbox in enumerate(bbox_list):
+            if idx == bbox_index:
+                continue  # Überspringe aktuelle Box
+
+            other_bbox_pixel = other_bbox.get("bbox_pixel")
+            if not other_bbox_pixel or len(other_bbox_pixel) != 4:
+                continue
+
+            # Wende X-Skalierung an
+            other_x1 = int(other_bbox_pixel[0] * 0.7)
+            other_y1 = other_bbox_pixel[1]
+            other_x2 = int(other_bbox_pixel[2] * 0.7)
+            other_y2 = other_bbox_pixel[3]
+
+            # Prüfe ob Box im sichtbaren Bereich liegt (mit etwas Toleranz)
+            if (
+                other_x2 >= crop_x1 - 10
+                and other_x1 <= crop_x2 + 10
+                and other_y2 >= crop_y1 - 10
+                and other_y1 <= crop_y2 + 10
+            ):
+                # Berechne relative Koordinaten
+                rel_x1 = other_x1 - crop_x1
+                rel_y1 = other_y1 - crop_y1
+                rel_x2 = other_x2 - crop_x1
+                rel_y2 = other_y2 - crop_y1
+
+                # Zeichne Box-Grenze (dünn, blau)
+                draw.rectangle(
+                    [rel_x1, rel_y1, rel_x2, rel_y2],
+                    outline="blue",
+                    width=1,
+                )
 
         # Speichere temporär
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
@@ -934,6 +1083,9 @@ async def save_reviewed_bbox(
     ocr_result.bbox_data = bbox_list
     flag_modified(ocr_result, "bbox_data")
     db.commit()
+
+    # Erstelle Quality-Job für diese Seite
+    _create_quality_job_if_needed(page_id, db)
 
     return {
         "success": True,
