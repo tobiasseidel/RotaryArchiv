@@ -12,6 +12,17 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
+from pathlib import Path
+import tempfile
+import uuid
+
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    Image = None  # type: ignore
+    PIL_AVAILABLE = False
+
 from src.rotary_archiv.config import settings
 from src.rotary_archiv.core.database import get_db
 from src.rotary_archiv.core.models import (
@@ -22,6 +33,10 @@ from src.rotary_archiv.core.models import (
     OCRResult,
     OCRSource,
 )
+from src.rotary_archiv.utils.file_handler import get_file_path
+from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
+from src.rotary_archiv.ocr.ollama_vision import OllamaVisionOCR
+from sqlalchemy import func as sqlfunc
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +71,8 @@ def _create_quality_job_if_needed(page_id: int, db: Session) -> None:
         logger.warning(f"Seite {page_id} nicht gefunden für Quality-Job-Erstellung")
         return
 
-    # Erstelle Quality-Job
+    # Erstelle Quality-Job mit niedrigerer Priorität als BBox-Review-Jobs
+    # (höhere Zahl = niedrigere Priorität)
     quality_job = OCRJob(
         document_id=page.document_id,
         document_page_id=page_id,
@@ -64,7 +80,7 @@ def _create_quality_job_if_needed(page_id: int, db: Session) -> None:
         status=OCRJobStatus.PENDING,
         language="deu+eng",  # Nicht relevant für Quality, aber erforderlich
         use_correction=False,  # Nicht relevant für Quality
-        priority=0,
+        priority=1,  # Niedrigere Priorität als BBox-Review-Jobs (priority=-1)
     )
 
     db.add(quality_job)
@@ -84,6 +100,12 @@ class AddBBoxRequest(BaseModel):
     bbox_pixel: list[int]  # [x1, y1, x2, y2] Pixel-Koordinaten
 
 
+class AddMultipleBBoxesRequest(BaseModel):
+    """Request-Schema für automatische Erkennung mehrerer BBoxen in einem Bereich"""
+
+    bbox_pixel: list[int]  # [x1, y1, x2, y2] Pixel-Koordinaten der gezeichneten Box
+
+
 class BBoxRef(BaseModel):
     """Referenz auf eine BBox"""
 
@@ -94,20 +116,167 @@ class BBoxRef(BaseModel):
 class BatchChangeStatusRequest(BaseModel):
     """Request-Schema für Batch-Status-Änderung"""
 
-    bboxes: list[BBoxRef]
+    bboxes: list[BBoxRef] | None = None  # Optional: explizite Liste von BBoxen
     new_status: str  # pending, confirmed, rejected, auto_confirmed, ignored, new
+    # Filter-Parameter (optional, wenn gesetzt werden bboxes ignoriert)
+    document_id: int | None = None
+    min_chars_per_1k_px: float | None = None
+    max_chars_per_1k_px: float | None = None
+    min_black_pixels_per_char: float | None = None
+    max_black_pixels_per_char: float | None = None
+    min_black_pixels: int | None = None
+    max_black_pixels: int | None = None
+    text_search: str | None = None
+    min_char_count: int | None = None
+    max_char_count: int | None = None
+    review_status: list[str] | None = None
+    max_left_pct: float | None = None
+    min_right_pct: float | None = None
+    min_width_pct: float | None = None
+    max_width_pct: float | None = None
 
 
 class BatchDiscardAndRecalcRequest(BaseModel):
     """Request-Schema für Batch-OCR verwerfen und neu berechnen"""
 
-    bboxes: list[BBoxRef]
+    bboxes: list[BBoxRef] | None = None  # Optional: explizite Liste von BBoxen
+    # Filter-Parameter (optional, wenn gesetzt werden bboxes ignoriert)
+    document_id: int | None = None
+    min_chars_per_1k_px: float | None = None
+    max_chars_per_1k_px: float | None = None
+    min_black_pixels_per_char: float | None = None
+    max_black_pixels_per_char: float | None = None
+    min_black_pixels: int | None = None
+    max_black_pixels: int | None = None
+    text_search: str | None = None
+    min_char_count: int | None = None
+    max_char_count: int | None = None
+    review_status: list[str] | None = None
+    max_left_pct: float | None = None
+    min_right_pct: float | None = None
+    min_width_pct: float | None = None
+    max_width_pct: float | None = None
 
 
 class BatchDeleteRequest(BaseModel):
     """Request-Schema für Batch-BBoxen löschen"""
 
-    bboxes: list[BBoxRef]
+    bboxes: list[BBoxRef] | None = None  # Optional: explizite Liste von BBoxen
+    # Filter-Parameter (optional, wenn gesetzt werden bboxes ignoriert)
+    document_id: int | None = None
+    min_chars_per_1k_px: float | None = None
+    max_chars_per_1k_px: float | None = None
+    min_black_pixels_per_char: float | None = None
+    max_black_pixels_per_char: float | None = None
+    min_black_pixels: int | None = None
+    max_black_pixels: int | None = None
+    text_search: str | None = None
+    min_char_count: int | None = None
+    max_char_count: int | None = None
+    review_status: list[str] | None = None
+    max_left_pct: float | None = None
+    min_right_pct: float | None = None
+    min_width_pct: float | None = None
+    max_width_pct: float | None = None
+
+
+def _get_filtered_bboxes_from_request(
+    request: BatchChangeStatusRequest | BatchDiscardAndRecalcRequest | BatchDeleteRequest,
+    db: Session,
+):
+    """
+    Hilfsfunktion: Ermittelt BBoxen basierend auf Filter-Parametern oder expliziter Liste.
+    
+    Returns:
+        Liste von (page_id, bbox_index) Tupeln
+    """
+    # Prüfe ob Filter-Parameter vorhanden sind
+    # Wenn bboxes explizit gesetzt ist, verwende diese (auch wenn Filter gesetzt sind)
+    if request.bboxes:
+        logger.debug("Filter: Verwende explizite bboxes-Liste (Filter-Parameter werden ignoriert)")
+        return [(bbox_ref.page_id, bbox_ref.bbox_index) for bbox_ref in request.bboxes]
+    
+    has_filters = any([
+        request.document_id is not None,
+        request.min_chars_per_1k_px is not None,
+        request.max_chars_per_1k_px is not None,
+        request.min_black_pixels_per_char is not None,
+        request.max_black_pixels_per_char is not None,
+        request.min_black_pixels is not None,
+        request.max_black_pixels is not None,
+        request.text_search,
+        request.min_char_count is not None,
+        request.max_char_count is not None,
+        request.review_status,
+        request.max_left_pct is not None,
+        request.min_right_pct is not None,
+        request.min_width_pct is not None,
+        request.max_width_pct is not None,
+    ])
+    
+    if not has_filters:
+        logger.warning("Filter: Weder bboxes noch Filter-Parameter gesetzt, gebe leere Liste zurück")
+        return []
+    
+    if has_filters:
+        # Verwende Filter-Logik aus quality.py
+        from src.rotary_archiv.api.quality import _iter_matching_bboxes
+        
+        # Baue Query wie in get_bbox_list
+        latest_ocr_subq = (
+            db.query(
+                OCRResult.document_page_id,
+                sqlfunc.max(OCRResult.created_at).label("max_created_at"),
+            )
+            .filter(OCRResult.quality_metrics.isnot(None))
+            .group_by(OCRResult.document_page_id)
+        ).subquery("latest_ocr")
+        
+        query = (
+            db.query(OCRResult, DocumentPage, Document)
+            .join(
+                latest_ocr_subq,
+                (OCRResult.document_page_id == latest_ocr_subq.c.document_page_id)
+                & (OCRResult.created_at == latest_ocr_subq.c.max_created_at),
+            )
+            .join(DocumentPage, DocumentPage.id == OCRResult.document_page_id)
+            .join(Document, Document.id == DocumentPage.document_id)
+        )
+        
+        if request.document_id is not None:
+            query = query.filter(DocumentPage.document_id == request.document_id)
+        
+        rows = query.order_by(DocumentPage.document_id, DocumentPage.page_number).all()
+        
+        # Verwende Filter-Funktion
+        it = _iter_matching_bboxes(
+            rows,
+            request.min_chars_per_1k_px,
+            request.max_chars_per_1k_px,
+            request.min_black_pixels_per_char,
+            request.max_black_pixels_per_char,
+            request.min_black_pixels,
+            request.max_black_pixels,
+            text_search=request.text_search,
+            min_char_count=request.min_char_count,
+            max_char_count=request.max_char_count,
+            review_status_filter=request.review_status if request.review_status else None,
+            max_left_pct=request.max_left_pct,
+            min_right_pct=request.min_right_pct,
+            min_width_pct=request.min_width_pct,
+            max_width_pct=request.max_width_pct,
+        )
+        
+        # Sammle alle gefilterten BBoxen
+        # HINWEIS: Wir validieren die Indizes NICHT hier, sondern lassen batch_delete
+        # die ungültigen Indizes einfach überspringen. Das ist effizienter und vermeidet
+        # das Problem, dass quality_metrics veraltet sein können.
+        filtered_items = list(it)
+        logger.info(f"Filter: {len(filtered_items)} BBoxen gefunden durch Filter-Logik")
+        
+        # Konvertiere direkt zu Liste von (page_id, bbox_index) Tupeln
+        # Die Validierung erfolgt später in batch_delete, wo ungültige Indizes einfach übersprungen werden
+        return [(item["page_id"], item["bbox_index"]) for item in filtered_items]
 
 
 @router.get("/pages/{page_id}/bboxes")
@@ -455,12 +624,18 @@ async def batch_change_status(
     updated = 0
     errors = []
 
+    # Ermittle BBoxen (entweder aus Filter oder expliziter Liste)
+    bbox_refs = _get_filtered_bboxes_from_request(request, db)
+    
+    if not bbox_refs:
+        return {"success": True, "updated": 0, "errors": []}
+
     # Gruppiere BBoxen nach page_id für effiziente DB-Zugriffe
     from collections import defaultdict
 
     bboxes_by_page = defaultdict(list)
-    for bbox_ref in request.bboxes:
-        bboxes_by_page[bbox_ref.page_id].append(bbox_ref.bbox_index)
+    for page_id, bbox_index in bbox_refs:
+        bboxes_by_page[page_id].append(bbox_index)
 
     for page_id, bbox_indices in bboxes_by_page.items():
         # Hole Seite
@@ -549,7 +724,7 @@ async def batch_discard_and_recalc(
     Schritt 2: Erstellt Review-Jobs (gruppiert nach Seite)
 
     Args:
-        request: Liste von BBox-Referenzen
+        request: Liste von BBox-Referenzen oder Filter-Parameter
 
     Returns:
         {"success": True, "discarded": int, "jobs_created": int, "jobs_existing": int, "errors": [...]}
@@ -559,25 +734,45 @@ async def batch_discard_and_recalc(
     jobs_created = 0
     jobs_existing = 0
 
+    # Ermittle BBoxen (entweder aus Filter oder expliziter Liste)
+    try:
+        bbox_refs = _get_filtered_bboxes_from_request(request, db)
+        logger.info(f"Batch-Discard-And-Recalc: Gefilterte BBoxen gefunden: {len(bbox_refs)}")
+    except Exception as e:
+        logger.error(f"Batch-Discard-And-Recalc: Fehler beim Filtern der BBoxen: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Fehler beim Filtern der BBoxen: {e!s}")
+    
+    if not bbox_refs:
+        logger.info("Batch-Discard-And-Recalc: Keine BBoxen gefunden, die den Filtern entsprechen")
+        return {
+            "success": True,
+            "discarded": 0,
+            "jobs_created": 0,
+            "jobs_existing": 0,
+            "errors": [],
+        }
+
     # Gruppiere BBoxen nach page_id
     from collections import defaultdict
 
     bboxes_by_page = defaultdict(list)
-    for bbox_ref in request.bboxes:
-        bboxes_by_page[bbox_ref.page_id].append(bbox_ref.bbox_index)
+    for page_id, bbox_index in bbox_refs:
+        bboxes_by_page[page_id].append(bbox_index)
+    
+    logger.info(f"Batch-Discard-And-Recalc: Verarbeite {len(bboxes_by_page)} Seiten mit insgesamt {len(bbox_refs)} BBoxen")
 
     # Schritt 1: Verwerfen
     for page_id, bbox_indices in bboxes_by_page.items():
         page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
         if not page:
-            for idx in bbox_indices:
-                errors.append(
-                    {
-                        "page_id": page_id,
-                        "bbox_index": idx,
-                        "error": "Seite nicht gefunden",
-                    }
-                )
+            # Zusammenfassende Fehlermeldung statt für jeden Index
+            errors.append(
+                {
+                    "page_id": page_id,
+                    "bbox_index": None,
+                    "error": f"Seite {page_id} nicht gefunden ({len(bbox_indices)} BBoxen betroffen)",
+                }
+            )
             continue
 
         ocr_result = (
@@ -591,14 +786,14 @@ async def batch_discard_and_recalc(
         )
 
         if not ocr_result or not ocr_result.bbox_data:
-            for idx in bbox_indices:
-                errors.append(
-                    {
-                        "page_id": page_id,
-                        "bbox_index": idx,
-                        "error": "Keine BBox-Daten für diese Seite gefunden",
-                    }
-                )
+            # Zusammenfassende Fehlermeldung statt für jeden Index
+            errors.append(
+                {
+                    "page_id": page_id,
+                    "bbox_index": None,
+                    "error": f"Keine BBox-Daten für Seite {page_id} gefunden ({len(bbox_indices)} BBoxen betroffen)",
+                }
+            )
             continue
 
         if isinstance(ocr_result.bbox_data, str):
@@ -607,17 +802,24 @@ async def batch_discard_and_recalc(
             bbox_list = ocr_result.bbox_data.copy()
 
         modified = False
-        for bbox_index in bbox_indices:
-            if bbox_index < 0 or bbox_index >= len(bbox_list):
-                errors.append(
-                    {
-                        "page_id": page_id,
-                        "bbox_index": bbox_index,
-                        "error": "BBox-Index außerhalb des Bereichs",
-                    }
-                )
-                continue
+        valid_indices = [idx for idx in bbox_indices if 0 <= idx < len(bbox_list)]
+        
+        # Fehler nur loggen, nicht für jeden einzelnen Index zurückgeben
+        invalid_count = len(bbox_indices) - len(valid_indices)
+        if invalid_count > 0:
+            logger.warning(
+                f"Batch-Discard-And-Recalc: {invalid_count} von {len(bbox_indices)} BBox-Indizes "
+                f"außerhalb des Bereichs für Seite {page_id} (BBox-Liste hat {len(bbox_list)} Einträge)"
+            )
+            errors.append(
+                {
+                    "page_id": page_id,
+                    "bbox_index": None,
+                    "error": f"{invalid_count} BBox-Indizes außerhalb des Bereichs (Seite hat {len(bbox_list)} BBoxen)",
+                }
+            )
 
+        for bbox_index in valid_indices:
             bbox_list[bbox_index]["text"] = ""
             bbox_list[bbox_index]["ocr_results"] = None
             bbox_list[bbox_index]["differences"] = []
@@ -654,7 +856,8 @@ async def batch_discard_and_recalc(
         if existing_job:
             jobs_existing += 1
         else:
-            # Erstelle neuen Review-Job
+            # Erstelle neuen Review-Job mit höherer Priorität als Quality-Jobs
+            # (niedrigere Zahl = höhere Priorität)
             review_job = OCRJob(
                 document_id=page.document_id,
                 document_page_id=page_id,
@@ -663,6 +866,7 @@ async def batch_discard_and_recalc(
                 language="deu+eng",
                 use_correction=False,
                 progress=0.0,
+                priority=-1,  # Höhere Priorität als Quality-Jobs (priority=1)
             )
             db.add(review_job)
             db.commit()
@@ -694,24 +898,38 @@ async def batch_delete(
     deleted = 0
     errors = []
 
+    # Ermittle BBoxen (entweder aus Filter oder expliziter Liste)
+    try:
+        bbox_refs = _get_filtered_bboxes_from_request(request, db)
+        logger.info(f"Batch-Delete: Gefilterte BBoxen gefunden: {len(bbox_refs)}")
+    except Exception as e:
+        logger.error(f"Batch-Delete: Fehler beim Filtern der BBoxen: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Fehler beim Filtern der BBoxen: {e!s}")
+    
+    if not bbox_refs:
+        logger.info("Batch-Delete: Keine BBoxen gefunden, die den Filtern entsprechen")
+        return {"success": True, "deleted": 0, "errors": []}
+
     # Gruppiere BBoxen nach page_id
     from collections import defaultdict
 
     bboxes_by_page = defaultdict(list)
-    for bbox_ref in request.bboxes:
-        bboxes_by_page[bbox_ref.page_id].append(bbox_ref.bbox_index)
+    for page_id, bbox_index in bbox_refs:
+        bboxes_by_page[page_id].append(bbox_index)
+    
+    logger.info(f"Batch-Delete: Verarbeite {len(bboxes_by_page)} Seiten mit insgesamt {len(bbox_refs)} BBoxen")
 
     for page_id, bbox_indices in bboxes_by_page.items():
         page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
         if not page:
-            for idx in bbox_indices:
-                errors.append(
-                    {
-                        "page_id": page_id,
-                        "bbox_index": idx,
-                        "error": "Seite nicht gefunden",
-                    }
-                )
+            # Zusammenfassende Fehlermeldung statt für jeden Index
+            errors.append(
+                {
+                    "page_id": page_id,
+                    "bbox_index": None,
+                    "error": f"Seite {page_id} nicht gefunden ({len(bbox_indices)} BBoxen betroffen)",
+                }
+            )
             continue
 
         ocr_result = (
@@ -725,14 +943,14 @@ async def batch_delete(
         )
 
         if not ocr_result or not ocr_result.bbox_data:
-            for idx in bbox_indices:
-                errors.append(
-                    {
-                        "page_id": page_id,
-                        "bbox_index": idx,
-                        "error": "Keine BBox-Daten für diese Seite gefunden",
-                    }
-                )
+            # Zusammenfassende Fehlermeldung statt für jeden Index
+            errors.append(
+                {
+                    "page_id": page_id,
+                    "bbox_index": None,
+                    "error": f"Keine BBox-Daten für Seite {page_id} gefunden ({len(bbox_indices)} BBoxen betroffen)",
+                }
+            )
             continue
 
         if isinstance(ocr_result.bbox_data, str):
@@ -744,27 +962,62 @@ async def batch_delete(
         sorted_indices = sorted(set(bbox_indices), reverse=True)
         valid_indices = [idx for idx in sorted_indices if 0 <= idx < len(bbox_list)]
 
-        if len(valid_indices) != len(sorted_indices):
-            invalid = set(sorted_indices) - set(valid_indices)
-            for idx in invalid:
-                errors.append(
-                    {
-                        "page_id": page_id,
-                        "bbox_index": idx,
-                        "error": "BBox-Index außerhalb des Bereichs",
-                    }
-                )
+        # Fehler nur loggen, nicht für jeden einzelnen Index zurückgeben (zu viele Fehler)
+        invalid_count = len(sorted_indices) - len(valid_indices)
+        if invalid_count > 0:
+            # Logge nur einen repräsentativen Fehler statt tausender einzelner Fehler
+            logger.warning(
+                f"Batch-Delete: {invalid_count} von {len(sorted_indices)} BBox-Indizes "
+                f"außerhalb des Bereichs für Seite {page_id} (BBox-Liste hat {len(bbox_list)} Einträge)"
+            )
+            # Füge nur einen zusammenfassenden Fehler hinzu statt für jeden Index
+            errors.append(
+                {
+                    "page_id": page_id,
+                    "bbox_index": None,
+                    "error": f"{invalid_count} BBox-Indizes außerhalb des Bereichs (Seite hat {len(bbox_list)} BBoxen)",
+                }
+            )
 
         # Lösche BBoxen (von hinten nach vorne)
-        for bbox_index in valid_indices:
-            bbox_list.pop(bbox_index)
-            deleted += 1
+        try:
+            if not valid_indices:
+                logger.debug(f"Batch-Delete: Keine gültigen Indizes für Seite {page_id}")
+                continue
+                
+            for bbox_index in valid_indices:
+                if bbox_index < 0 or bbox_index >= len(bbox_list):
+                    logger.warning(f"Batch-Delete: Index {bbox_index} außerhalb des Bereichs für Seite {page_id} (Liste hat {len(bbox_list)} Einträge)")
+                    continue
+                bbox_list.pop(bbox_index)
+                deleted += 1
 
-        if valid_indices:
-            ocr_result.bbox_data = bbox_list
-            flag_modified(ocr_result, "bbox_data")
-            db.commit()
+            if deleted > 0:
+                ocr_result.bbox_data = bbox_list
+                flag_modified(ocr_result, "bbox_data")
+                db.commit()
+                # Refresh nach Commit, um sicherzustellen, dass die Daten konsistent sind
+                db.refresh(ocr_result)
+                logger.info(f"Batch-Delete: {len(valid_indices)} BBoxen von Seite {page_id} gelöscht (gesamt gelöscht: {deleted})")
+                # Erstelle Quality-Job für diese Seite, um quality_metrics zu aktualisieren
+                _create_quality_job_if_needed(page_id, db)
+        except Exception as e:
+            logger.error(f"Batch-Delete: Fehler beim Löschen von BBoxen auf Seite {page_id}: {e}", exc_info=True)
+            try:
+                db.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Batch-Delete: Fehler beim Rollback für Seite {page_id}: {rollback_error}")
+            errors.append(
+                {
+                    "page_id": page_id,
+                    "bbox_index": None,
+                    "error": f"Fehler beim Löschen: {e!s}",
+                }
+            )
+            # Weiter mit nächster Seite statt abzubrechen
+            continue
 
+    logger.info(f"Batch-Delete: Abgeschlossen. {deleted} BBoxen gelöscht, {len(errors)} Fehler")
     return {"success": True, "deleted": deleted, "errors": errors}
 
 
@@ -1290,7 +1543,7 @@ async def create_review_job(
             detail="Alle BBoxes sind bereits ignoriert oder verarbeitet",
         )
 
-    # Erstelle Review-Job
+    # Erstelle Review-Job mit höherer Priorität als Quality-Jobs
     review_job = OCRJob(
         document_id=page.document_id,
         document_page_id=page_id,
@@ -1299,6 +1552,7 @@ async def create_review_job(
         language="deu+eng",
         use_correction=False,  # Review-Jobs benötigen keine GPT-Korrektur
         progress=0.0,
+        priority=-1,  # Höhere Priorität als Quality-Jobs (priority=1)
     )
 
     db.add(review_job)
@@ -1417,3 +1671,406 @@ async def add_new_bbox(
         "job_id": review_job.id,
         "message": "Neue BBox hinzugefügt und OCR-Job erstellt",
     }
+
+
+# HINWEIS: +X (Multibox-Region) ist wegen Bugs deaktiviert – Frontend-Button ausgeblendet.
+# Die Logik bleibt für spätere Reparatur erhalten.
+@router.post("/pages/{page_id}/bboxes/add-multiple")
+async def add_multiple_bboxes(
+    page_id: int,
+    request: AddMultipleBBoxesRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Erkenne automatisch mehrere BBoxen in einem gezeichneten Bereich.
+    - Croppt den Bereich aus der Seite
+    - Führt OCR mit BBox-Extraktion auf dem gecroppten Bild durch
+    - Transformiert gefundene BBox-Koordinaten zurück auf die gesamte Seite
+    - Fügt alle gefundenen BBoxen zu bbox_data hinzu
+    - Erstellt Review-Jobs für die neuen BBoxen
+
+    Args:
+        page_id: ID der Seite
+        request: Request mit bbox_pixel [x1, y1, x2, y2] (bezogen auf OCR-Bild)
+
+    Returns:
+        {
+            "success": True,
+            "bboxes_added": 5,
+            "job_id": 456,
+            "message": "5 Boxen erkannt und hinzugefügt"
+        }
+    """
+    logger.info(f"Add-Multiple-BBox: Funktion aufgerufen für Seite {page_id}")
+    
+    try:
+        bbox_pixel = request.bbox_pixel
+        logger.info(f"Add-Multiple-BBox: Request-Daten erhalten: bbox_pixel={bbox_pixel}")
+        
+        # Validiere bbox_pixel
+        if len(bbox_pixel) != 4:
+            logger.error(f"Add-Multiple-BBox: Ungültige bbox_pixel-Länge: {len(bbox_pixel)}")
+            raise HTTPException(status_code=400, detail="bbox_pixel muss 4 Werte haben [x1, y1, x2, y2]")
+        
+        x1, y1, x2, y2 = bbox_pixel
+        logger.info(
+            f"Add-Multiple-BBox: Empfangene Koordinaten: [{x1}, {y1}, {x2}, {y2}]"
+        )
+        
+        if x1 >= x2 or y1 >= y2:
+            raise HTTPException(status_code=400, detail="Ungültige Koordinaten: x1 < x2 und y1 < y2 erforderlich")
+        
+        # Hole Seite
+        page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+        if not page:
+            raise HTTPException(status_code=404, detail="Seite nicht gefunden")
+
+        # Hole Dokument
+        document = db.query(Document).filter(Document.id == page.document_id).first()
+        if not document:
+            raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
+
+        # Hole OCRResult für Bild-Dimensionen
+        ocr_result = (
+            db.query(OCRResult)
+            .filter(
+                OCRResult.document_page_id == page_id,
+                OCRResult.source == OCRSource.OLLAMA_VISION,
+            )
+            .order_by(OCRResult.created_at.desc())
+            .first()
+        )
+
+        if not ocr_result:
+            raise HTTPException(
+                status_code=404, detail="Keine OCR-Daten für diese Seite gefunden"
+            )
+
+        ocr_image_width = ocr_result.image_width
+        ocr_image_height = ocr_result.image_height
+        
+        if not ocr_image_width or not ocr_image_height:
+            raise HTTPException(
+                status_code=400, detail="OCR-Bild-Dimensionen nicht verfügbar"
+            )
+        
+        logger.info(
+            f"Add-Multiple-BBox: OCR-Bild-Dimensionen: {ocr_image_width}x{ocr_image_height}, "
+            f"Empfangene Koordinaten: [{x1}, {y1}, {x2}, {y2}], "
+            f"Breite: {x2 - x1}, Höhe: {y2 - y1}"
+        )
+        
+        # Speichere originale Koordinaten für die Box-Speicherung
+        # Die Beschneidung wird nur für das Cropping verwendet
+        x1_original = x1
+        y1_original = y1
+        x2_original = x2
+        y2_original = y2
+        
+        # Beschneide Koordinaten auf Bildgrenzen (mit kleiner Toleranz für Rundungsfehler)
+        # Diese beschrittenen Koordinaten werden nur für das Cropping verwendet
+        tolerance = 10  # Pixel Toleranz für Rundungsfehler
+        x1_before = x1
+        y1_before = y1
+        x2_before = x2
+        y2_before = y2
+        
+        x1 = max(0, min(x1, ocr_image_width + tolerance))
+        y1 = max(0, min(y1, ocr_image_height + tolerance))
+        x2 = max(x1 + 1, min(x2, ocr_image_width + tolerance))
+        y2 = max(y1 + 1, min(y2, ocr_image_height + tolerance))
+        
+        # Stelle sicher, dass Koordinaten innerhalb Bildgrenzen liegen (nach Beschneidung)
+        x1 = max(0, min(x1, ocr_image_width - 1))
+        y1 = max(0, min(y1, ocr_image_height - 1))
+        x2 = max(x1 + 1, min(x2, ocr_image_width))
+        y2 = max(y1 + 1, min(y2, ocr_image_height))
+        
+        # Prüfe, dass BBox noch gültig ist nach Beschneidung
+        if x1 >= x2 or y1 >= y2:
+            raise HTTPException(
+                status_code=400,
+                detail=f"BBox-Koordinaten ungültig nach Beschneidung: [{x1}, {y1}, {x2}, {y2}]"
+            )
+        
+        # Logge Änderungen durch Beschneidung
+        if x1 != x1_before or y1 != y1_before or x2 != x2_before or y2 != y2_before:
+            logger.warning(
+                f"Add-Multiple-BBox: Koordinaten wurden beschnitten: "
+                f"Vorher: [{x1_before}, {y1_before}, {x2_before}, {y2_before}], "
+                f"Nachher: [{x1}, {y1}, {x2}, {y2}], "
+                f"Breite: {x2_before - x1_before} -> {x2 - x1}, "
+                f"Höhe: {y2_before - y1_before} -> {y2 - y1}"
+            )
+        
+        logger.info(
+            f"Add-Multiple-BBox: Koordinaten nach Beschneidung: [{x1}, {y1}, {x2}, {y2}], "
+            f"Breite: {x2 - x1}, Höhe: {y2 - y1}"
+        )
+        
+        # Prüfe Verfügbarkeit von PIL
+        if not PIL_AVAILABLE:
+            raise HTTPException(
+                status_code=503, detail="PIL/Pillow ist nicht verfügbar"
+            )
+        
+        # Lade Original-Bild der Seite
+        logger.info(f"Lade Original-Bild für Seite {page_id} (file_path: {page.file_path})")
+        # Verwende ähnliche Logik wie in bbox_ocr.py
+        if page.file_path:
+            # Extrahierte Seite: Datei laden
+            file_path = get_file_path(page.file_path)
+            if not file_path.exists():
+                raise HTTPException(
+                    status_code=404, detail=f"Seiten-Datei nicht gefunden: {file_path}"
+                )
+            
+            is_img = (
+                page.file_type
+                and page.file_type.lower() in ("image/png", "image/jpeg", "image/jpg")
+            ) or str(file_path).lower().endswith((".png", ".jpg", ".jpeg"))
+            
+            if is_img:
+                full_image = Image.open(file_path).convert("RGB")
+            else:
+                # PDF-Seite
+                try:
+                    from pdf2image import convert_from_path
+                except ImportError:
+                    raise HTTPException(
+                        status_code=503, detail="pdf2image ist für PDF-Extraktion nötig"
+                    )
+                
+                convert_kwargs = {
+                    "first_page": page.page_number,
+                    "last_page": page.page_number,
+                    "dpi": settings.pdf_extraction_dpi,
+                }
+                if settings.poppler_path:
+                    pp = Path(settings.poppler_path)
+                    if pp.exists():
+                        convert_kwargs["poppler_path"] = str(pp)
+                images = convert_from_path(str(file_path), **convert_kwargs)
+                if not images:
+                    raise HTTPException(
+                        status_code=500, detail="PDF konnte nicht zu Bild konvertiert werden"
+                    )
+                full_image = images[0]
+        else:
+            # Virtuelle Seite: aus PDF extrahieren
+            pdf_path = get_file_path(document.file_path)
+            if not pdf_path.exists():
+                raise HTTPException(
+                    status_code=404, detail=f"PDF nicht gefunden: {pdf_path}"
+                )
+            full_image = extract_page_as_image(
+                str(pdf_path), page.page_number, dpi=settings.pdf_extraction_dpi
+            )
+        
+        # Deskew anwenden falls gesetzt
+        if page.deskew_angle is not None:
+            from src.rotary_archiv.utils.image_utils import deskew_image
+            full_image = deskew_image(full_image, page.deskew_angle)
+        
+        # Resize auf OCR-Bildgröße falls abweichend
+        full_image_width, full_image_height = full_image.size
+        if full_image_width != ocr_image_width or full_image_height != ocr_image_height:
+            # Skaliere Bild auf OCR-Dimensionen
+            full_image = full_image.resize(
+                (ocr_image_width, ocr_image_height), Image.Resampling.LANCZOS
+            )
+            logger.info(
+                f"Bild skaliert von {full_image_width}x{full_image_height} "
+                f"auf {ocr_image_width}x{ocr_image_height}"
+            )
+        
+        # Wende den gleichen X-Skalierungsfaktor an wie in bbox_ocr.py (0.7)
+        # Dies korrigiert die X-Achsen-Ausrichtung für das Cropping
+        # WICHTIG: Verwende ORIGINALE Koordinaten für die Box-Speicherung,
+        # aber angepasste Koordinaten für das Cropping (wie bei +1 Box)
+        bbox_pixel_adjusted = [
+            int(x1_original * 0.7),  # x1 (wie in bbox_ocr.py)
+            y1_original,  # y1 (unverändert)
+            int(x2_original * 0.7),  # x2 (wie in bbox_ocr.py)
+            y2_original,  # y2 (unverändert)
+        ]
+        
+        region_width = x2_original - x1_original
+        region_height = y2_original - y1_original
+        
+        logger.info(
+            f"Add-Multiple-BBox: Original-Koordinaten (für Speicherung)=[{x1_original}, {y1_original}, {x2_original}, {y2_original}], "
+            f"Region-Größe={region_width}x{region_height}, "
+            f"Angepasste Koordinaten (für Cropping, X*0.7)=[{bbox_pixel_adjusted[0]}, {bbox_pixel_adjusted[1]}, {bbox_pixel_adjusted[2]}, {bbox_pixel_adjusted[3]}], "
+            f"Crop-Größe={bbox_pixel_adjusted[2] - bbox_pixel_adjusted[0]}x{bbox_pixel_adjusted[3] - bbox_pixel_adjusted[1]}, "
+            f"Bild-Größe={full_image.width}x{full_image.height}"
+        )
+        
+        # Warnung wenn Region sehr schmal ist (kann zu OCR-Problemen führen)
+        if region_height < 30:
+            logger.warning(
+                f"Add-Multiple-BBox: Region ist sehr schmal (Höhe={region_height} Pixel). "
+                f"Das OCR-LLM könnte Probleme haben, Boxen korrekt zu erkennen. "
+                f"Empfehlung: Mindestens 30-50 Pixel Höhe für bessere Ergebnisse."
+            )
+        
+        # Stelle sicher, dass Koordinaten innerhalb Bildgrenzen liegen
+        bbox_pixel_adjusted[0] = max(0, min(bbox_pixel_adjusted[0], full_image.width - 1))
+        bbox_pixel_adjusted[1] = max(0, min(bbox_pixel_adjusted[1], full_image.height - 1))
+        bbox_pixel_adjusted[2] = max(bbox_pixel_adjusted[0] + 1, min(bbox_pixel_adjusted[2], full_image.width))
+        bbox_pixel_adjusted[3] = max(bbox_pixel_adjusted[1] + 1, min(bbox_pixel_adjusted[3], full_image.height))
+        
+        # Croppe Bild zu bbox_pixel Bereich
+        logger.info(
+            f"Croppe Bild: Original=[{x1_original}, {y1_original}, {x2_original}, {y2_original}], "
+            f"Nach Clipping=[{bbox_pixel_adjusted[0]}, {bbox_pixel_adjusted[1]}, "
+            f"{bbox_pixel_adjusted[2]}, {bbox_pixel_adjusted[3]}], "
+            f"Crop-Größe={bbox_pixel_adjusted[2] - bbox_pixel_adjusted[0]}x{bbox_pixel_adjusted[3] - bbox_pixel_adjusted[1]}, "
+            f"Bild-Größe={full_image.width}x{full_image.height}"
+        )
+        cropped_image = full_image.crop(
+            (
+                bbox_pixel_adjusted[0],
+                bbox_pixel_adjusted[1],
+                bbox_pixel_adjusted[2],
+                bbox_pixel_adjusted[3],
+            )
+        )
+        
+        logger.info(f"Gecropptes Bild-Größe: {cropped_image.width}x{cropped_image.height}")
+        
+        # Speichere Crop im Projektordner, damit API und Worker dieselbe Datei finden
+        # (Temp-Pfade können pro Prozess unterschiedlich oder nach Reboot weg sein)
+        multibox_crops_dir = Path("data/multibox_crops")
+        multibox_crops_dir.mkdir(parents=True, exist_ok=True)
+        crop_filename = f"page_{page_id}_{uuid.uuid4().hex[:12]}.png"
+        temp_crop_path = str((multibox_crops_dir / crop_filename).resolve())
+        cropped_image.save(temp_crop_path, "PNG")
+        logger.info(f"Gecropptes Bild gespeichert für Worker: {temp_crop_path}")
+        
+        # Erstelle sofort eine vorläufige Box - OCR wird vom Worker durchgeführt
+        # Verwende ORIGINALE Koordinaten für die Box-Speicherung (wie bei add_new_bbox)
+        logger.info(
+            f"Erstelle vorläufige Multibox-Region für Bereich "
+            f"[Original: {x1_original}, {y1_original}, {x2_original}, {y2_original}], "
+            f"[Für Cropping: {x1}, {y1}, {x2}, {y2}]"
+        )
+        
+        # Parse bbox_data
+        if isinstance(ocr_result.bbox_data, str):
+            bbox_list = json.loads(ocr_result.bbox_data)
+        else:
+            bbox_list = ocr_result.bbox_data.copy() if ocr_result.bbox_data else []
+        
+        # Berechne relative Koordinaten (0.0-1.0) bezogen auf OCR-Bild
+        # Verwende ORIGINALE Koordinaten (wie bei add_new_bbox)
+        bbox_normalized = []
+        if ocr_image_width > 0 and ocr_image_height > 0:
+            bbox_normalized = [
+                x1_original / ocr_image_width,  # x_min (relativ)
+                y1_original / ocr_image_height,  # y_min (relativ)
+                x2_original / ocr_image_width,  # x_max (relativ)
+                y2_original / ocr_image_height,  # y_max (relativ)
+            ]
+        
+        # Erstelle vorläufige Box mit Marker für Multibox-Region
+        # Verwende ORIGINALE Koordinaten für bbox_pixel (wie bei add_new_bbox)
+        temp_bbox = {
+            "text": "[Wird verarbeitet...]",  # Platzhalter-Text, wird durch Review-Job gefüllt
+            "bbox": bbox_normalized,
+            "bbox_pixel": [x1_original, y1_original, x2_original, y2_original],
+            "review_status": "new",
+            "reviewed_at": None,
+            "reviewed_by": None,
+            "ocr_results": None,
+            "differences": [],
+            "multibox_region": True,  # Marker: Dies ist eine Multibox-Region
+            "multibox_crop_path": temp_crop_path,  # Pfad zum gecroppten Bild für den Worker
+        }
+        
+        bbox_list.append(temp_bbox)
+        
+        # Speichere zurück
+        ocr_result.bbox_data = bbox_list
+        flag_modified(ocr_result, "bbox_data")
+        db.commit()
+        db.refresh(ocr_result)
+        
+        logger.info(
+            f"Vorläufige Multibox-Region erstellt: "
+            f"bbox_pixel=[{x1_original}, {y1_original}, {x2_original}, {y2_original}] "
+            f"(Original), Gesamt-BBoxen: {len(bbox_list)}"
+        )
+        
+        # Erstelle Review-Job für die vorläufige Box
+        existing_job = (
+            db.query(OCRJob)
+            .filter(
+                OCRJob.document_page_id == page_id,
+                OCRJob.job_type == "bbox_review",
+                OCRJob.status.in_([OCRJobStatus.PENDING, OCRJobStatus.RUNNING]),
+            )
+            .first()
+        )
+        
+        job_id = None
+        if not existing_job:
+            from sqlalchemy import func
+            
+            min_priority = (
+                db.query(func.min(OCRJob.priority))
+                .filter(OCRJob.status == OCRJobStatus.PENDING)
+                .scalar()
+            ) or 0
+            
+            review_job = OCRJob(
+                document_id=page.document_id,
+                document_page_id=page_id,
+                job_type="bbox_review",
+                status=OCRJobStatus.PENDING,
+                language="deu+eng",
+                use_correction=False,
+                progress=0.0,
+                priority=min_priority - 1,  # Höchste Priorität
+            )
+            
+            db.add(review_job)
+            db.commit()
+            db.refresh(review_job)
+            job_id = review_job.id
+        
+        # Erstelle Quality-Job für die Seite
+        _create_quality_job_if_needed(page_id, db)
+        
+        return {
+            "success": True,
+            "bboxes_added": 1,  # Eine vorläufige Box wurde erstellt
+            "job_id": job_id,
+            "message": "Vorläufige Box erstellt - OCR wird im Hintergrund durchgeführt",
+        }
+            
+    except HTTPException:
+        # HTTPExceptions werden direkt weitergegeben
+        raise
+    except Exception as e:
+        logger.error(f"Fehler beim Verarbeiten der Multibox-Region: {e}", exc_info=True)
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Fehler beim Verarbeiten der Multibox-Region: {str(e)}"
+        )
+    finally:
+        # Lösche temporäre Datei nur wenn sie nicht vom Worker verwendet wird
+        # (Der Worker löscht sie selbst nach der Verarbeitung)
+        # Hier löschen wir sie nur im Fehlerfall
+        if 'temp_crop_path' in locals() and temp_crop_path:
+            try:
+                # Prüfe ob Datei existiert und ob sie noch verwendet wird
+                crop_path = Path(temp_crop_path)
+                if crop_path.exists():
+                    # Im Erfolgsfall wird die Datei vom Worker verwendet, daher nicht löschen
+                    # Nur im Fehlerfall löschen
+                    pass  # Datei wird vom Worker gelöscht
+            except Exception as e:
+                logger.warning(f"Fehler beim Prüfen temporärer Datei: {e}")

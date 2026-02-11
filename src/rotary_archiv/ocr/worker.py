@@ -60,6 +60,10 @@ current_job_id: Optional[int] = None
 def signal_handler(signum, frame):
     """Handler für Shutdown-Signale (SIGINT, SIGTERM)"""
     global shutdown_requested
+    if shutdown_requested:
+        # Shutdown wurde bereits angefordert, beende Prozess sofort
+        logger.warning("Shutdown bereits angefordert, beende Prozess sofort...")
+        sys.exit(0)
     logger.info(
         f"Shutdown-Signal empfangen ({signum}). Warte auf Abschluss des aktuellen Jobs..."
     )
@@ -96,6 +100,30 @@ async def worker_loop(poll_interval: int = 5):
 
                 current_job_id = job.id
                 job_type = job.job_type or "ocr"  # Fallback zu "ocr" für alte Jobs
+                
+                # Abhängigkeitsprüfung: Quality-Jobs sollten nicht ausgeführt werden,
+                # wenn für dieselbe Seite noch ein PENDING BBox-Review-Job existiert
+                if job_type == "quality" and job.document_page_id:
+                    pending_review_job = (
+                        db.query(OCRJob)
+                        .filter(
+                            OCRJob.document_page_id == job.document_page_id,
+                            OCRJob.job_type == "bbox_review",
+                            OCRJob.status == OCRJobStatus.PENDING,
+                            OCRJob.id != job.id,  # Nicht der aktuelle Job
+                        )
+                        .first()
+                    )
+                    if pending_review_job:
+                        logger.debug(
+                            f"[QUALITY] Überspringe Job {job.id} für Seite {job.document_page_id}: "
+                            f"BBox-Review-Job {pending_review_job.id} ist noch PENDING"
+                        )
+                        # Job bleibt PENDING und wird beim nächsten Durchlauf erneut geprüft
+                        # (Session wird im finally-Block geschlossen)
+                        await asyncio.sleep(1)  # Kurze Pause vor erneutem Polling
+                        continue
+                
                 logger.info(
                     f"[{job_type.upper()}] Starte Job {job.id} (Dokument {job.document_id}, Seite {job.document_page_id or 'N/A'})"
                 )
@@ -115,23 +143,33 @@ async def worker_loop(poll_interval: int = 5):
                                 f"Shutdown während Job-Verarbeitung angefordert. Breche Job {job.id} ab..."
                             )
                             task.cancel()
-                            # Warte kurz auf Task-Abbruch
-                            with suppress(asyncio.CancelledError, asyncio.TimeoutError):
-                                await asyncio.wait_for(task, timeout=2.0)
+                            # Warte auf Task-Abbruch mit Timeout
+                            try:
+                                await asyncio.wait_for(task, timeout=3.0)
+                            except (asyncio.CancelledError, asyncio.TimeoutError):
+                                # Task wurde abgebrochen oder Timeout - das ist OK
+                                pass
                             # Setze Job zurück auf PENDING für erneute Verarbeitung
-                            db.refresh(job)
-                            job.status = OCRJobStatus.PENDING
-                            job.error_message = (
-                                "Job wurde abgebrochen (Worker-Shutdown)"
-                            )
-                            db.commit()
+                            try:
+                                db.refresh(job)
+                                job.status = OCRJobStatus.PENDING
+                                job.error_message = (
+                                    "Job wurde abgebrochen (Worker-Shutdown)"
+                                )
+                                db.commit()
+                            except Exception as e:
+                                logger.warning(f"Fehler beim Zurücksetzen des Jobs: {e}")
                             raise asyncio.CancelledError(
                                 f"Job {job.id} wurde abgebrochen"
                             )
                         await asyncio.sleep(0.1)  # Kurze Pause zwischen Checks
 
-                    # Task ist fertig, hole Ergebnis
-                    await task
+                    # Task ist fertig, hole Ergebnis (kann CancelledError auslösen)
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        # Task wurde abgebrochen - das ist OK
+                        raise
                     logger.info(
                         f"[{job_type.upper()}] Job {job.id} erfolgreich abgeschlossen"
                     )
@@ -168,6 +206,28 @@ async def worker_loop(poll_interval: int = 5):
             db.close()
 
     logger.info("Worker-Loop beendet")
+    
+    # Stelle sicher, dass alle Tasks abgebrochen werden
+    try:
+        loop = asyncio.get_running_loop()
+        tasks = [task for task in asyncio.all_tasks(loop) if not task.done() and task != asyncio.current_task(loop)]
+        if tasks:
+            logger.debug(f"Breche {len(tasks)} laufende Tasks ab...")
+            for task in tasks:
+                task.cancel()
+            # Warte kurz auf Abbruch (mit Timeout)
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=2.0
+                )
+            except (asyncio.TimeoutError, Exception):
+                pass  # Ignoriere Fehler beim Abbruch
+    except RuntimeError:
+        # Keine laufende Loop mehr - das ist OK
+        pass
+    except Exception as e:
+        logger.debug(f"Fehler beim Beenden von Tasks: {e}")
 
 
 async def main():
@@ -180,12 +240,26 @@ async def main():
         await worker_loop(poll_interval=5)
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt empfangen. Beende Worker...")
+    except asyncio.CancelledError:
+        logger.info("Worker wurde abgebrochen")
     except Exception as e:
         logger.error(f"Kritischer Fehler im Worker: {e}", exc_info=True)
-        sys.exit(1)
+        raise  # Re-raise, damit der Fehler im Hauptprozess behandelt wird
     finally:
         logger.info("Worker beendet")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    exit_code = 0
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("KeyboardInterrupt im Hauptprozess. Beende...")
+        exit_code = 0
+    except Exception as e:
+        logger.error(f"Kritischer Fehler: {e}", exc_info=True)
+        exit_code = 1
+    finally:
+        # Stelle sicher, dass der Prozess wirklich beendet wird
+        logger.info("Beende Prozess...")
+        sys.exit(exit_code)

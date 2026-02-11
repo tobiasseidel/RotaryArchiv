@@ -825,6 +825,22 @@
                     <label style="display: block; margin-bottom: 4px; font-size: 12px;">Zeichen (max)</label>
                     <input type="number" id="bboxFilterMaxCharCount" placeholder="—" step="1" style="width: 100%; padding: 6px; box-sizing: border-box;">
                 </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 12px;">Linke Kante % (max)</label>
+                    <input type="number" id="bboxFilterMaxLeftPct" placeholder="—" step="any" style="width: 100%; padding: 6px; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 12px;">Rechte Kante % (min)</label>
+                    <input type="number" id="bboxFilterMinRightPct" placeholder="—" step="any" style="width: 100%; padding: 6px; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 12px;">Breite % (min)</label>
+                    <input type="number" id="bboxFilterMinWidthPct" placeholder="—" step="any" style="width: 100%; padding: 6px; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 12px;">Breite % (max)</label>
+                    <input type="number" id="bboxFilterMaxWidthPct" placeholder="—" step="any" style="width: 100%; padding: 6px; box-sizing: border-box;">
+                </div>
                 <div style="grid-column: 1 / -1;">
                     <label style="display: block; margin-bottom: 8px; font-size: 12px; font-weight: 600;">Review-Status (mehrfach auswählbar)</label>
                     <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
@@ -833,23 +849,23 @@
                             <span>Ausstehend</span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                            <input type="checkbox" id="bboxFilterReviewStatusConfirmed" value="confirmed" checked>
+                            <input type="checkbox" id="bboxFilterReviewStatusConfirmed" value="confirmed">
                             <span>Geprüft</span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                            <input type="checkbox" id="bboxFilterReviewStatusRejected" value="rejected" checked>
+                            <input type="checkbox" id="bboxFilterReviewStatusRejected" value="rejected">
                             <span>Abgelehnt</span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                            <input type="checkbox" id="bboxFilterReviewStatusAutoConfirmed" value="auto_confirmed" checked>
+                            <input type="checkbox" id="bboxFilterReviewStatusAutoConfirmed" value="auto_confirmed">
                             <span>Auto-bestätigt</span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                            <input type="checkbox" id="bboxFilterReviewStatusIgnored" value="ignored" checked>
+                            <input type="checkbox" id="bboxFilterReviewStatusIgnored" value="ignored">
                             <span>Ignoriert</span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                            <input type="checkbox" id="bboxFilterReviewStatusNew" value="new" checked>
+                            <input type="checkbox" id="bboxFilterReviewStatusNew" value="new">
                             <span>Neu</span>
                         </label>
                     </div>
@@ -872,6 +888,9 @@
         <!-- Batch-Aktionen -->
         <div id="bboxListBatchActions" style="margin-bottom: 12px; padding: 12px; background: #f5f5f5; border-radius: 4px; display: none;">
             <div style="margin-bottom: 8px; font-weight: 600;">Batch-Aktionen:</div>
+            <div id="bboxListStatusMessage" style="display: none; margin-bottom: 8px; padding: 8px 12px; background: #e3f2fd; border: 1px solid #2196f3; border-radius: 4px; color: #1976d2; font-weight: 500;">
+                <span id="bboxListStatusText">Sammle BBoxen...</span>
+            </div>
             <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <label for="bboxListStatusChange" style="font-weight: 500;">Status ändern:</label>
@@ -886,7 +905,7 @@
                     <button type="button" class="btn btn-primary" onclick="bboxListBatchChangeStatus()" style="padding: 4px 12px;">Status ändern</button>
                 </div>
                 <button type="button" class="btn btn-secondary" onclick="bboxListBatchDiscardAndRecalc()">OCR verwerfen und neu berechnen</button>
-                <button type="button" class="btn btn-danger" onclick="bboxListBatchDelete()">Ausgewählte löschen</button>
+                <button type="button" class="btn btn-danger" onclick="bboxListBatchDelete(event)">Ausgewählte löschen</button>
             </div>
         </div>
         <div id="bboxListPagination" style="margin-bottom: 8px; display: flex; align-items: center; gap: 12px;">
@@ -910,7 +929,9 @@
             <div class="inspect-controls">
                 <button class="btn btn-secondary" id="prevPageBtn" style="display: none;">← Vorherige Seite</button>
                 <button class="btn btn-secondary" id="nextPageBtn" style="display: none;">Nächste Seite →</button>
-                <button class="btn btn-success" id="addBBoxBtn" title="Neue Box hinzufügen">+</button>
+                <button class="btn btn-success" id="addBBoxBtn" title="Eine Box hinzufügen">+1</button>
+                <!-- +X (Multibox) deaktiviert: Feature wegen Bugs nicht verwendbar -->
+                <button class="btn btn-success" id="addMultipleBBoxBtn" title="Mehrere Boxen automatisch erkennen (deaktiviert)" style="display: none;">+X</button>
                 <button class="btn btn-secondary" id="measureSkewBtn" title="Schrägwinkel der Seite messen (Hough)">Schräge messen</button>
                 <button class="btn btn-secondary" id="measureSkewDebugBtn" title="Schrägwinkel mit Debug-Informationen messen">Schräge debuggen</button>
                 <button class="btn btn-secondary" id="showDeskewedBtn" title="Begradigte Seite mit erkannten Linien anzeigen">Begradigt anzeigen</button>
@@ -1555,7 +1576,11 @@
                 'bboxFilterMinBlackPx',
                 'bboxFilterMaxBlackPx',
                 'bboxFilterMinCharCount',
-                'bboxFilterMaxCharCount'
+                'bboxFilterMaxCharCount',
+                'bboxFilterMaxLeftPct',
+                'bboxFilterMinRightPct',
+                'bboxFilterMinWidthPct',
+                'bboxFilterMaxWidthPct'
             ];
 
             filterInputs.forEach(function(inputId) {
@@ -1626,6 +1651,9 @@
                 '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'chars_per_1k_px\'); return false;">Zeichen/1k px <span class="sort-icon">' + bboxListGetSortIcon('chars_per_1k_px') + '</span></th>' +
                 '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'black_pixels\'); return false;">Schwarze px <span class="sort-icon">' + bboxListGetSortIcon('black_pixels') + '</span></th>' +
                 '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'black_pixels_per_char\'); return false;">Schwarze px/Zeichen <span class="sort-icon">' + bboxListGetSortIcon('black_pixels_per_char') + '</span></th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'left_pct\'); return false;">Links % <span class="sort-icon">' + bboxListGetSortIcon('left_pct') + '</span></th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'width_pct\'); return false;">Breite % <span class="sort-icon">' + bboxListGetSortIcon('width_pct') + '</span></th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'right_pct\'); return false;">Rechts % <span class="sort-icon">' + bboxListGetSortIcon('right_pct') + '</span></th>' +
                 '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); bboxListSortColumn(\'review_status\'); return false;">Review <span class="sort-icon">' + bboxListGetSortIcon('review_status') + '</span></th>' +
                 '<th style="padding: 6px; border: 1px solid #ccc;">Inspect</th>' +
                 '<th style="padding: 6px; border: 1px solid #ccc;">Aktionen</th></tr></thead><tbody>';
@@ -1636,6 +1664,9 @@
                 const blackPx = it.black_pixels != null ? it.black_pixels : '-';
                 const blackPc = it.black_pixels_per_char != null ? it.black_pixels_per_char : '-';
                 const charCount = it.char_count != null ? it.char_count : '-';
+                const leftPct = it.left_pct != null ? it.left_pct.toFixed(2) + '%' : '-';
+                const widthPct = it.width_pct != null ? it.width_pct.toFixed(2) + '%' : '-';
+                const rightPct = it.right_pct != null ? it.right_pct.toFixed(2) + '%' : '-';
                 const rowIdx = idx;
                 html += '<tr data-bbox-id="' + escapeHtml(id) + '" data-row-index="' + rowIdx + '" onclick="bboxListRowClick(event, \'' + escapeHtml(id) + '\', ' + rowIdx + ')">' +
                     '<td style="padding: 6px; border: 1px solid #ccc;" onclick="event.stopPropagation()"><input type="checkbox" class="bbox-list-cb" data-bbox-id="' + escapeHtml(id) + '"' + checked + ' onclick="bboxListCheckboxClick(event, \'' + escapeHtml(id) + '\', ' + rowIdx + ')"></td>';
@@ -1654,8 +1685,11 @@
                     '<td style="padding: 6px; border: 1px solid #ccc;">' + chars1k + '</td>' +
                     '<td style="padding: 6px; border: 1px solid #ccc;">' + blackPx + '</td>' +
                     '<td style="padding: 6px; border: 1px solid #ccc;">' + blackPc + '</td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;">' + leftPct + '</td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;">' + widthPct + '</td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;">' + rightPct + '</td>' +
                     '<td style="padding: 6px; border: 1px solid #ccc;">' + escapeHtml(it.review_status || 'pending') + '</td>' +
-                    '<td style="padding: 6px; border: 1px solid #ccc;" onclick="event.stopPropagation()"><a href="#" class="bbox-list-inspect-link" onclick="event.stopPropagation(); showPageInspect(' + it.page_id + '); return false;">I</a></td>' +
+                    '<td style="padding: 6px; border: 1px solid #ccc;" onclick="event.stopPropagation()"><a href="#" class="bbox-list-inspect-link" onclick="event.stopPropagation(); showPageInspectInNewTab(' + it.page_id + '); return false;">I</a></td>' +
                     '<td style="padding: 6px; border: 1px solid #ccc;" onclick="event.stopPropagation()"><button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white;" onclick="event.stopPropagation(); editBBox(' + it.page_id + ', ' + it.bbox_index + '); return false;">Bearbeiten</button></td></tr>';
             });
             html += '</tbody></table>';
@@ -1721,10 +1755,55 @@
             bboxListRenderTable();
         }
 
-        function bboxListBuildQueryParams(offset) {
+        function bboxListBuildFilterObject() {
+            // Erstellt ein Objekt mit allen Filter-Parametern für Batch-Endpunkte
+            const filters = {};
+            const min1k = document.getElementById('bboxFilterMinChars1k');
+            const max1k = document.getElementById('bboxFilterMaxChars1k');
+            const minPc = document.getElementById('bboxFilterMinBlackPc');
+            const maxPc = document.getElementById('bboxFilterMaxBlackPc');
+            const minPx = document.getElementById('bboxFilterMinBlackPx');
+            const maxPx = document.getElementById('bboxFilterMaxBlackPx');
+            const minCharCount = document.getElementById('bboxFilterMinCharCount');
+            const maxCharCount = document.getElementById('bboxFilterMaxCharCount');
+            const maxLeftPct = document.getElementById('bboxFilterMaxLeftPct');
+            const minRightPct = document.getElementById('bboxFilterMinRightPct');
+            const minWidthPct = document.getElementById('bboxFilterMinWidthPct');
+            const maxWidthPct = document.getElementById('bboxFilterMaxWidthPct');
+            const textSearch = document.getElementById('bboxFilterTextSearch');
+            const reviewStatusCheckboxes = [
+                document.getElementById('bboxFilterReviewStatusPending'),
+                document.getElementById('bboxFilterReviewStatusConfirmed'),
+                document.getElementById('bboxFilterReviewStatusRejected'),
+                document.getElementById('bboxFilterReviewStatusAutoConfirmed'),
+                document.getElementById('bboxFilterReviewStatusIgnored'),
+                document.getElementById('bboxFilterReviewStatusNew')
+            ];
+            
+            if (min1k && min1k.value !== '') filters.min_chars_per_1k_px = parseFloat(min1k.value);
+            if (max1k && max1k.value !== '') filters.max_chars_per_1k_px = parseFloat(max1k.value);
+            if (minPc && minPc.value !== '') filters.min_black_pixels_per_char = parseFloat(minPc.value);
+            if (maxPc && maxPc.value !== '') filters.max_black_pixels_per_char = parseFloat(maxPc.value);
+            if (minPx && minPx.value !== '') filters.min_black_pixels = parseInt(minPx.value);
+            if (maxPx && maxPx.value !== '') filters.max_black_pixels = parseInt(maxPx.value);
+            if (minCharCount && minCharCount.value !== '') filters.min_char_count = parseInt(minCharCount.value);
+            if (maxCharCount && maxCharCount.value !== '') filters.max_char_count = parseInt(maxCharCount.value);
+            if (maxLeftPct && maxLeftPct.value !== '') filters.max_left_pct = parseFloat(maxLeftPct.value);
+            if (minRightPct && minRightPct.value !== '') filters.min_right_pct = parseFloat(minRightPct.value);
+            if (minWidthPct && minWidthPct.value !== '') filters.min_width_pct = parseFloat(minWidthPct.value);
+            if (maxWidthPct && maxWidthPct.value !== '') filters.max_width_pct = parseFloat(maxWidthPct.value);
+            if (textSearch && textSearch.value.trim() !== '') filters.text_search = textSearch.value.trim();
+            const selectedStatuses = reviewStatusCheckboxes.filter(function (cb) { return cb && cb.checked; }).map(function (cb) { return cb.value; });
+            if (selectedStatuses.length > 0) filters.review_status = selectedStatuses;
+            
+            return filters;
+        }
+
+        function bboxListBuildQueryParams(offset, customLimit) {
             const o = offset !== undefined ? offset : bboxListCurrentOffset;
             const params = new URLSearchParams();
-            params.set('limit', String(bboxListCurrentLimit));
+            const limitToUse = customLimit !== undefined ? customLimit : bboxListCurrentLimit;
+            params.set('limit', String(limitToUse));
             params.set('offset', String(o));
             const min1k = document.getElementById('bboxFilterMinChars1k');
             const max1k = document.getElementById('bboxFilterMaxChars1k');
@@ -1734,6 +1813,10 @@
             const maxPx = document.getElementById('bboxFilterMaxBlackPx');
             const minCharCount = document.getElementById('bboxFilterMinCharCount');
             const maxCharCount = document.getElementById('bboxFilterMaxCharCount');
+            const maxLeftPct = document.getElementById('bboxFilterMaxLeftPct');
+            const minRightPct = document.getElementById('bboxFilterMinRightPct');
+            const minWidthPct = document.getElementById('bboxFilterMinWidthPct');
+            const maxWidthPct = document.getElementById('bboxFilterMaxWidthPct');
             const textSearch = document.getElementById('bboxFilterTextSearch');
             const reviewStatusCheckboxes = [
                 document.getElementById('bboxFilterReviewStatusPending'),
@@ -1751,6 +1834,10 @@
             if (maxPx && maxPx.value !== '') params.set('max_black_pixels', maxPx.value);
             if (minCharCount && minCharCount.value !== '') params.set('min_char_count', minCharCount.value);
             if (maxCharCount && maxCharCount.value !== '') params.set('max_char_count', maxCharCount.value);
+            if (maxLeftPct && maxLeftPct.value !== '') params.set('max_left_pct', maxLeftPct.value);
+            if (minRightPct && minRightPct.value !== '') params.set('min_right_pct', minRightPct.value);
+            if (minWidthPct && minWidthPct.value !== '') params.set('min_width_pct', minWidthPct.value);
+            if (maxWidthPct && maxWidthPct.value !== '') params.set('max_width_pct', maxWidthPct.value);
             if (textSearch && textSearch.value.trim() !== '') params.set('text_search', textSearch.value.trim());
             const selectedStatuses = reviewStatusCheckboxes.filter(function (cb) { return cb && cb.checked; }).map(function (cb) { return cb.value; });
             if (selectedStatuses.length > 0) {
@@ -1912,7 +1999,7 @@
         }
 
         function resetBboxListFilter() {
-            const ids = ['bboxFilterTextSearch', 'bboxFilterMinChars1k', 'bboxFilterMaxChars1k', 'bboxFilterMinBlackPc', 'bboxFilterMaxBlackPc', 'bboxFilterMinBlackPx', 'bboxFilterMaxBlackPx', 'bboxFilterMinCharCount', 'bboxFilterMaxCharCount'];
+            const ids = ['bboxFilterTextSearch', 'bboxFilterMinChars1k', 'bboxFilterMaxChars1k', 'bboxFilterMinBlackPc', 'bboxFilterMaxBlackPc', 'bboxFilterMinBlackPx', 'bboxFilterMaxBlackPx', 'bboxFilterMinCharCount', 'bboxFilterMaxCharCount', 'bboxFilterMaxLeftPct', 'bboxFilterMinRightPct', 'bboxFilterMinWidthPct', 'bboxFilterMaxWidthPct'];
             ids.forEach(function (id) {
                 const el = document.getElementById(id);
                 if (el) el.value = '';
@@ -1926,7 +2013,10 @@
                 document.getElementById('bboxFilterReviewStatusNew')
             ];
             reviewStatusCheckboxes.forEach(function (cb) {
-                if (cb) cb.checked = true;
+                if (cb) {
+                    // Nur "Ausstehend" (pending) ist standardmäßig ausgewählt
+                    cb.checked = (cb.value === 'pending');
+                }
             });
             bboxListSelectedIds.clear();
             bboxListSelectedAllMatching = false;
@@ -1970,25 +2060,78 @@
             }
         }
 
+        function bboxListUpdateStatusMessage(message, show) {
+            const statusEl = document.getElementById('bboxListStatusMessage');
+            const statusTextEl = document.getElementById('bboxListStatusText');
+            if (statusEl && statusTextEl) {
+                if (show && message) {
+                    statusTextEl.textContent = message;
+                    statusEl.style.display = 'block';
+                } else {
+                    statusEl.style.display = 'none';
+                }
+            }
+        }
+
         async function bboxListGetSelectedBBoxes() {
             if (bboxListSelectedAllMatching) {
-                // Lade alle Filter-Matching BBoxen von der API (ohne Pagination)
-                const params = bboxListBuildQueryParams(0);
-                params.set('limit', '100000'); // Sehr hohes Limit für alle Ergebnisse
-                params.set('offset', '0');
-                const url = `${API_BASE}/api/quality/bbox-list?${params.toString()}`;
-                try {
-                    const response = await fetch(url);
-                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                    const data = await response.json();
-                    return (data.items || []).map(it => ({
-                        page_id: it.page_id,
-                        bbox_index: it.bbox_index
-                    }));
-                } catch (err) {
-                    console.error('Fehler beim Laden aller Filter-Matching BBoxen:', err);
-                    throw err;
+                // Lade alle Filter-Matching BBoxen von der API (mit Pagination)
+                // Das Backend erlaubt max. 500 pro Anfrage, daher müssen wir mehrere Anfragen machen
+                const allBboxes = [];
+                let offset = 0;
+                const limit = 500; // Maximal erlaubtes Limit
+                let hasMore = true;
+                let total = 0;
+                
+                // Zeige Status-Anzeige
+                bboxListUpdateStatusMessage('Sammle BBoxen...', true);
+                
+                while (hasMore) {
+                    const params = bboxListBuildQueryParams(offset, limit);
+                    const url = `${API_BASE}/api/quality/bbox-list?${params.toString()}`;
+                    console.log('bboxListGetSelectedBBoxes: Lade Seite, offset:', offset, 'limit:', limit, 'url:', url);
+                    try {
+                        const response = await fetch(url);
+                        if (!response.ok) {
+                            const errorText = await response.text().catch(() => '');
+                            throw new Error(`HTTP ${response.status}: ${errorText}`);
+                        }
+                        const data = await response.json();
+                        const items = data.items || [];
+                        total = data.total || 0;
+                        console.log('bboxListGetSelectedBBoxes: Erhalten', items.length, 'von', total, 'BBoxen');
+                        allBboxes.push(...items.map(it => ({
+                            page_id: it.page_id,
+                            bbox_index: it.bbox_index
+                        })));
+                        
+                        // Aktualisiere Status-Anzeige
+                        const collected = allBboxes.length;
+                        bboxListUpdateStatusMessage(`Sammle BBoxen: ${collected} / ${total}`, true);
+                        
+                        // Prüfe ob es weitere Seiten gibt
+                        offset += items.length;
+                        hasMore = offset < total && items.length === limit;
+                        console.log('bboxListGetSelectedBBoxes: offset:', offset, 'total:', total, 'items.length:', items.length, 'hasMore:', hasMore);
+                        
+                        // Sicherheitscheck: verhindere Endlosschleife
+                        if (allBboxes.length > 100000) {
+                            console.warn('bboxListGetSelectedBBoxes: Zu viele BBoxen, breche ab');
+                            break;
+                        }
+                    } catch (err) {
+                        console.error('Fehler beim Laden aller Filter-Matching BBoxen:', err);
+                        bboxListUpdateStatusMessage('', false); // Verstecke Status bei Fehler
+                        throw err;
+                    }
                 }
+                
+                console.log('bboxListGetSelectedBBoxes: Gesamt gesammelt:', allBboxes.length, 'BBoxen');
+                
+                // Verstecke Status-Anzeige nach erfolgreichem Sammeln
+                bboxListUpdateStatusMessage('', false);
+                
+                return allBboxes;
             } else {
                 // Parse bboxListSelectedIds (Format: "page_id_bbox_index")
                 return Array.from(bboxListSelectedIds).map(id => {
@@ -2009,20 +2152,67 @@
                 return;
             }
 
+            const btn = statusSelect.nextElementSibling;
+            
+            // Wenn "Alle (Filter)" ausgewählt, verwende Filter-Parameter direkt
+            if (bboxListSelectedAllMatching) {
+                const filters = bboxListBuildFilterObject();
+                filters.new_status = newStatus;
+                
+                if (btn) btn.disabled = true;
+                bboxListUpdateStatusMessage('Ändere Status...', true);
+                
+                try {
+                    const response = await fetch(`${API_BASE}/api/review/batch-change-status`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(filters)
+                    });
+                    
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(data.detail || response.statusText || 'Fehler beim Ändern des Status');
+                    }
+                    
+                    const updated = data.updated || 0;
+                    const errors = data.errors || [];
+                    let msg = `${updated} BBoxen aktualisiert.`;
+                    if (errors.length > 0) {
+                        msg += ` Fehler bei ${errors.length} BBoxen: ` + errors.slice(0, 5).map(e => `Seite ${e.page_id}, Box ${e.bbox_index}`).join(', ');
+                        if (errors.length > 5) msg += ` ... (${errors.length - 5} weitere)`;
+                    }
+                    alert(msg);
+                    
+                    // Auswahl zurücksetzen und Liste neu laden
+                    bboxListSelectedIds.clear();
+                    bboxListSelectedAllMatching = false;
+                    loadBboxList(bboxListCurrentOffset);
+                } catch (err) {
+                    alert('Fehler: ' + err.message);
+                    console.error('bboxListBatchChangeStatus error', err);
+                } finally {
+                    bboxListUpdateStatusMessage('', false);
+                    if (btn) btn.disabled = false;
+                }
+                return;
+            }
+            
+            // Fallback: Explizite Liste von BBoxen (wie bisher)
             let bboxes;
             try {
                 bboxes = await bboxListGetSelectedBBoxes();
             } catch (err) {
+                bboxListUpdateStatusMessage('', false);
                 alert('Fehler beim Sammeln der ausgewählten BBoxen: ' + err.message);
                 return;
             }
 
             if (bboxes.length === 0) {
+                bboxListUpdateStatusMessage('', false);
                 alert('Keine BBoxen ausgewählt.');
                 return;
             }
 
-            const btn = event?.target || statusSelect.nextElementSibling;
             if (btn) btn.disabled = true;
 
             try {
@@ -2059,23 +2249,82 @@
         }
 
         async function bboxListBatchDiscardAndRecalc() {
+            const btn = document.querySelector('button[onclick*="bboxListBatchDiscardAndRecalc"]');
+            
+            // Wenn "Alle (Filter)" ausgewählt, verwende Filter-Parameter direkt
+            if (bboxListSelectedAllMatching) {
+                const filters = bboxListBuildFilterObject();
+                const confirmed = confirm(`OCR-Inhalte verwerfen und neu berechnen für alle BBoxen, die den aktuellen Filtern entsprechen?`);
+                if (!confirmed) {
+                    return;
+                }
+                
+                if (btn) btn.disabled = true;
+                bboxListUpdateStatusMessage('Verwerfe OCR-Inhalte...', true);
+                
+                try {
+                    const response = await fetch(`${API_BASE}/api/review/batch-discard-and-recalc`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(filters)
+                    });
+                    
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(data.detail || response.statusText || 'Fehler beim Verwerfen');
+                    }
+                    
+                    const discarded = data.discarded || 0;
+                    const jobsCreated = data.jobs_created || 0;
+                    const jobsExisting = data.jobs_existing || 0;
+                    const errors = data.errors || [];
+                    let msg = `${discarded} BBoxen verworfen. ${jobsCreated} Review-Jobs erstellt`;
+                    if (jobsExisting > 0) {
+                        msg += `, ${jobsExisting} Jobs bereits vorhanden`;
+                    }
+                    msg += '.';
+                    if (errors.length > 0) {
+                        msg += ` Fehler bei ${errors.length} BBoxen: ` + errors.slice(0, 5).map(e => `Seite ${e.page_id}, Box ${e.bbox_index}`).join(', ');
+                        if (errors.length > 5) msg += ` ... (${errors.length - 5} weitere)`;
+                    }
+                    alert(msg);
+                    
+                    // Auswahl zurücksetzen und Liste neu laden
+                    bboxListSelectedIds.clear();
+                    bboxListSelectedAllMatching = false;
+                    loadBboxList(bboxListCurrentOffset);
+                } catch (err) {
+                    alert('Fehler: ' + err.message);
+                    console.error('bboxListBatchDiscardAndRecalc error', err);
+                } finally {
+                    bboxListUpdateStatusMessage('', false);
+                    if (btn) btn.disabled = false;
+                }
+                return;
+            }
+            
+            // Fallback: Explizite Liste von BBoxen (wie bisher)
             let bboxes;
             try {
                 bboxes = await bboxListGetSelectedBBoxes();
             } catch (err) {
+                bboxListUpdateStatusMessage('', false);
                 alert('Fehler beim Sammeln der ausgewählten BBoxen: ' + err.message);
                 return;
             }
 
             if (bboxes.length === 0) {
+                bboxListUpdateStatusMessage('', false);
                 alert('Keine BBoxen ausgewählt.');
                 return;
             }
 
             const confirmed = confirm(`OCR-Inhalte verwerfen und neu berechnen für ${bboxes.length} BBoxen?`);
-            if (!confirmed) return;
+            if (!confirmed) {
+                bboxListUpdateStatusMessage('', false);
+                return;
+            }
 
-            const btn = event?.target;
             if (btn) btn.disabled = true;
 
             try {
@@ -2117,24 +2366,78 @@
             }
         }
 
-        async function bboxListBatchDelete() {
+        async function bboxListBatchDelete(event) {
+            const btn = event?.target || (event?.currentTarget ? event.currentTarget : null) || document.querySelector('button[onclick*="bboxListBatchDelete"]');
+            
+            // Wenn "Alle (Filter)" ausgewählt, verwende Filter-Parameter direkt
+            if (bboxListSelectedAllMatching) {
+                const filters = bboxListBuildFilterObject();
+                const confirmed = confirm(`Alle BBoxen, die den aktuellen Filtern entsprechen, wirklich löschen? Dies kann nicht rückgängig gemacht werden.`);
+                if (!confirmed) {
+                    return;
+                }
+                
+                if (btn) btn.disabled = true;
+                bboxListUpdateStatusMessage('Lösche BBoxen...', true);
+                
+                try {
+                    const response = await fetch(`${API_BASE}/api/review/batch-delete`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(filters)
+                    });
+                    
+                    const data = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        throw new Error(data.detail || response.statusText || 'Fehler beim Löschen');
+                    }
+                    
+                    const deleted = data.deleted || 0;
+                    const errors = data.errors || [];
+                    let msg = `${deleted} BBoxen gelöscht.`;
+                    if (errors.length > 0) {
+                        msg += ` Fehler bei ${errors.length} BBoxen: ` + errors.slice(0, 5).map(e => `Seite ${e.page_id}, Box ${e.bbox_index}`).join(', ');
+                        if (errors.length > 5) msg += ` ... (${errors.length - 5} weitere)`;
+                    }
+                    alert(msg);
+                    
+                    // Auswahl zurücksetzen und Liste neu laden
+                    bboxListSelectedIds.clear();
+                    bboxListSelectedAllMatching = false;
+                    loadBboxList(bboxListCurrentOffset);
+                } catch (err) {
+                    alert('Fehler: ' + err.message);
+                    console.error('bboxListBatchDelete error', err);
+                } finally {
+                    bboxListUpdateStatusMessage('', false);
+                    if (btn) btn.disabled = false;
+                }
+                return;
+            }
+            
+            // Fallback: Explizite Liste von BBoxen (wie bisher)
             let bboxes;
             try {
                 bboxes = await bboxListGetSelectedBBoxes();
             } catch (err) {
+                console.error('bboxListBatchDelete: Fehler beim Sammeln:', err);
+                bboxListUpdateStatusMessage('', false);
                 alert('Fehler beim Sammeln der ausgewählten BBoxen: ' + err.message);
                 return;
             }
 
             if (bboxes.length === 0) {
+                bboxListUpdateStatusMessage('', false);
                 alert('Keine BBoxen ausgewählt.');
                 return;
             }
 
             const confirmed = confirm(`${bboxes.length} BBoxen wirklich löschen? Dies kann nicht rückgängig gemacht werden.`);
-            if (!confirmed) return;
+            if (!confirmed) {
+                bboxListUpdateStatusMessage('', false);
+                return;
+            }
 
-            const btn = event?.target;
             if (btn) btn.disabled = true;
 
             try {
@@ -2284,6 +2587,13 @@
             loadPageInspect(pageId);
         }
 
+        function showPageInspectInNewTab(pageId) {
+            // Öffne Inspect-View in neuem Tab
+            const currentUrl = window.location.origin + window.location.pathname;
+            const inspectUrl = `${currentUrl}#/page/${pageId}/inspect`;
+            window.open(inspectUrl, '_blank');
+        }
+
         async function loadReviewPages() {
             try {
                 document.getElementById('reviewContainer').innerHTML = '<p style="color: #666;">Lade verarbeitete Seiten...</p>';
@@ -2354,7 +2664,8 @@
         let isShowingDeskewed = false;
         let fontFamily = "'Courier New', 'Courier', monospace";  // Schreibmaschinenschrift
         let currentPageData = null;  // Speichert aktuelle Seiten-Daten (document_id, page_number, page_id)
-        let isAddingBBox = false;  // Modus: Box hinzufügen
+        let isAddingBBox = false;  // Modus: Eine Box hinzufügen
+        let isAddingMultipleBBoxes = false;  // Modus: Mehrere Boxen automatisch erkennen
         let drawingRectangle = null;  // Aktuell gezeichnetes Rectangle
         let drawingStartPoint = null;  // Startpunkt beim Zeichnen
         let savedMapView = null;  // Gespeicherte Zoom- und Pan-Position
@@ -2801,9 +3112,14 @@
                     }
                 };
 
-                // Box hinzufügen Button
+                // Box hinzufügen Button (+1)
                 document.getElementById('addBBoxBtn').onclick = () => {
                     toggleAddBBoxMode();
+                };
+                
+                // Mehrere Boxen hinzufügen Button (+X) – deaktiviert wegen Bugs, Button ausgeblendet
+                document.getElementById('addMultipleBBoxBtn').onclick = () => {
+                    toggleAddMultipleBBoxMode();
                 };
 
                 // Initialisiere Box-Zeichnen-Modus
@@ -4001,10 +4317,57 @@
         }
 
         function toggleAddBBoxMode() {
+            // Deaktiviere Multiple-Modus falls aktiv
+            if (isAddingMultipleBBoxes) {
+                toggleAddMultipleBBoxMode();
+            }
+            
             isAddingBBox = !isAddingBBox;
             const btn = document.getElementById('addBBoxBtn');
 
             if (isAddingBBox) {
+                btn.classList.add('btn-warning');
+                btn.classList.remove('btn-success');
+                btn.textContent = '✕ Abbrechen';
+                if (map) {
+                    map.getContainer().classList.add('drawing-mode');
+                    // Deaktiviere Drag-Verhalten während des Zeichnens
+                    map.dragging.disable();
+                    map.boxZoom.disable();
+                    map.doubleClickZoom.disable();
+                    map.scrollWheelZoom.enable();
+                }
+            } else {
+                btn.classList.remove('btn-warning');
+                btn.classList.add('btn-success');
+                btn.textContent = '+1';
+                if (map) {
+                    map.getContainer().classList.remove('drawing-mode');
+                    // Aktiviere Drag-Verhalten wieder
+                    map.dragging.enable();
+                    map.boxZoom.enable();
+                    map.doubleClickZoom.enable();
+                    map.scrollWheelZoom.enable();
+                }
+                // Entferne gezeichnetes Rectangle falls vorhanden
+                if (drawingRectangle) {
+                    map.removeLayer(drawingRectangle);
+                    drawingRectangle = null;
+                }
+                drawingStartPoint = null;
+            }
+        }
+
+        function toggleAddMultipleBBoxMode() {
+            // Deaktiviere Single-Modus falls aktiv
+            if (isAddingBBox) {
+                toggleAddBBoxMode();
+            }
+            
+            isAddingMultipleBBoxes = !isAddingMultipleBBoxes;
+            const btn = document.getElementById('addMultipleBBoxBtn');
+
+            if (isAddingMultipleBBoxes) {
                 btn.classList.add('btn-warning');
                 btn.classList.remove('btn-success');
                 btn.textContent = '✕ Abbrechen';
@@ -4019,7 +4382,7 @@
             } else {
                 btn.classList.remove('btn-warning');
                 btn.classList.add('btn-success');
-                btn.textContent = '+';
+                btn.textContent = '+X';
                 if (map) {
                     map.getContainer().classList.remove('drawing-mode');
                     // Aktiviere Drag-Verhalten wieder
@@ -4057,7 +4420,7 @@
         }
 
         function handleMapMouseDown(e) {
-            if (!isAddingBBox) return;
+            if (!isAddingBBox && !isAddingMultipleBBoxes) return;
 
             // Verhindere Standard-Verhalten (wichtig: vor allem anderen)
             L.DomEvent.stopPropagation(e);
@@ -4085,7 +4448,7 @@
         }
 
         function handleMapMouseMove(e) {
-            if (!isAddingBBox || !drawingStartPoint) return;
+            if ((!isAddingBBox && !isAddingMultipleBBoxes) || !drawingStartPoint) return;
 
             // Verhindere Drag während des Zeichnens
             L.DomEvent.stopPropagation(e);
@@ -4097,7 +4460,7 @@
         }
 
         async function handleMapMouseUp(e) {
-            if (!isAddingBBox || !drawingStartPoint) return;
+            if ((!isAddingBBox && !isAddingMultipleBBoxes) || !drawingStartPoint) return;
 
             // Verhindere Standard-Verhalten
             L.DomEvent.stopPropagation(e);
@@ -4129,8 +4492,12 @@
             drawingRectangle = null;
             drawingStartPoint = null;
 
-            // Füge Box hinzu
-            await addBBoxFromDrawing(mapBounds);
+            // Füge Box(en) hinzu je nach Modus
+            if (isAddingBBox) {
+                await addBBoxFromDrawing(mapBounds);
+            } else if (isAddingMultipleBBoxes) {
+                await addMultipleBBoxesFromDrawing(mapBounds);
+            }
         }
 
         function convertMapCoordsToBBoxPixel(mapBounds, ocrImageWidth, ocrImageHeight, mapImageWidth, mapImageHeight) {
@@ -4234,10 +4601,143 @@
                 toggleAddBBoxMode();
 
                 // Lade Seite neu um neue Box anzuzeigen
-                loadPageInspect(currentPageData.page_id);
+                await loadPageInspect(currentPageData.page_id);
+                
+                // Stelle gespeicherte Zoom- und Pan-Position wieder her
+                if (map && savedMapView) {
+                    map.setView(savedMapView.center, savedMapView.zoom);
+                    savedMapView = null;
+                }
+            } catch (error) {
+                showMessage(`Fehler beim Hinzufügen der Box: ${error.message}`, 'error');
+                console.error('Error adding BBox:', error);
+            }
+        }
+
+        // +X (Multibox): Feature deaktiviert wegen Bugs – wird nicht mehr vom UI aufgerufen (Button ausgeblendet).
+        async function addMultipleBBoxesFromDrawing(mapBounds) {
+            if (!currentPageData) {
+                showMessage('Keine Seiten-Daten verfügbar', 'error');
+                return;
+            }
+
+            try {
+                // Hole OCR-Bild-Dimensionen
+                const response = await fetch(`${API_BASE}/api/pages/${currentPageData.page_id}/inspect`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+
+                // Finde OCRResult mit Bild-Dimensionen
+                let ocrImageWidth = data.image_width;
+                let ocrImageHeight = data.image_height;
+                for (const ocrResult of data.ocr_results || []) {
+                    if (ocrResult.image_width && ocrResult.image_height) {
+                        ocrImageWidth = ocrResult.image_width;
+                        ocrImageHeight = ocrResult.image_height;
+                        break;
+                    }
+                }
+
+                const mapImageWidth = data.image_width;
+                const mapImageHeight = data.image_height;
+
+                // Konvertiere Koordinaten
+                const bbox_pixel = convertMapCoordsToBBoxPixel(
+                    mapBounds,
+                    ocrImageWidth,
+                    ocrImageHeight,
+                    mapImageWidth,
+                    mapImageHeight
+                );
+
+                // Zeige Ladeanzeige
+                showMessage('Erkenne Boxen im ausgewählten Bereich...', 'info');
+
+                // Sende an API
+                const addResponse = await fetch(`${API_BASE}/api/review/pages/${currentPageData.page_id}/bboxes/add-multiple`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        bbox_pixel: bbox_pixel
+                    })
+                });
+
+                if (!addResponse.ok) {
+                    const errorData = await addResponse.json().catch(() => ({ detail: 'Unbekannter Fehler' }));
+                    const msg = typeof errorData.detail === 'string'
+                        ? errorData.detail
+                        : Array.isArray(errorData.detail)
+                            ? errorData.detail.map(e => e.msg || JSON.stringify(e)).join('; ')
+                            : JSON.stringify(errorData.detail || 'Fehler beim Erkennen der Boxen');
+                    throw new Error(msg);
+                }
+
+                const result = await addResponse.json();
+                const bboxCount = result.bboxes_added || 0;
+                const message = result.message || '';
+                
+                if (bboxCount > 0) {
+                    // Zeige die Backend-Meldung oder eine Standard-Meldung
+                    if (message.includes('temporäre Box')) {
+                        showMessage(message, 'info');
+                    } else {
+                        showMessage(`${bboxCount} Boxen erkannt und hinzugefügt - Review-Jobs erstellt`, 'success');
+                    }
+                } else {
+                    showMessage('Keine Boxen im ausgewählten Bereich gefunden', 'info');
+                }
+
+                // Speichere aktuelle Zoom- und Pan-Position
+                if (map) {
+                    savedMapView = {
+                        center: map.getCenter(),
+                        zoom: map.getZoom()
+                    };
+                }
+
+                // Verlasse Zeichnen-Modus explizit
+                if (isAddingMultipleBBoxes) {
+                    isAddingMultipleBBoxes = false;
+                    const btn = document.getElementById('addMultipleBBoxBtn');
+                    if (btn) {
+                        btn.classList.remove('btn-warning');
+                        btn.classList.add('btn-success');
+                        btn.textContent = '+X';
+                    }
+                    if (map) {
+                        map.getContainer().classList.remove('drawing-mode');
+                        map.dragging.enable();
+                        map.boxZoom.enable();
+                        map.doubleClickZoom.enable();
+                        map.scrollWheelZoom.enable();
+                        // Entferne gezeichnetes Rectangle falls vorhanden
+                        if (drawingRectangle) {
+                            map.removeLayer(drawingRectangle);
+                            drawingRectangle = null;
+                        }
+                    }
+                    drawingStartPoint = null;
+                }
+
+                // Lade Seite neu um neue Box anzuzeigen
+                await loadPageInspect(currentPageData.page_id);
+                
+                // Stelle gespeicherte Zoom- und Pan-Position wieder her
+                if (map && savedMapView) {
+                    map.setView(savedMapView.center, savedMapView.zoom);
+                    savedMapView = null;
+                }
             } catch (error) {
                 console.error('Fehler beim Hinzufügen der Box:', error);
                 showMessage('Fehler: ' + (error.message || String(error)), 'error');
+                // Stelle sicher, dass der Modus auch im Fehlerfall zurückgesetzt wird
+                if (isAddingMultipleBBoxes) {
+                    toggleAddMultipleBBoxMode();
+                }
             }
         }
 
@@ -4369,7 +4869,7 @@
                                 <button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px;" onclick="showQualityDetail(${page.page_id})">
                                     Details
                                 </button>
-                                <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-left: 5px;" onclick="showPageInspect(${page.page_id})">
+                                <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-left: 5px;" onclick="showPageInspectInNewTab(${page.page_id})">
                                     Inspect
                                 </button>
                             </td>

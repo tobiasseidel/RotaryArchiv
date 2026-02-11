@@ -4,11 +4,16 @@ FastAPI Hauptanwendung
 
 from pathlib import Path
 
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.rotary_archiv.api import documents, ocr, pages, quality, review
+
+logger = logging.getLogger(__name__)
 
 # NOTE: Folgende APIs sind vorerst nicht verwendet:
 # - entities (gelöscht)
@@ -23,6 +28,16 @@ app = FastAPI(
     description="Digitales Archiv-System für Rotary Club Dokumente",
     version="0.1.0",
 )
+
+# Request Logging Middleware
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        logger.info(f"Request: {request.method} {request.url.path}")
+        response = await call_next(request)
+        logger.info(f"Response: {request.method} {request.url.path} -> {response.status_code}")
+        return response
+
+app.add_middleware(RequestLoggingMiddleware)
 
 # CORS Middleware
 app.add_middleware(
