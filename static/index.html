@@ -932,6 +932,7 @@
                 <button class="btn btn-success" id="addBBoxBtn" title="Eine Box hinzufügen">+1</button>
                 <!-- +X (Multibox) deaktiviert: Feature wegen Bugs nicht verwendbar -->
                 <button class="btn btn-success" id="addMultipleBBoxBtn" title="Mehrere Boxen automatisch erkennen (deaktiviert)" style="display: none;">+X</button>
+                <button class="btn btn-secondary" id="editBoxModeBtn" title="Boxen-Positionen und Maße ändern">Boxen bearbeiten</button>
                 <button class="btn btn-secondary" id="measureSkewBtn" title="Schrägwinkel der Seite messen (Hough)">Schräge messen</button>
                 <button class="btn btn-secondary" id="measureSkewDebugBtn" title="Schrägwinkel mit Debug-Informationen messen">Schräge debuggen</button>
                 <button class="btn btn-secondary" id="showDeskewedBtn" title="Begradigte Seite mit erkannten Linien anzeigen">Begradigt anzeigen</button>
@@ -940,6 +941,10 @@
                 <button class="btn btn-primary" id="fullscreenBtn">Vollbild</button>
                 <button class="btn btn-secondary" id="backBtn">Zurück</button>
             </div>
+        </div>
+        <div id="inspectBoxPositionsPanel" style="display: none; margin-bottom: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px; max-height: 120px; overflow-y: auto;">
+            <strong>Aktuelle Positionen (x1, y1, x2, y2):</strong>
+            <div id="inspectBoxPositionsList"></div>
         </div>
         <div id="map" style="height: 600px; width: 100%; position: relative;"></div>
     </div>
@@ -1779,7 +1784,7 @@
                 document.getElementById('bboxFilterReviewStatusIgnored'),
                 document.getElementById('bboxFilterReviewStatusNew')
             ];
-            
+
             if (min1k && min1k.value !== '') filters.min_chars_per_1k_px = parseFloat(min1k.value);
             if (max1k && max1k.value !== '') filters.max_chars_per_1k_px = parseFloat(max1k.value);
             if (minPc && minPc.value !== '') filters.min_black_pixels_per_char = parseFloat(minPc.value);
@@ -1795,7 +1800,7 @@
             if (textSearch && textSearch.value.trim() !== '') filters.text_search = textSearch.value.trim();
             const selectedStatuses = reviewStatusCheckboxes.filter(function (cb) { return cb && cb.checked; }).map(function (cb) { return cb.value; });
             if (selectedStatuses.length > 0) filters.review_status = selectedStatuses;
-            
+
             return filters;
         }
 
@@ -2082,10 +2087,10 @@
                 const limit = 500; // Maximal erlaubtes Limit
                 let hasMore = true;
                 let total = 0;
-                
+
                 // Zeige Status-Anzeige
                 bboxListUpdateStatusMessage('Sammle BBoxen...', true);
-                
+
                 while (hasMore) {
                     const params = bboxListBuildQueryParams(offset, limit);
                     const url = `${API_BASE}/api/quality/bbox-list?${params.toString()}`;
@@ -2104,16 +2109,16 @@
                             page_id: it.page_id,
                             bbox_index: it.bbox_index
                         })));
-                        
+
                         // Aktualisiere Status-Anzeige
                         const collected = allBboxes.length;
                         bboxListUpdateStatusMessage(`Sammle BBoxen: ${collected} / ${total}`, true);
-                        
+
                         // Prüfe ob es weitere Seiten gibt
                         offset += items.length;
                         hasMore = offset < total && items.length === limit;
                         console.log('bboxListGetSelectedBBoxes: offset:', offset, 'total:', total, 'items.length:', items.length, 'hasMore:', hasMore);
-                        
+
                         // Sicherheitscheck: verhindere Endlosschleife
                         if (allBboxes.length > 100000) {
                             console.warn('bboxListGetSelectedBBoxes: Zu viele BBoxen, breche ab');
@@ -2125,12 +2130,12 @@
                         throw err;
                     }
                 }
-                
+
                 console.log('bboxListGetSelectedBBoxes: Gesamt gesammelt:', allBboxes.length, 'BBoxen');
-                
+
                 // Verstecke Status-Anzeige nach erfolgreichem Sammeln
                 bboxListUpdateStatusMessage('', false);
-                
+
                 return allBboxes;
             } else {
                 // Parse bboxListSelectedIds (Format: "page_id_bbox_index")
@@ -2153,27 +2158,27 @@
             }
 
             const btn = statusSelect.nextElementSibling;
-            
+
             // Wenn "Alle (Filter)" ausgewählt, verwende Filter-Parameter direkt
             if (bboxListSelectedAllMatching) {
                 const filters = bboxListBuildFilterObject();
                 filters.new_status = newStatus;
-                
+
                 if (btn) btn.disabled = true;
                 bboxListUpdateStatusMessage('Ändere Status...', true);
-                
+
                 try {
                     const response = await fetch(`${API_BASE}/api/review/batch-change-status`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(filters)
                     });
-                    
+
                     const data = await response.json().catch(() => ({}));
                     if (!response.ok) {
                         throw new Error(data.detail || response.statusText || 'Fehler beim Ändern des Status');
                     }
-                    
+
                     const updated = data.updated || 0;
                     const errors = data.errors || [];
                     let msg = `${updated} BBoxen aktualisiert.`;
@@ -2182,7 +2187,7 @@
                         if (errors.length > 5) msg += ` ... (${errors.length - 5} weitere)`;
                     }
                     alert(msg);
-                    
+
                     // Auswahl zurücksetzen und Liste neu laden
                     bboxListSelectedIds.clear();
                     bboxListSelectedAllMatching = false;
@@ -2196,7 +2201,7 @@
                 }
                 return;
             }
-            
+
             // Fallback: Explizite Liste von BBoxen (wie bisher)
             let bboxes;
             try {
@@ -2250,7 +2255,7 @@
 
         async function bboxListBatchDiscardAndRecalc() {
             const btn = document.querySelector('button[onclick*="bboxListBatchDiscardAndRecalc"]');
-            
+
             // Wenn "Alle (Filter)" ausgewählt, verwende Filter-Parameter direkt
             if (bboxListSelectedAllMatching) {
                 const filters = bboxListBuildFilterObject();
@@ -2258,22 +2263,22 @@
                 if (!confirmed) {
                     return;
                 }
-                
+
                 if (btn) btn.disabled = true;
                 bboxListUpdateStatusMessage('Verwerfe OCR-Inhalte...', true);
-                
+
                 try {
                     const response = await fetch(`${API_BASE}/api/review/batch-discard-and-recalc`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(filters)
                     });
-                    
+
                     const data = await response.json().catch(() => ({}));
                     if (!response.ok) {
                         throw new Error(data.detail || response.statusText || 'Fehler beim Verwerfen');
                     }
-                    
+
                     const discarded = data.discarded || 0;
                     const jobsCreated = data.jobs_created || 0;
                     const jobsExisting = data.jobs_existing || 0;
@@ -2288,7 +2293,7 @@
                         if (errors.length > 5) msg += ` ... (${errors.length - 5} weitere)`;
                     }
                     alert(msg);
-                    
+
                     // Auswahl zurücksetzen und Liste neu laden
                     bboxListSelectedIds.clear();
                     bboxListSelectedAllMatching = false;
@@ -2302,7 +2307,7 @@
                 }
                 return;
             }
-            
+
             // Fallback: Explizite Liste von BBoxen (wie bisher)
             let bboxes;
             try {
@@ -2368,7 +2373,7 @@
 
         async function bboxListBatchDelete(event) {
             const btn = event?.target || (event?.currentTarget ? event.currentTarget : null) || document.querySelector('button[onclick*="bboxListBatchDelete"]');
-            
+
             // Wenn "Alle (Filter)" ausgewählt, verwende Filter-Parameter direkt
             if (bboxListSelectedAllMatching) {
                 const filters = bboxListBuildFilterObject();
@@ -2376,22 +2381,22 @@
                 if (!confirmed) {
                     return;
                 }
-                
+
                 if (btn) btn.disabled = true;
                 bboxListUpdateStatusMessage('Lösche BBoxen...', true);
-                
+
                 try {
                     const response = await fetch(`${API_BASE}/api/review/batch-delete`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(filters)
                     });
-                    
+
                     const data = await response.json().catch(() => ({}));
                     if (!response.ok) {
                         throw new Error(data.detail || response.statusText || 'Fehler beim Löschen');
                     }
-                    
+
                     const deleted = data.deleted || 0;
                     const errors = data.errors || [];
                     let msg = `${deleted} BBoxen gelöscht.`;
@@ -2400,7 +2405,7 @@
                         if (errors.length > 5) msg += ` ... (${errors.length - 5} weitere)`;
                     }
                     alert(msg);
-                    
+
                     // Auswahl zurücksetzen und Liste neu laden
                     bboxListSelectedIds.clear();
                     bboxListSelectedAllMatching = false;
@@ -2414,7 +2419,7 @@
                 }
                 return;
             }
-            
+
             // Fallback: Explizite Liste von BBoxen (wie bisher)
             let bboxes;
             try {
@@ -2669,6 +2674,10 @@
         let drawingRectangle = null;  // Aktuell gezeichnetes Rectangle
         let drawingStartPoint = null;  // Startpunkt beim Zeichnen
         let savedMapView = null;  // Gespeicherte Zoom- und Pan-Position
+        let inspectEditBoxMode = false;  // Modus: Boxen-Positionen/Maße bearbeiten
+        let currentInspectData = null;  // Aktuelle Inspect-Daten (image_width, image_height, ocr_results) für Konvertierung
+        let editBoxHandlesLayer = null;  // Layer mit 8 Anfassern für ausgewählte BBox
+        let selectedEditOverlay = null;  // Aktuell ausgewähltes Overlay { rect, bboxIndex, pageId, ... }
 
         async function loadPageInspect(pageId) {
             try {
@@ -2959,54 +2968,65 @@
                                     weight: 2,
                                     interactive: true  // Ermöglicht Klicks
                                 })
-                                    .bindPopup(popupContent)
+                                    .bindPopup(popupContent, { autoPan: false })
                                     .addTo(map);
 
                                 // Erstelle Text-Overlay für OCR-Text mit Leaflet Marker
-                                // Berechne Zentrum der Bounding Box
                                 const centerY = (y_min + y_max) / 2;
                                 const centerX = (x_min + x_max) / 2;
-                                const width = Math.abs(x_max - x_min);
-                                const height = Math.abs(y_max - y_min);
 
-                                // Funktion zum Aktualisieren der Textgröße basierend auf Zoom
-                                const updateTextIcon = () => {
+                                const overlayItem = {
+                                    marker: null,
+                                    rect: rect,
+                                    visible: true,
+                                    bboxIndex: bboxIndex,
+                                    pageId: data.page_id,
+                                    textContent: bboxItem.text || ''
+                                };
+                                overlayItem.updateIcon = function() {
+                                    const bounds = overlayItem.rect.getBounds();
+                                    const sw = bounds.getSouthWest();
+                                    const ne = bounds.getNorthEast();
+                                    const width = Math.abs(ne.lng - sw.lng);
+                                    const height = Math.abs(ne.lat - sw.lat);
                                     const zoom = map.getZoom();
                                     const zoomScale = Math.pow(2, zoom);
-                                    // Skaliere Schriftgröße mit Zoom-Level (bei zoom=0 ist scale=1)
                                     const scaledFontSize = fontSize * zoomScale;
-                                    // Skaliere auch die Icon-Größe, damit die Boxen nicht schrumpfen
                                     const scaledWidth = width * zoomScale;
                                     const scaledHeight = height * zoomScale;
-
-                                    const textIcon = L.divIcon({
+                                    return L.divIcon({
                                         className: 'ocr-text-overlay',
-                                        html: `<div style="font-size: ${scaledFontSize}px; font-family: ${fontFamily}; width: ${scaledWidth}px; height: ${scaledHeight}px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px 4px; box-sizing: border-box;">${bboxItem.text || ''}</div>`,
+                                        html: `<div style="font-size: ${scaledFontSize}px; font-family: ${fontFamily}; width: ${scaledWidth}px; height: ${scaledHeight}px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 2px 4px; box-sizing: border-box;">${overlayItem.textContent}</div>`,
                                         iconSize: [scaledWidth, scaledHeight],
-                                        iconAnchor: [scaledWidth / 2, scaledHeight / 2]  // Zentriert den Text
+                                        iconAnchor: [scaledWidth / 2, scaledHeight / 2]
                                     });
-
-                                    return textIcon;
                                 };
 
-                                // Erstelle Marker an der Position der Bounding Box
                                 const textMarker = L.marker([centerY, centerX], {
-                                    icon: updateTextIcon(),
+                                    icon: overlayItem.updateIcon(),
                                     interactive: false,
-                                    zIndexOffset: 1000  // Über den Bounding Boxes
+                                    zIndexOffset: 1000
                                 }).addTo(map);
+                                overlayItem.marker = textMarker;
 
-                                // Aktualisiere Text-Icon bei Zoom-Änderungen
                                 const updateOnZoom = () => {
-                                    textMarker.setIcon(updateTextIcon());
+                                    textMarker.setIcon(overlayItem.updateIcon());
                                 };
-
                                 map.on('zoom', updateOnZoom);
                                 map.on('zoomend', updateOnZoom);
 
-                                // Click-Handler: Blende Text aus/ein beim Klick auf die Bounding Box
+                                // Click-Handler: Im Bearbeiten-Modus Auswahl + Anfasser, sonst Text ein/aus + Popup
                                 let textVisible = true;
-                                rect.on('click', () => {
+                                rect.on('click', (e) => {
+                                    if (inspectEditBoxMode) {
+                                        if (e && e.originalEvent) {
+                                            L.DomEvent.stop(e.originalEvent);
+                                            L.DomEvent.preventDefault(e.originalEvent);
+                                        }
+                                        selectBoxForEditing(overlayItem);
+                                        if (rect.closePopup) rect.closePopup();
+                                        return;
+                                    }
                                     textVisible = !textVisible;
                                     if (textVisible) {
                                         textMarker.addTo(map);
@@ -3015,20 +3035,24 @@
                                     }
                                 });
 
-                                textOverlays.push({
-                                    marker: textMarker,
-                                    rect: rect,
-                                    updateIcon: updateTextIcon,
-                                    updateOnZoom: updateOnZoom,
-                                    visible: true,
-                                    bboxIndex: bboxIndex,  // Speichere Index für späteren Zugriff
-                                    pageId: data.page_id   // Speichere pageId für späteren Zugriff
-                                });
+                                textOverlays.push(overlayItem);
                             });
                         }
                     });
                 }
 
+                // Für Bearbeiten-Modus und Positions-Anzeige: Inspect-Daten bereitstellen
+                currentInspectData = {
+                    page_id: data.page_id,
+                    image_width: data.image_width,
+                    image_height: data.image_height,
+                    ocr_results: data.ocr_results || []
+                };
+
+                // Boxen bearbeiten: Toggle-Button
+                document.getElementById('editBoxModeBtn').onclick = () => {
+                    toggleEditBoxMode();
+                };
 
                 // Vollbild-Button
                 document.getElementById('fullscreenBtn').onclick = () => {
@@ -3116,7 +3140,7 @@
                 document.getElementById('addBBoxBtn').onclick = () => {
                     toggleAddBBoxMode();
                 };
-                
+
                 // Mehrere Boxen hinzufügen Button (+X) – deaktiviert wegen Bugs, Button ausgeblendet
                 document.getElementById('addMultipleBBoxBtn').onclick = () => {
                     toggleAddMultipleBBoxMode();
@@ -4321,7 +4345,10 @@
             if (isAddingMultipleBBoxes) {
                 toggleAddMultipleBBoxMode();
             }
-            
+            // Beim Aktivieren des Zeichen-Modus: Bearbeiten-Modus beenden
+            if (!isAddingBBox && inspectEditBoxMode) {
+                setEditBoxMode(false);
+            }
             isAddingBBox = !isAddingBBox;
             const btn = document.getElementById('addBBoxBtn');
 
@@ -4363,7 +4390,7 @@
             if (isAddingBBox) {
                 toggleAddBBoxMode();
             }
-            
+
             isAddingMultipleBBoxes = !isAddingMultipleBBoxes;
             const btn = document.getElementById('addMultipleBBoxBtn');
 
@@ -4528,6 +4555,233 @@
             return [Math.round(x_min), Math.round(y_min_ocr), Math.round(x_max), Math.round(y_max_ocr)];
         }
 
+        function getInspectOcrDimensions() {
+            if (!currentInspectData || !currentInspectData.ocr_results || currentInspectData.ocr_results.length === 0) {
+                return {
+                    ocrImageWidth: currentInspectData ? currentInspectData.image_width : 0,
+                    ocrImageHeight: currentInspectData ? currentInspectData.image_height : 0,
+                    mapImageWidth: currentInspectData ? currentInspectData.image_width : 0,
+                    mapImageHeight: currentInspectData ? currentInspectData.image_height : 0
+                };
+            }
+            const ocrResult = currentInspectData.ocr_results[0];
+            return {
+                ocrImageWidth: ocrResult.image_width || currentInspectData.image_width,
+                ocrImageHeight: ocrResult.image_height || currentInspectData.image_height,
+                mapImageWidth: currentInspectData.image_width,
+                mapImageHeight: currentInspectData.image_height
+            };
+        }
+
+        function refreshInspectBoxPositionsPanel() {
+            const listEl = document.getElementById('inspectBoxPositionsList');
+            if (!listEl || !currentInspectData) return;
+            const dims = getInspectOcrDimensions();
+            const lines = [];
+            textOverlays.forEach((item) => {
+                if (!item.rect) return;
+                const bounds = item.rect.getBounds();
+                const mapBounds = [
+                    [bounds.getSouthWest().lat, bounds.getSouthWest().lng],
+                    [bounds.getNorthEast().lat, bounds.getNorthEast().lng]
+                ];
+                const px = convertMapCoordsToBBoxPixel(
+                    mapBounds,
+                    dims.ocrImageWidth,
+                    dims.ocrImageHeight,
+                    dims.mapImageWidth,
+                    dims.mapImageHeight
+                );
+                lines.push(`#${item.bboxIndex}: [${px[0]}, ${px[1]}, ${px[2]}, ${px[3]}]`);
+            });
+            listEl.textContent = lines.length ? lines.join(' | ') : 'Keine Boxen';
+        }
+
+        function setEditBoxMode(active) {
+            inspectEditBoxMode = active;
+            const panel = document.getElementById('inspectBoxPositionsPanel');
+            const btn = document.getElementById('editBoxModeBtn');
+            if (panel) panel.style.display = active ? 'block' : 'none';
+            if (btn) {
+                if (active) {
+                    btn.classList.add('btn-warning');
+                    btn.classList.remove('btn-secondary');
+                    btn.textContent = 'Boxen bearbeiten (an)';
+                } else {
+                    btn.classList.remove('btn-warning');
+                    btn.classList.add('btn-secondary');
+                    btn.textContent = 'Boxen bearbeiten';
+                }
+            }
+            if (!active) {
+                clearEditBoxSelection();
+            } else {
+                if (isAddingBBox) toggleAddBBoxMode();
+                if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
+                refreshInspectBoxPositionsPanel();
+            }
+        }
+
+        function toggleEditBoxMode() {
+            setEditBoxMode(!inspectEditBoxMode);
+        }
+
+        function setTextOverlayVisible(overlay, visible) {
+            if (!overlay || !overlay.marker) return;
+            const iconEl = overlay.marker._icon || (overlay.marker.getElement && overlay.marker.getElement());
+            if (iconEl) {
+                if (visible) iconEl.style.removeProperty('display');
+                else iconEl.style.setProperty('display', 'none', 'important');
+            }
+        }
+
+        function clearEditBoxSelection() {
+            if (selectedEditOverlay) {
+                setTextOverlayVisible(selectedEditOverlay, true);
+            }
+            if (editBoxHandlesLayer && map) {
+                map.removeLayer(editBoxHandlesLayer);
+                editBoxHandlesLayer = null;
+            }
+            selectedEditOverlay = null;
+            if (inspectEditBoxMode) refreshInspectBoxPositionsPanel();
+        }
+
+        function syncOverlayMarkerToRect(overlay) {
+            if (!overlay || !overlay.rect || !overlay.marker || !map) return;
+            const bounds = overlay.rect.getBounds();
+            const sw = bounds.getSouthWest();
+            const ne = bounds.getNorthEast();
+            const centerY = (sw.lat + ne.lat) / 2;
+            const centerX = (sw.lng + ne.lng) / 2;
+            overlay.marker.setLatLng([centerY, centerX]);
+            overlay.marker.setIcon(overlay.updateIcon());
+        }
+
+        function selectBoxForEditing(overlay) {
+            if (!map || !overlay || !overlay.rect) return;
+            clearEditBoxSelection();
+            selectedEditOverlay = overlay;
+            const rect = overlay.rect;
+            const pageId = overlay.pageId;
+            const bboxIndex = overlay.bboxIndex;
+            let bounds = rect.getBounds();
+            const dims = getInspectOcrDimensions();
+
+            const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+            const handleMarkers = [];
+
+            function updateBoundsFromHandle(handleId, newLatLng) {
+                const sw = bounds.getSouthWest();
+                const ne = bounds.getNorthEast();
+                let n = ne.lat, s = sw.lat, e = ne.lng, w = sw.lng;
+                const lat = newLatLng.lat, lng = newLatLng.lng;
+                // Leaflet: south = kleinere lat (oben), north = größere lat (unten)
+                switch (handleId) {
+                    case 'nw': s = lat; w = lng; break;  // oben-links
+                    case 'n':  s = lat; break;          // obere Kante
+                    case 'ne': s = lat; e = lng; break; // oben-rechts
+                    case 'e':  e = lng; break;
+                    case 'se': n = lat; e = lng; break; // unten-rechts
+                    case 's':  n = lat; break;          // untere Kante
+                    case 'sw': n = lat; w = lng; break; // unten-links
+                    case 'w':  w = lng; break;
+                }
+                if (n < s) { const t = n; n = s; s = t; }
+                if (e < w) { const t = e; e = w; w = t; }
+                bounds = L.latLngBounds(L.latLng(s, w), L.latLng(n, e));
+                rect.setBounds(bounds);
+                refreshInspectBoxPositionsPanel();
+            }
+
+            function getHandleLatLng(handleId) {
+                const sw = bounds.getSouthWest();
+                const ne = bounds.getNorthEast();
+                const s = sw.lat, w = sw.lng, n = ne.lat, e = ne.lng;
+                switch (handleId) {
+                    case 'nw': return [s, w];
+                    case 'n':  return [s, (w + e) / 2];
+                    case 'ne': return [s, e];
+                    case 'e':  return [(n + s) / 2, e];
+                    case 'se': return [n, e];
+                    case 's':  return [n, (w + e) / 2];
+                    case 'sw': return [n, w];
+                    case 'w':  return [(n + s) / 2, w];
+                }
+                return [(n + s) / 2, (w + e) / 2];
+            }
+
+            let ignoreNextMapClick = false;
+            function onMapClickMaybeClearSelection() {
+                if (ignoreNextMapClick) {
+                    ignoreNextMapClick = false;
+                    return;
+                }
+                clearEditBoxSelection();
+            }
+
+            editBoxHandlesLayer = L.layerGroup();
+            HANDLES.forEach((handleId) => {
+                const pos = getHandleLatLng(handleId);
+                const marker = L.circleMarker(pos, {
+                    radius: 6,
+                    color: '#0d6efd',
+                    fillColor: '#fff',
+                    weight: 2,
+                    fillOpacity: 1,
+                    interactive: true,
+                    bubblingMouseEvents: false
+                });
+                marker.handleId = handleId;
+                marker.on('mousedown', (e) => {
+                    L.DomEvent.stop(e);
+                    ignoreNextMapClick = true;
+                    let moving = true;
+                    if (map.dragging.enabled()) map.dragging.disable();
+                    const move = (ev) => {
+                        if (!moving) return;
+                        const latlng = map.mouseEventToLatLng(ev.originalEvent);
+                        updateBoundsFromHandle(handleId, latlng);
+                        bounds = rect.getBounds();
+                        handleMarkers.forEach((m, i) => m.setLatLng(getHandleLatLng(HANDLES[i])));
+                    };
+                    const up = () => {
+                        moving = false;
+                        map.dragging.enable();
+                        map.off('mousemove', move);
+                        map.off('mouseup', up);
+                        document.removeEventListener('mouseup', up);
+                        syncOverlayMarkerToRect(overlay);
+                        setTextOverlayVisible(overlay, true);
+                        const mapBounds = [
+                            [bounds.getSouthWest().lat, bounds.getSouthWest().lng],
+                            [bounds.getNorthEast().lat, bounds.getNorthEast().lng]
+                        ];
+                        const bbox_pixel = convertMapCoordsToBBoxPixel(
+                            mapBounds, dims.ocrImageWidth, dims.ocrImageHeight,
+                            dims.mapImageWidth, dims.mapImageHeight
+                        );
+                        fetch(`${API_BASE}/api/review/pages/${pageId}/bboxes/${bboxIndex}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ bbox_pixel })
+                        }).then(r => {
+                            if (r.ok) showMessage('Box gespeichert', 'success');
+                            else r.json().then(d => showMessage(d.detail || 'Fehler', 'error'));
+                        }).catch(() => showMessage('Fehler beim Speichern', 'error'));
+                    };
+                    map.on('mousemove', move);
+                    map.on('mouseup', up);
+                    document.addEventListener('mouseup', up);
+                });
+                handleMarkers.push(marker);
+                editBoxHandlesLayer.addLayer(marker);
+            });
+            editBoxHandlesLayer.addTo(map);
+            setTextOverlayVisible(overlay, false);
+            map.once('click', onMapClickMaybeClearSelection);
+        }
+
         async function addBBoxFromDrawing(mapBounds) {
             if (!currentPageData) {
                 showMessage('Keine Seiten-Daten verfügbar', 'error');
@@ -4602,7 +4856,7 @@
 
                 // Lade Seite neu um neue Box anzuzeigen
                 await loadPageInspect(currentPageData.page_id);
-                
+
                 // Stelle gespeicherte Zoom- und Pan-Position wieder her
                 if (map && savedMapView) {
                     map.setView(savedMapView.center, savedMapView.zoom);
@@ -4679,7 +4933,7 @@
                 const result = await addResponse.json();
                 const bboxCount = result.bboxes_added || 0;
                 const message = result.message || '';
-                
+
                 if (bboxCount > 0) {
                     // Zeige die Backend-Meldung oder eine Standard-Meldung
                     if (message.includes('temporäre Box')) {
@@ -4725,7 +4979,7 @@
 
                 // Lade Seite neu um neue Box anzuzeigen
                 await loadPageInspect(currentPageData.page_id);
-                
+
                 // Stelle gespeicherte Zoom- und Pan-Position wieder her
                 if (map && savedMapView) {
                     map.setView(savedMapView.center, savedMapView.zoom);
