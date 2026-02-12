@@ -333,8 +333,7 @@ async def process_bbox_review_job(job_id: int) -> None:
             job.current_step = f"Verarbeite BBox {processed_idx + 1}/{total_bboxes}"
             db.commit()
 
-            # Prüfe ob dies eine multibox_region Box ist
-            # HINWEIS: +X (Multibox-Region) ist wegen Bugs im Frontend deaktiviert; Logik bleibt für spätere Reparatur.
+            # Prüfe ob dies eine multibox_region Box ist (+X wieder aktiv für weiteren Versuch)
             if bbox_item.get("multibox_region") == True:
                 # Spezielle Verarbeitung für Multibox-Regionen
                 logger.info(
@@ -640,9 +639,7 @@ async def process_multibox_region(
 ) -> list[dict]:
     """
     Verarbeite eine Multibox-Region: Erkenne mehrere Boxen in einem gecroppten Bereich.
-
-    HINWEIS: Feature +X ist wegen Bugs im Frontend deaktiviert (Button ausgeblendet).
-    Wird nur noch aufgerufen wenn alte multibox_region-Boxen im Review-Job landen.
+    (+X aktuell wieder aktiv für weiteren Versuch.)
 
     Args:
         db: Datenbank-Session
@@ -867,43 +864,41 @@ async def process_multibox_region(
                 # Rücktransformation: Crop-Pixel → OCR-Koordinaten.
                 # Crop (0,0) entspricht Region-Start (x1_region, y1_region). Crop-Breite = region_width*0.7.
                 # Daher: x_original = x1_region + (crop_pixel_x / 0.7)
+                #
+                # --- ENTSCHEIDENDE KORREKTUR FÜR MULTIBOX (+X): ---
+                # DeepSeek-OCR liefert BBox-Koordinaten in 0–1000-Skala, nicht in Crop-Pixel.
+                # Ohne diese Heuristik würden Werte > crop_dim stumpf gekappt (z. B. 956→566)
+                # und die Box käme falsch/zu klein an. Wenn x2 oder y2 die Crop-Größe übersteigt,
+                # alle vier Koordinaten als 0–1000 interpretieren: crop_pixel = (raw/1000)*crop_dim.
+                # ---
                 x1_crop_pixel_raw = x1_crop_norm * crop_image_width
-                x1_crop_pixel = max(0, min(x1_crop_pixel_raw, crop_image_width))
-                if x1_crop_pixel_raw != x1_crop_pixel:
-                    logger.warning(
-                        f"Box {idx}: X1-Koordinate begrenzt: {x1_crop_pixel_raw:.1f} → {x1_crop_pixel} "
-                        f"(Crop-Bild-Breite: {crop_image_width})"
-                    )
-                x1_original = int(x1_region + (x1_crop_pixel / 0.7))
                 x2_crop_pixel_raw = x2_crop_norm * crop_image_width
-                x2_crop_pixel = max(0, min(x2_crop_pixel_raw, crop_image_width))
-                if x2_crop_pixel_raw != x2_crop_pixel:
-                    logger.warning(
-                        f"Box {idx}: X2-Koordinate begrenzt: {x2_crop_pixel_raw:.1f} → {x2_crop_pixel} "
-                        f"(Crop-Bild-Breite: {crop_image_width})"
-                    )
-                x2_original = int(x1_region + (x2_crop_pixel / 0.7))
-                
-                # Y-Koordinaten: Keine Skalierung beim Cropping
                 y1_crop_pixel_raw = y1_crop_norm * crop_image_height
-                # Begrenze auf Crop-Bild-Größe (OCR kann Werte > 1.0 zurückgeben)
-                y1_crop_pixel = max(0, min(y1_crop_pixel_raw, crop_image_height))
-                if y1_crop_pixel_raw != y1_crop_pixel:
-                    logger.warning(
-                        f"Box {idx}: Y1-Koordinate begrenzt: {y1_crop_pixel_raw:.1f} → {y1_crop_pixel} "
-                        f"(Crop-Bild-Höhe: {crop_image_height})"
-                    )
-                y1_original = y1_region + int(y1_crop_pixel)
-                
                 y2_crop_pixel_raw = y2_crop_norm * crop_image_height
-                # Begrenze auf Crop-Bild-Größe (OCR kann Werte > 1.0 zurückgeben)
-                y2_crop_pixel = max(0, min(y2_crop_pixel_raw, crop_image_height))
-                if y2_crop_pixel_raw != y2_crop_pixel:
-                    logger.warning(
-                        f"Box {idx}: Y2-Koordinate begrenzt: {y2_crop_pixel_raw:.1f} → {y2_crop_pixel} "
-                        f"(Crop-Bild-Höhe: {crop_image_height})"
+                use_1000_scale = (
+                    (x2_crop_pixel_raw > crop_image_width or y2_crop_pixel_raw > crop_image_height)
+                    and crop_image_width > 0
+                    and crop_image_height > 0
+                )
+                if use_1000_scale:
+                    logger.info(
+                        f"Box {idx}: LLM-Koordinaten über Crop-Größe "
+                        f"(x2={x2_crop_pixel_raw:.0f}>{crop_image_width} oder y2={y2_crop_pixel_raw:.0f}>{crop_image_height}), "
+                        "interpretiere als 0–1000-Skala"
                     )
-                y2_original = y1_region + int(y2_crop_pixel)
+                    x1_crop_pixel = int(max(0, min((x1_crop_pixel_raw / 1000.0) * crop_image_width, crop_image_width)))
+                    x2_crop_pixel = int(max(0, min((x2_crop_pixel_raw / 1000.0) * crop_image_width, crop_image_width)))
+                    y1_crop_pixel = int(max(0, min((y1_crop_pixel_raw / 1000.0) * crop_image_height, crop_image_height)))
+                    y2_crop_pixel = int(max(0, min((y2_crop_pixel_raw / 1000.0) * crop_image_height, crop_image_height)))
+                else:
+                    x1_crop_pixel = int(max(0, min(x1_crop_pixel_raw, crop_image_width)))
+                    x2_crop_pixel = int(max(x1_crop_pixel + 1, min(x2_crop_pixel_raw, crop_image_width)))
+                    y1_crop_pixel = int(max(0, min(y1_crop_pixel_raw, crop_image_height)))
+                    y2_crop_pixel = int(max(y1_crop_pixel + 1, min(y2_crop_pixel_raw, crop_image_height)))
+                x1_original = int(x1_region + (x1_crop_pixel / 0.7))
+                x2_original = int(x1_region + (x2_crop_pixel / 0.7))
+                y1_original = y1_region + y1_crop_pixel
+                y2_original = y1_region + y2_crop_pixel
                 
                 logger.info(
                     f"Box {idx}: Transformation Details: "
@@ -964,25 +959,9 @@ async def process_multibox_region(
                     f"Text: '{detected_text[:50]}'"
                 )
 
-            # Begrenze auf Bildgrenzen (zusätzlich zur Region-Begrenzung)
-            x1_before_image_clip = x1_original
-            y1_before_image_clip = y1_original
-            x2_before_image_clip = x2_original
-            y2_before_image_clip = y2_original
-            
-            x1_original = max(0, min(x1_original, ocr_image_width - 1))
-            y1_original = max(0, min(y1_original, ocr_image_height - 1))
-            x2_original = max(x1_original + 1, min(x2_original, ocr_image_width))
-            y2_original = max(y1_original + 1, min(y2_original, ocr_image_height))
-            
-            if (x1_before_image_clip != x1_original or y1_before_image_clip != y1_original or 
-                x2_before_image_clip != x2_original or y2_before_image_clip != y2_original):
-                logger.info(
-                    f"Box {idx}: Auf Bildgrenzen beschnitten: "
-                    f"Vorher=[{x1_before_image_clip}, {y1_before_image_clip}, {x2_before_image_clip}, {y2_before_image_clip}], "
-                    f"Nachher=[{x1_original}, {y1_original}, {x2_original}, {y2_original}], "
-                    f"Bild-Größe={ocr_image_width}x{ocr_image_height}"
-                )
+            # Kein Clipping auf Bildgrenzen: Box darf über Seitenrand hinausgehen (Viewer/Crop-Preview zeigen außerhalb grau)
+            x2_original = max(x1_original + 1, x2_original)
+            y2_original = max(y1_original + 1, y2_original)
 
             # Berechne relative Koordinaten für die neue Box
             bbox_normalized_new = [
