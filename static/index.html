@@ -566,6 +566,19 @@
             background: #2563eb;
         }
 
+        .quality-pages-table thead th {
+            cursor: pointer;
+        }
+        .quality-pages-table thead th .sort-icon {
+            cursor: pointer;
+            margin-left: 4px;
+            font-size: 10px;
+            color: #666;
+        }
+        .quality-pages-table thead th .sort-icon:hover {
+            color: #333;
+        }
+
     </style>
 </head>
 <body>
@@ -574,7 +587,7 @@
         <ul>
             <li><a href="#" id="navImport" class="active" onclick="showImportView(); return false;">Import & Jobs</a></li>
             <li><a href="#" id="navReview" onclick="showReviewView(); return false;">Review</a></li>
-            <li><a href="#" id="navQuality" onclick="showQualityView(); return false;">Qualität</a></li>
+            <li><a href="#" id="navQuality" onclick="showQualityView(); return false;">Seiten</a></li>
             <li><a href="#" id="navDeskew" onclick="showDeskewView(); return false;">Winkel</a></li>
             <li><a href="#" id="navBboxList" onclick="showBboxListView(); return false;">BBox-Liste</a></li>
         </ul>
@@ -635,10 +648,10 @@
         </div>
     </div>
 
-    <!-- Quality View -->
+    <!-- Quality View (Seiten) -->
     <div id="qualityView" class="container" style="display: none;">
-        <h1>Qualitätsmetriken</h1>
-        <p class="subtitle">OCR-Qualität: Abdeckung und Zeichendichte</p>
+        <h1>Seiten</h1>
+        <p class="subtitle">Seiten mit Qualitätsmetriken: Abdeckung und Zeichendichte</p>
 
         <div id="messages"></div>
 
@@ -659,6 +672,14 @@
                     <input type="number" id="qualityFilterMaxCoverage" placeholder="1.0" min="0" max="1" step="0.01" style="padding: 6px; width: 100px;">
                 </div>
                 <div>
+                    <label for="qualityFilterMinUncoveredPct" style="display: block; margin-bottom: 5px; font-size: 12px;">Min. Unbedeckte %:</label>
+                    <input type="number" id="qualityFilterMinUncoveredPct" placeholder="0" min="0" max="100" step="0.1" style="padding: 6px; width: 100px;">
+                </div>
+                <div>
+                    <label for="qualityFilterMaxUncoveredPct" style="display: block; margin-bottom: 5px; font-size: 12px;">Max. Unbedeckte %:</label>
+                    <input type="number" id="qualityFilterMaxUncoveredPct" placeholder="100" min="0" max="100" step="0.1" style="padding: 6px; width: 100px;">
+                </div>
+                <div>
                     <button class="btn btn-primary" onclick="loadQualityPages()">Filtern</button>
                     <button class="btn btn-secondary" onclick="resetQualityFilters()" style="margin-left: 5px;">Zurücksetzen</button>
                 </div>
@@ -667,7 +688,7 @@
 
         <!-- Liste der Seiten -->
         <div id="qualityPagesContainer">
-            <p style="color: #666;">Lade Qualitäts-Seiten...</p>
+            <p style="color: #666;">Lade Seiten...</p>
         </div>
 
         <!-- Detailansicht für einzelne Seite (Modal oder ausklappbar) -->
@@ -930,8 +951,7 @@
                 <button class="btn btn-secondary" id="prevPageBtn" style="display: none;">← Vorherige Seite</button>
                 <button class="btn btn-secondary" id="nextPageBtn" style="display: none;">Nächste Seite →</button>
                 <button class="btn btn-success" id="addBBoxBtn" title="Eine Box hinzufügen">+1</button>
-                <!-- +X (Multibox) deaktiviert: Feature wegen Bugs nicht verwendbar -->
-                <button class="btn btn-success" id="addMultipleBBoxBtn" title="Mehrere Boxen automatisch erkennen (deaktiviert)" style="display: none;">+X</button>
+                <button class="btn btn-success" id="addMultipleBBoxBtn" title="Mehrere Boxen automatisch erkennen">+X</button>
                 <button class="btn btn-secondary" id="editBoxModeBtn" title="Boxen-Positionen und Maße ändern">Boxen bearbeiten</button>
                 <button class="btn btn-secondary" id="measureSkewBtn" title="Schrägwinkel der Seite messen (Hough)">Schräge messen</button>
                 <button class="btn btn-secondary" id="measureSkewDebugBtn" title="Schrägwinkel mit Debug-Informationen messen">Schräge debuggen</button>
@@ -1003,6 +1023,9 @@
 
         // Quality-Metriken Config
         const qualityBBoxCache = {}; // BBox-Daten pro page_id nach Aufklappen
+        let qualityPagesList = [];
+        let qualityPagesSortBy = null;
+        let qualityPagesSortDir = 'asc';
         let densityConfig = {
             green_min: 3.5,
             green_max: 6.0,
@@ -1483,6 +1506,7 @@
 
             // Lade Liste der Qualitäts-Seiten
             loadQualityPages();
+            setupQualityFilterEnterHandlers();
 
             // Wenn pageId gegeben, zeige Detailansicht
             if (pageId) {
@@ -3141,7 +3165,7 @@
                     toggleAddBBoxMode();
                 };
 
-                // Mehrere Boxen hinzufügen Button (+X) – deaktiviert wegen Bugs, Button ausgeblendet
+                // Mehrere Boxen hinzufügen Button (+X)
                 document.getElementById('addMultipleBBoxBtn').onclick = () => {
                     toggleAddMultipleBBoxMode();
                 };
@@ -4868,7 +4892,6 @@
             }
         }
 
-        // +X (Multibox): Feature deaktiviert wegen Bugs – wird nicht mehr vom UI aufgerufen (Button ausgeblendet).
         async function addMultipleBBoxesFromDrawing(mapBounds) {
             if (!currentPageData) {
                 showMessage('Keine Seiten-Daten verfügbar', 'error');
@@ -5031,6 +5054,82 @@
             return { label: 'Ausstehend', color: '#856404' };
         }
 
+        function qualitySortItems(pages) {
+            if (!qualityPagesSortBy) return pages;
+            const sorted = pages.slice();
+            sorted.sort(function (a, b) {
+                let valA = a[qualityPagesSortBy];
+                let valB = b[qualityPagesSortBy];
+                if (valA == null) valA = '';
+                if (valB == null) valB = '';
+                if (typeof valA === 'string') valA = valA.toLowerCase();
+                if (typeof valB === 'string') valB = valB.toLowerCase();
+                if (valA < valB) return qualityPagesSortDir === 'asc' ? -1 : 1;
+                if (valA > valB) return qualityPagesSortDir === 'asc' ? 1 : -1;
+                return 0;
+            });
+            return sorted;
+        }
+
+        function qualitySortColumn(columnKey) {
+            if (qualityPagesSortBy === columnKey) {
+                qualityPagesSortDir = qualityPagesSortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                qualityPagesSortBy = columnKey;
+                qualityPagesSortDir = 'asc';
+            }
+            qualityPagesList = qualitySortItems(qualityPagesList);
+            renderQualityPagesTable();
+        }
+
+        function qualityGetSortIcon(columnKey) {
+            if (qualityPagesSortBy !== columnKey) return '↕';
+            return qualityPagesSortDir === 'asc' ? '▲' : '▼';
+        }
+
+        function renderQualityPagesTable() {
+            const container = document.getElementById('qualityPagesContainer');
+            if (!container) return;
+            const pages = qualityPagesList;
+            const sortIcon = function (key) { return '<span class="sort-icon">' + qualityGetSortIcon(key) + '</span>'; };
+            let html = '<table class="queue-table quality-pages-table" style="margin-top: 20px;"><thead><tr>' +
+                '<th onclick="event.stopPropagation(); qualitySortColumn(\'document_title\'); return false;">Dokument ' + sortIcon('document_title') + '</th>' +
+                '<th onclick="event.stopPropagation(); qualitySortColumn(\'page_number\'); return false;">Seite ' + sortIcon('page_number') + '</th>' +
+                '<th onclick="event.stopPropagation(); qualitySortColumn(\'coverage_ratio\'); return false;">Coverage ' + sortIcon('coverage_ratio') + '</th>' +
+                '<th onclick="event.stopPropagation(); qualitySortColumn(\'uncovered_ratio\'); return false;">Unbedeckte % ' + sortIcon('uncovered_ratio') + '</th>' +
+                '<th onclick="event.stopPropagation(); qualitySortColumn(\'bbox_count\'); return false;">BBoxen ' + sortIcon('bbox_count') + '</th>' +
+                '<th onclick="event.stopPropagation(); qualitySortColumn(\'reviewed_pct\'); return false;">Review ' + sortIcon('reviewed_pct') + '</th>' +
+                '<th onclick="event.stopPropagation(); qualitySortColumn(\'min_chars_per_1k_px\'); return false;">Min Dichte ' + sortIcon('min_chars_per_1k_px') + '</th>' +
+                '<th onclick="event.stopPropagation(); qualitySortColumn(\'max_chars_per_1k_px\'); return false;">Max Dichte ' + sortIcon('max_chars_per_1k_px') + '</th>' +
+                '<th onclick="event.stopPropagation(); qualitySortColumn(\'min_black_pixels_per_char\'); return false;">Min Black/Char ' + sortIcon('min_black_pixels_per_char') + '</th>' +
+                '<th onclick="event.stopPropagation(); qualitySortColumn(\'max_black_pixels_per_char\'); return false;">Max Black/Char ' + sortIcon('max_black_pixels_per_char') + '</th>' +
+                '<th onclick="event.stopPropagation(); qualitySortColumn(\'computed_at\'); return false;">Berechnet ' + sortIcon('computed_at') + '</th>' +
+                '<th>Aktionen</th></tr></thead><tbody>';
+            pages.forEach((page) => {
+                const coveragePercent = (page.coverage_ratio * 100).toFixed(1);
+                const coverageColor = page.coverage_ratio >= 0.95 ? '#0f5132' : page.coverage_ratio >= 0.85 ? '#856404' : '#842029';
+                const minDensity = page.min_chars_per_1k_px ? page.min_chars_per_1k_px.toFixed(2) : '0.00';
+                const maxDensity = page.max_chars_per_1k_px ? page.max_chars_per_1k_px.toFixed(2) : '0.00';
+                const minDensityColor = getDensityColor(page.min_chars_per_1k_px || 0);
+                const maxDensityColor = getDensityColor(page.max_chars_per_1k_px || 0);
+                const minBlackChar = page.min_black_pixels_per_char != null ? page.min_black_pixels_per_char.toFixed(1) : '–';
+                const maxBlackChar = page.max_black_pixels_per_char != null ? page.max_black_pixels_per_char.toFixed(1) : '–';
+                const computedDate = page.computed_at ? new Date(page.computed_at).toLocaleString('de-DE') : '-';
+                const documentTitle = page.document_title || (page.document_id ? `Dokument #${page.document_id}` : 'Unbekannt');
+                const bboxDensities = page.bbox_densities || [];
+                const uncoveredPct = ((page.uncovered_ratio != null ? page.uncovered_ratio : (page.total_dark_pixels > 0 ? page.uncovered_dark_pixels / page.total_dark_pixels : 0)) * 100).toFixed(1);
+                html += '<tr data-page-id="' + page.page_id + '"><td><span style="cursor: pointer; font-weight: bold; margin-right: 5px; font-size: 16px; user-select: none;" onclick="toggleQualityBBoxList(' + page.page_id + ')" id="toggleIcon_' + page.page_id + '">+</span>' + escapeHtml(documentTitle) + '</td><td>Seite ' + page.page_number + '</td><td><strong style="color: ' + coverageColor + ';">' + coveragePercent + '%</strong></td><td>' + uncoveredPct + '%</td><td>' + page.bbox_count + '</td><td><strong>' + (page.reviewed_pct != null ? page.reviewed_pct + '%' : '–') + '</strong></td><td><strong style="color: ' + minDensityColor + ';">' + minDensity + '</strong></td><td><strong style="color: ' + maxDensityColor + ';">' + maxDensity + '</strong></td><td>' + minBlackChar + '</td><td>' + maxBlackChar + '</td><td>' + escapeHtml(computedDate) + '</td><td><button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px;" onclick="showQualityDetail(' + page.page_id + ')">Details</button> <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-left: 5px;" onclick="showPageInspectInNewTab(' + page.page_id + ')">Inspect</button></td></tr>';
+                html += '<tr id="bboxListRow_' + page.page_id + '" style="display: none;"><td colspan="12" style="padding: 15px; background: #f9f9f9;"><div style="max-height: 400px; overflow-y: auto;"><table style="width: 100%; border-collapse: collapse;"><thead><tr style="background: #e9ecef;"><th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Index</th><th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Text (Vorschau)</th><th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Zeichen</th><th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Fläche (px)</th><th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Dichte (Zeichen/1000px)</th><th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Schwarze px/Zeichen</th><th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Review-Status</th><th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Aktionen</th></tr></thead><tbody id="bboxListBody_' + page.page_id + '">';
+                bboxDensities.forEach(bbox => {
+                    const rs = getReviewStatusLabel(bbox.review_status);
+                    html += '<tr><td style="padding: 6px; border: 1px solid #ddd;">' + bbox.index + '</td><td style="padding: 6px; border: 1px solid #ddd; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="' + escapeHtml((bbox.text_preview || '').replace(/"/g, '&quot;')) + '">' + escapeHtml(bbox.text_preview || '-') + '</td><td style="padding: 6px; border: 1px solid #ddd; text-align: right;">' + (bbox.char_count || 0) + '</td><td style="padding: 6px; border: 1px solid #ddd; text-align: right;">' + (bbox.area_px || 0) + '</td><td style="padding: 6px; border: 1px solid #ddd; text-align: right;"><strong style="color: ' + getDensityColor(bbox.chars_per_1k_px || 0) + ';">' + (bbox.chars_per_1k_px ? bbox.chars_per_1k_px.toFixed(2) : '0.00') + '</strong></td><td style="padding: 6px; border: 1px solid #ddd; text-align: right;">' + (bbox.black_pixels_per_char != null ? bbox.black_pixels_per_char.toFixed(1) : '–') + '</td><td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><span style="color: ' + rs.color + '; font-weight: bold;">' + rs.label + '</span></td><td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white;" onclick="editBBox(' + page.page_id + ', ' + bbox.index + ')">Bearbeiten</button></td></tr>';
+                });
+                html += '</tbody></table></div></td></tr>';
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
         async function loadQualityPages() {
             try {
                 // Lade Config beim ersten Aufruf
@@ -5039,7 +5138,7 @@
                 }
 
                 const container = document.getElementById('qualityPagesContainer');
-                container.innerHTML = '<p style="color: #666;">Lade Qualitäts-Seiten...</p>';
+                container.innerHTML = '<p style="color: #666;">Lade Seiten...</p>';
                 Object.keys(qualityBBoxCache).forEach(k => delete qualityBBoxCache[k]); // Cache leeren bei neuem Laden
 
                 // Baue Query-Parameter aus Filtern
@@ -5047,10 +5146,14 @@
                 const docId = document.getElementById('qualityFilterDocumentId').value;
                 const minCoverage = document.getElementById('qualityFilterMinCoverage').value;
                 const maxCoverage = document.getElementById('qualityFilterMaxCoverage').value;
+                const minUncoveredPct = document.getElementById('qualityFilterMinUncoveredPct').value;
+                const maxUncoveredPct = document.getElementById('qualityFilterMaxUncoveredPct').value;
 
                 if (docId) params.append('document_id', docId);
                 if (minCoverage) params.append('min_coverage', minCoverage);
                 if (maxCoverage) params.append('max_coverage', maxCoverage);
+                if (minUncoveredPct !== '') params.append('min_uncovered_ratio', String(Number(minUncoveredPct) / 100));
+                if (maxUncoveredPct !== '') params.append('max_uncovered_ratio', String(Number(maxUncoveredPct) / 100));
                 params.append('include_bboxes', 'false'); // Eine leichte Anfrage; BBox-Daten beim Aufklappen laden
 
                 const url = `${API_BASE}/api/quality/pages?${params.toString()}`;
@@ -5064,119 +5167,14 @@
                 const pages = data.pages || [];
 
                 if (pages.length === 0) {
-                    container.innerHTML = '<p style="color: #666;">Keine Seiten mit Qualitätsmetriken gefunden. Verwenden Sie "Bestand nachberechnen" um Metriken zu berechnen.</p>';
+                    container.innerHTML = '<p style="color: #666;">Keine Seiten gefunden. Verwenden Sie "Bestand nachberechnen" um Metriken zu berechnen.</p>';
+                    qualityPagesList = [];
                     return;
                 }
 
-                // Erstelle Tabelle
-                let html = `
-                    <table class="queue-table" style="margin-top: 20px;">
-                        <thead>
-                            <tr>
-                                <th>Dokument</th>
-                                <th>Seite</th>
-                                <th>Coverage</th>
-                                <th>Unbedeckte Pixel</th>
-                                <th>BBoxen</th>
-                                <th>Review</th>
-                                <th>Min Dichte</th>
-                                <th>Max Dichte</th>
-                                <th>Min Black/Char</th>
-                                <th>Max Black/Char</th>
-                                <th>Berechnet</th>
-                                <th>Aktionen</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                `;
-
-                pages.forEach((page) => {
-                    const coveragePercent = (page.coverage_ratio * 100).toFixed(1);
-                    const coverageColor = page.coverage_ratio >= 0.95 ? '#0f5132' : page.coverage_ratio >= 0.85 ? '#856404' : '#842029';
-                    const minDensity = page.min_chars_per_1k_px ? page.min_chars_per_1k_px.toFixed(2) : '0.00';
-                    const maxDensity = page.max_chars_per_1k_px ? page.max_chars_per_1k_px.toFixed(2) : '0.00';
-                    const minDensityColor = getDensityColor(page.min_chars_per_1k_px || 0);
-                    const maxDensityColor = getDensityColor(page.max_chars_per_1k_px || 0);
-                    const minBlackChar = page.min_black_pixels_per_char != null ? page.min_black_pixels_per_char.toFixed(1) : '–';
-                    const maxBlackChar = page.max_black_pixels_per_char != null ? page.max_black_pixels_per_char.toFixed(1) : '–';
-                    const computedDate = page.computed_at ? new Date(page.computed_at).toLocaleString('de-DE') : '-';
-                    const documentTitle = page.document_title || (page.document_id ? `Dokument #${page.document_id}` : 'Unbekannt');
-                    const bboxDensities = page.bbox_densities || [];
-
-                    html += `
-                        <tr data-page-id="${page.page_id}">
-                            <td>
-                                <span style="cursor: pointer; font-weight: bold; margin-right: 5px; font-size: 16px; user-select: none;" onclick="toggleQualityBBoxList(${page.page_id})" id="toggleIcon_${page.page_id}">+</span>
-                                ${documentTitle}
-                            </td>
-                            <td>Seite ${page.page_number}</td>
-                            <td><strong style="color: ${coverageColor};">${coveragePercent}%</strong></td>
-                            <td>${page.uncovered_dark_pixels} / ${page.total_dark_pixels}</td>
-                            <td>${page.bbox_count}</td>
-                            <td><strong>${page.reviewed_pct != null ? page.reviewed_pct + '%' : '–'}</strong></td>
-                            <td><strong style="color: ${minDensityColor};">${minDensity}</strong></td>
-                            <td><strong style="color: ${maxDensityColor};">${maxDensity}</strong></td>
-                            <td>${minBlackChar}</td>
-                            <td>${maxBlackChar}</td>
-                            <td>${computedDate}</td>
-                            <td>
-                                <button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px;" onclick="showQualityDetail(${page.page_id})">
-                                    Details
-                                </button>
-                                <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-left: 5px;" onclick="showPageInspectInNewTab(${page.page_id})">
-                                    Inspect
-                                </button>
-                            </td>
-                        </tr>
-                        <tr id="bboxListRow_${page.page_id}" style="display: none;">
-                            <td colspan="12" style="padding: 15px; background: #f9f9f9;">
-                                <div style="max-height: 400px; overflow-y: auto;">
-                                    <table style="width: 100%; border-collapse: collapse;">
-                                        <thead>
-                                            <tr style="background: #e9ecef;">
-                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Index</th>
-                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Text (Vorschau)</th>
-                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Zeichen</th>
-                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Fläche (px)</th>
-                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Dichte (Zeichen/1000px)</th>
-                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Schwarze px/Zeichen</th>
-                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Review-Status</th>
-                                                <th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Aktionen</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="bboxListBody_${page.page_id}">
-                                            ${bboxDensities.map(bbox => {
-                                                const rs = getReviewStatusLabel(bbox.review_status);
-                                                return `
-                                                <tr>
-                                                    <td style="padding: 6px; border: 1px solid #ddd;">${bbox.index}</td>
-                                                    <td style="padding: 6px; border: 1px solid #ddd; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${(bbox.text_preview || '').replace(/"/g, '&quot;')}">${bbox.text_preview || '-'}</td>
-                                                    <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${bbox.char_count || 0}</td>
-                                                    <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${bbox.area_px || 0}</td>
-                                                    <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">
-                                                        <strong style="color: ${getDensityColor(bbox.chars_per_1k_px || 0)};">
-                                                            ${bbox.chars_per_1k_px ? bbox.chars_per_1k_px.toFixed(2) : '0.00'}
-                                                        </strong>
-                                                    </td>
-                                                    <td style="padding: 6px; border: 1px solid #ddd; text-align: right;">${bbox.black_pixels_per_char != null ? bbox.black_pixels_per_char.toFixed(1) : '–'}</td>
-                                                    <td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><span style="color: ${rs.color}; font-weight: bold;">${rs.label}</span></td>
-                                                    <td style="padding: 6px; border: 1px solid #ddd; text-align: center;">
-                                                        <button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white;" onclick="editBBox(${page.page_id}, ${bbox.index})">
-                                                            Bearbeiten
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            `; }).join('')}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                });
-
-                html += '</tbody></table>';
-                container.innerHTML = html;
+                qualityPagesList = pages;
+                qualityPagesList = qualitySortItems(qualityPagesList);
+                renderQualityPagesTable();
             } catch (error) {
                 document.getElementById('qualityPagesContainer').innerHTML = `<p style="color: red;">Fehler beim Laden: ${error.message}</p>`;
                 console.error('Error loading quality pages:', error);
@@ -5275,10 +5273,36 @@
             }
         }
 
+        function setupQualityFilterEnterHandlers() {
+            const filterInputs = [
+                'qualityFilterDocumentId',
+                'qualityFilterMinCoverage',
+                'qualityFilterMaxCoverage',
+                'qualityFilterMinUncoveredPct',
+                'qualityFilterMaxUncoveredPct'
+            ];
+            filterInputs.forEach(function (inputId) {
+                const input = document.getElementById(inputId);
+                if (input) {
+                    input.removeEventListener('keydown', qualityFilterHandleEnterKey);
+                    input.addEventListener('keydown', qualityFilterHandleEnterKey);
+                }
+            });
+        }
+
+        function qualityFilterHandleEnterKey(event) {
+            if (event.key === 'Enter' || event.keyCode === 13) {
+                event.preventDefault();
+                loadQualityPages();
+            }
+        }
+
         function resetQualityFilters() {
             document.getElementById('qualityFilterDocumentId').value = '';
             document.getElementById('qualityFilterMinCoverage').value = '';
             document.getElementById('qualityFilterMaxCoverage').value = '';
+            document.getElementById('qualityFilterMinUncoveredPct').value = '';
+            document.getElementById('qualityFilterMaxUncoveredPct').value = '';
             loadQualityPages();
         }
 

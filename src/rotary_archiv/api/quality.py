@@ -162,6 +162,12 @@ def get_quality_pages(
     max_coverage: float | None = Query(
         None, description="Optional: Maximal-Coverage-Ratio (0.0-1.0)"
     ),
+    min_uncovered_ratio: float | None = Query(
+        None, description="Optional: Mindest-Anteil unbedeckter dunkler Pixel (0.0-1.0)"
+    ),
+    max_uncovered_ratio: float | None = Query(
+        None, description="Optional: Maximal-Anteil unbedeckter dunkler Pixel (0.0-1.0)"
+    ),
     include_bboxes: bool = Query(
         True,
         description="Bei False nur Zusammenfassung pro Seite (keine bbox_densities), für schnelle Listen-Ansicht",
@@ -225,9 +231,23 @@ def get_quality_pages(
             black_pc_summary = black_pc.get("summary", {})
 
             coverage_ratio = coverage.get("coverage_ratio", 0.0)
+            uncovered_ratio = coverage.get(
+                "uncovered_ratio",
+                1.0 - coverage_ratio if coverage_ratio <= 1.0 else 0.0,
+            )
             if min_coverage is not None and coverage_ratio < min_coverage:
                 continue
             if max_coverage is not None and coverage_ratio > max_coverage:
+                continue
+            if (
+                min_uncovered_ratio is not None
+                and uncovered_ratio < min_uncovered_ratio
+            ):
+                continue
+            if (
+                max_uncovered_ratio is not None
+                and uncovered_ratio > max_uncovered_ratio
+            ):
                 continue
 
             document_title = (
@@ -278,6 +298,7 @@ def get_quality_pages(
                     "document_title": document_title,
                     "page_number": page.page_number,
                     "coverage_ratio": coverage_ratio,
+                    "uncovered_ratio": uncovered_ratio,
                     "uncovered_dark_pixels": coverage.get("uncovered_dark_pixels", 0),
                     "total_dark_pixels": coverage.get("total_dark_pixels", 0),
                     "min_chars_per_1k_px": density_summary.get(
@@ -358,23 +379,28 @@ def _iter_matching_bboxes(
                 if isinstance(bbox_pixel, (list, tuple)) and len(bbox_pixel) >= 4:
                     max_x = max(max_x, bbox_pixel[2])  # x2 ist die rechte Kante
             page_width = max_x if max_x > 0 else None
-        
+
         for bbox in bbox_densities:
             idx = bbox.get("index")
-            
+
             # WICHTIG: Validiere, dass der Index noch in bbox_data_list existiert
             # Dies verhindert, dass veraltete quality_metrics zu nicht-existierenden BBoxen führen
-            if idx is None or not isinstance(idx, int) or idx < 0 or idx >= len(bbox_data_list):
+            if (
+                idx is None
+                or not isinstance(idx, int)
+                or idx < 0
+                or idx >= len(bbox_data_list)
+            ):
                 logger.debug(
                     f"Überspringe BBox mit veraltetem Index {idx} für Seite {page.id} "
                     f"(bbox_data_list hat {len(bbox_data_list)} Einträge)"
                 )
                 continue
-            
+
             chars_per_1k = bbox.get("chars_per_1k_px")
             if chars_per_1k is None:
                 continue
-            
+
             # Berechne char_count aus aktuellen bbox_data_list, nicht aus quality_metrics
             # (quality_metrics können veraltet sein)
             char_count = 0
@@ -394,14 +420,14 @@ def _iter_matching_bboxes(
                         char_count = int(char_count)
                     except (ValueError, TypeError):
                         char_count = 0
-            
+
             # Stelle sicher, dass char_count ein Integer ist
             if not isinstance(char_count, int):
                 try:
                     char_count = int(char_count)
                 except (ValueError, TypeError):
                     char_count = 0
-            
+
             # Filter nach char_count
             if min_char_count is not None and char_count < min_char_count:
                 continue
@@ -451,7 +477,7 @@ def _iter_matching_bboxes(
                 review_status = bbox_data_list[idx].get("review_status", "pending")
             if review_status_filter and review_status not in review_status_filter:
                 continue
-            
+
             # Berechne Positionen als Prozent der Seitenbreite
             left_pct = None
             right_pct = None
@@ -461,25 +487,42 @@ def _iter_matching_bboxes(
                 if idx < len(bbox_data_list):
                     bbox_pixel = bbox_data_list[idx].get("bbox_pixel")
                 if isinstance(bbox_pixel, (list, tuple)) and len(bbox_pixel) >= 4:
-                    x1, y1, x2, y2 = bbox_pixel[0], bbox_pixel[1], bbox_pixel[2], bbox_pixel[3]
+                    x1, _, x2, _ = (
+                        bbox_pixel[0],
+                        bbox_pixel[1],
+                        bbox_pixel[2],
+                        bbox_pixel[3],
+                    )
                     left_pct = round((x1 / page_width) * 100.0, 2)
                     right_pct = round((x2 / page_width) * 100.0, 2)
                     width_pct = round(((x2 - x1) / page_width) * 100.0, 2)
-            
+
             # Filter nach Positionen
-            if max_left_pct is not None and left_pct is not None:
-                if left_pct > max_left_pct:
-                    continue
-            if min_right_pct is not None and right_pct is not None:
-                if right_pct < min_right_pct:
-                    continue
-            if min_width_pct is not None and width_pct is not None:
-                if width_pct < min_width_pct:
-                    continue
-            if max_width_pct is not None and width_pct is not None:
-                if width_pct > max_width_pct:
-                    continue
-            
+            if (
+                max_left_pct is not None
+                and left_pct is not None
+                and left_pct > max_left_pct
+            ):
+                continue
+            if (
+                min_right_pct is not None
+                and right_pct is not None
+                and right_pct < min_right_pct
+            ):
+                continue
+            if (
+                min_width_pct is not None
+                and width_pct is not None
+                and width_pct < min_width_pct
+            ):
+                continue
+            if (
+                max_width_pct is not None
+                and width_pct is not None
+                and width_pct > max_width_pct
+            ):
+                continue
+
             yield {
                 "page_id": page.id,
                 "document_id": page.document_id,
@@ -536,10 +579,12 @@ def get_bbox_list(
         None, description="Filter: Review-Status (kann mehrfach angegeben werden)"
     ),
     max_left_pct: float | None = Query(
-        None, description="Filter: Maximale Position der linken Kante in % der Seitenbreite"
+        None,
+        description="Filter: Maximale Position der linken Kante in % der Seitenbreite",
     ),
     min_right_pct: float | None = Query(
-        None, description="Filter: Minimale Position der rechten Kante in % der Seitenbreite"
+        None,
+        description="Filter: Minimale Position der rechten Kante in % der Seitenbreite",
     ),
     min_width_pct: float | None = Query(
         None, description="Filter: Minimale Breite in % der Seitenbreite"
