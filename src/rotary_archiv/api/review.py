@@ -97,6 +97,9 @@ class AddBBoxRequest(BaseModel):
     """Request-Schema für neu hinzugefügte BBox"""
 
     bbox_pixel: list[int]  # [x1, y1, x2, y2] Pixel-Koordinaten
+    box_type: str | None = None  # "ocr" | "ignore_region" | "note"
+    note_author: str | None = None
+    note_text: str | None = None
 
 
 class AddMultipleBBoxesRequest(BaseModel):
@@ -106,9 +109,13 @@ class AddMultipleBBoxesRequest(BaseModel):
 
 
 class UpdateBBoxRequest(BaseModel):
-    """Request-Schema für Aktualisierung der BBox-Koordinaten"""
+    """Request-Schema für Aktualisierung der BBox-Koordinaten oder Notiz-Felder"""
 
-    bbox_pixel: list[int]  # [x1, y1, x2, y2] Pixel-Koordinaten
+    bbox_pixel: list[
+        int
+    ] | None = None  # [x1, y1, x2, y2]; optional wenn nur Notiz aktualisiert
+    note_author: str | None = None
+    note_text: str | None = None
 
 
 class BBoxRef(BaseModel):
@@ -348,19 +355,26 @@ async def get_page_bboxes(
     # Formatiere für Response
     bboxes = []
     for idx, bbox_item in enumerate(bbox_list):
-        bboxes.append(
-            {
-                "index": idx,
-                "text": bbox_item.get("text", ""),
-                "bbox": bbox_item.get("bbox", []),
-                "bbox_pixel": bbox_item.get("bbox_pixel", []),
-                "review_status": bbox_item.get("review_status", "pending"),
-                "reviewed_at": bbox_item.get("reviewed_at"),
-                "reviewed_by": bbox_item.get("reviewed_by"),
-                "ocr_results": bbox_item.get("ocr_results"),
-                "differences": bbox_item.get("differences", []),
-            }
-        )
+        item = {
+            "index": idx,
+            "text": bbox_item.get("text", ""),
+            "bbox": bbox_item.get("bbox", []),
+            "bbox_pixel": bbox_item.get("bbox_pixel", []),
+            "review_status": bbox_item.get("review_status", "pending"),
+            "reviewed_at": bbox_item.get("reviewed_at"),
+            "reviewed_by": bbox_item.get("reviewed_by"),
+            "ocr_results": bbox_item.get("ocr_results"),
+            "differences": bbox_item.get("differences", []),
+        }
+        if bbox_item.get("box_type"):
+            item["box_type"] = bbox_item["box_type"]
+        if "note_author" in bbox_item:
+            item["note_author"] = bbox_item.get("note_author", "")
+        if "note_text" in bbox_item:
+            item["note_text"] = bbox_item.get("note_text", "")
+        if "note_created_at" in bbox_item:
+            item["note_created_at"] = bbox_item.get("note_created_at")
+        bboxes.append(item)
 
     return {"page_id": page_id, "bboxes": bboxes}
 
@@ -616,28 +630,26 @@ async def update_bbox(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """
-    Aktualisiert die Koordinaten einer BBox (bbox_pixel).
+    Aktualisiert die Koordinaten einer BBox (bbox_pixel) und/oder Notiz-Felder.
 
-    Args:
-        page_id: ID der Seite
-        bbox_index: Index der BBox in der Liste
-        request: Request mit bbox_pixel [x1, y1, x2, y2]
-
-    Returns:
-        {"success": True, "bbox_pixel": [x1, y1, x2, y2]}
+    Für box_type "note": optional nur note_author, note_text (bbox_pixel kann fehlen).
     """
-    bbox_pixel = request.bbox_pixel
-    if len(bbox_pixel) != 4:
+    has_bbox = request.bbox_pixel is not None and len(request.bbox_pixel) == 4
+    has_note = request.note_author is not None or request.note_text is not None
+    if not has_bbox and not has_note:
         raise HTTPException(
             status_code=400,
-            detail="bbox_pixel muss genau 4 Werte haben [x1, y1, x2, y2]",
+            detail="bbox_pixel oder note_author/note_text erforderlich",
         )
-    x1, y1, x2, y2 = bbox_pixel
-    if x1 >= x2 or y1 >= y2:
-        raise HTTPException(
-            status_code=400,
-            detail="Ungültige Koordinaten: x1 < x2 und y1 < y2 erforderlich",
-        )
+
+    if has_bbox:
+        bbox_pixel = request.bbox_pixel
+        x1, y1, x2, y2 = bbox_pixel
+        if x1 >= x2 or y1 >= y2:
+            raise HTTPException(
+                status_code=400,
+                detail="Ungültige Koordinaten: x1 < x2 und y1 < y2 erforderlich",
+            )
 
     page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
     if not page:
@@ -666,28 +678,41 @@ async def update_bbox(
     if bbox_index < 0 or bbox_index >= len(bbox_list):
         raise HTTPException(status_code=404, detail="BBox-Index außerhalb des Bereichs")
 
-    bbox_pixel = [x1, y1, x2, y2]
-    img_w = ocr_result.image_width or 0
-    img_h = ocr_result.image_height or 0
-
     item = bbox_list[bbox_index]
     if not isinstance(item, dict):
         item = dict(item)
     item = dict(item)
-    item["bbox_pixel"] = bbox_pixel
-    if img_w > 0 and img_h > 0:
-        item["bbox"] = [
-            x1 / img_w,
-            y1 / img_h,
-            x2 / img_w,
-            y2 / img_h,
-        ]
+    img_w = ocr_result.image_width or 0
+    img_h = ocr_result.image_height or 0
+
+    if has_bbox:
+        bbox_pixel = request.bbox_pixel
+        item["bbox_pixel"] = list(bbox_pixel)
+        if img_w > 0 and img_h > 0:
+            x1, y1, x2, y2 = bbox_pixel
+            item["bbox"] = [
+                x1 / img_w,
+                y1 / img_h,
+                x2 / img_w,
+                y2 / img_h,
+            ]
+
+    if has_note and item.get("box_type") == "note":
+        if request.note_author is not None:
+            item["note_author"] = request.note_author
+        if request.note_text is not None:
+            item["note_text"] = request.note_text
+        item["note_updated_at"] = datetime.now().isoformat()
+
     bbox_list[bbox_index] = item
     ocr_result.bbox_data = bbox_list
     flag_modified(ocr_result, "bbox_data")
     db.commit()
 
-    return {"success": True, "bbox_pixel": bbox_pixel}
+    result = {"success": True}
+    if has_bbox:
+        result["bbox_pixel"] = item["bbox_pixel"]
+    return result
 
 
 @router.post("/batch-change-status")
@@ -1300,7 +1325,8 @@ async def get_bbox_crop_preview(
             f"Crop-Größe=({crop_width},{crop_height})"
         )
 
-        # Erstelle neues Bild mit grauem Hintergrund
+        # Erstelle neues Bild mit grauem Hintergrund (Bereiche außerhalb der Seite bleiben grau;
+        # Box darf über Bildgrenzen hinausgehen, z. B. bei Multibox ohne Bildgrenzen-Clipping)
         from PIL import Image, ImageDraw
 
         cropped_image = Image.new(
@@ -1718,6 +1744,18 @@ async def add_new_bbox(
         }
     """
     bbox_pixel = request.bbox_pixel
+    box_type = (request.box_type or "ocr").strip() or "ocr"
+    if box_type not in ("ocr", "ignore_region", "note"):
+        raise HTTPException(
+            status_code=400,
+            detail='box_type muss "ocr", "ignore_region" oder "note" sein',
+        )
+    if box_type == "note" and (not request.note_author or not request.note_text):
+        raise HTTPException(
+            status_code=400,
+            detail="Für box_type 'note' sind note_author und note_text erforderlich",
+        )
+
     # Hole Seite
     page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
     if not page:
@@ -1745,29 +1783,71 @@ async def add_new_bbox(
     else:
         bbox_list = ocr_result.bbox_data.copy() if ocr_result.bbox_data else []
 
-    # Erstelle neue BBox
-    new_bbox = {
-        "text": "",  # Wird nach OCR gefüllt
-        "bbox": [],  # Relative Koordinaten (optional)
-        "bbox_pixel": bbox_pixel,
-        "review_status": "new",  # Markiere als neu
-        "reviewed_at": None,
-        "reviewed_by": None,
-        "ocr_results": None,
-        "differences": [],
-    }
+    img_w = ocr_result.image_width or 0
+    img_h = ocr_result.image_height or 0
+    bbox_rel = (
+        [
+            bbox_pixel[0] / img_w,
+            bbox_pixel[1] / img_h,
+            bbox_pixel[2] / img_w,
+            bbox_pixel[3] / img_h,
+        ]
+        if img_w > 0 and img_h > 0
+        else []
+    )
 
-    # Füge neue BBox hinzu
+    if box_type == "ignore_region":
+        new_bbox = {
+            "box_type": "ignore_region",
+            "text": "[Ignore-Bereich]",
+            "bbox": bbox_rel,
+            "bbox_pixel": bbox_pixel,
+            "review_status": "ignored",
+            "reviewed_at": None,
+            "reviewed_by": None,
+            "ocr_results": None,
+            "differences": [],
+        }
+    elif box_type == "note":
+        new_bbox = {
+            "box_type": "note",
+            "text": "",  # Nicht für OCR genutzt
+            "bbox": bbox_rel,
+            "bbox_pixel": bbox_pixel,
+            "note_author": request.note_author,
+            "note_created_at": datetime.now().isoformat(),
+            "note_text": request.note_text,
+            "ocr_results": None,
+            "differences": [],
+        }
+    else:
+        new_bbox = {
+            "text": "",
+            "bbox": bbox_rel,
+            "bbox_pixel": bbox_pixel,
+            "review_status": "new",
+            "reviewed_at": None,
+            "reviewed_by": None,
+            "ocr_results": None,
+            "differences": [],
+        }
+
     bbox_list.append(new_bbox)
     new_bbox_index = len(bbox_list) - 1
 
-    # Speichere zurück
     ocr_result.bbox_data = bbox_list
     flag_modified(ocr_result, "bbox_data")
     db.commit()
 
-    # Erstelle OCR-Job mit hoher Priorität
-    # Finde die niedrigste aktuelle Priorität (höchste Priorität = niedrigste Zahl)
+    if box_type in ("ignore_region", "note"):
+        return {
+            "success": True,
+            "bbox_index": new_bbox_index,
+            "job_id": None,
+            "message": "Box hinzugefügt (kein OCR-Job)",
+        }
+
+    # Erstelle OCR-Job nur für OCR-Boxen
     from sqlalchemy import func
 
     min_priority = (
@@ -1776,7 +1856,6 @@ async def add_new_bbox(
         .scalar()
     ) or 0
 
-    # Setze Priorität auf niedrigste - 1 (höchste Priorität)
     review_job = OCRJob(
         document_id=page.document_id,
         document_page_id=page_id,
@@ -1785,7 +1864,7 @@ async def add_new_bbox(
         language="deu+eng",
         use_correction=False,
         progress=0.0,
-        priority=min_priority - 1,  # Höchste Priorität
+        priority=min_priority - 1,
     )
 
     db.add(review_job)
@@ -1800,8 +1879,7 @@ async def add_new_bbox(
     }
 
 
-# HINWEIS: +X (Multibox-Region) ist wegen Bugs deaktiviert - Frontend-Button ausgeblendet.
-# Die Logik bleibt für spätere Reparatur erhalten.
+# +X (Multibox-Region) - aktuell wieder aktiv für weiteren Versuch
 @router.post("/pages/{page_id}/bboxes/add-multiple")
 async def add_multiple_bboxes(
     page_id: int,

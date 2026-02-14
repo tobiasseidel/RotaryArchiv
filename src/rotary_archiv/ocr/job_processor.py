@@ -2,8 +2,8 @@
 Background-Job-Processor für OCR-Verarbeitung
 """
 
-from datetime import datetime
 import asyncio
+from datetime import datetime
 import json
 import logging
 from pathlib import Path
@@ -298,12 +298,15 @@ async def process_bbox_review_job(job_id: int) -> None:
             db.commit()
             return
 
-        # Verarbeite nur BBoxes mit review_status == "new" (z.B. nach "OCR verwerfen")
-        # Ignorierte BBoxes werden übersprungen
+        # Verarbeite nur OCR-BBoxes mit review_status == "new" (z.B. nach "OCR verwerfen")
+        # Ignorierte BBoxes sowie ignore_region- und note-Boxen überspringen
         bboxes_to_process = [
             (idx, bbox_item)
             for idx, bbox_item in enumerate(bbox_list)
             if bbox_item.get("review_status") == "new"
+            and (
+                bbox_item.get("box_type") is None or bbox_item.get("box_type") == "ocr"
+            )
         ]
 
         if len(bboxes_to_process) == 0:
@@ -326,7 +329,7 @@ async def process_bbox_review_job(job_id: int) -> None:
         updated_bboxes = bbox_list.copy()  # Behalte alle BBoxes, auch ignorierte
         multibox_indices_to_remove = []  # Indizes von multibox_region Boxen, die entfernt werden sollen
         multibox_new_boxes_count = 0  # Anzahl der neuen Boxen aus Multibox-Regionen
-        
+
         for processed_idx, (idx, bbox_item) in enumerate(bboxes_to_process):
             # Update Fortschritt (processed_idx ist der Index in der gefilterten Liste)
             job.progress = processed_idx * progress_per_bbox
@@ -334,10 +337,10 @@ async def process_bbox_review_job(job_id: int) -> None:
             db.commit()
 
             # Prüfe ob dies eine multibox_region Box ist (+X wieder aktiv für weiteren Versuch)
-            if bbox_item.get("multibox_region") == True:
+            if bbox_item.get("multibox_region") is True:
                 # Spezielle Verarbeitung für Multibox-Regionen
-                logger.info(
-                    f"Erkenne Multibox-Region BBox {idx} auf Seite {job.document_page_id}"
+                logger.debug(
+                    f"Multibox-Region BBox {idx} auf Seite {job.document_page_id}"
                 )
                 try:
                     new_bboxes = await process_multibox_region(
@@ -355,7 +358,7 @@ async def process_bbox_review_job(job_id: int) -> None:
                             updated_bboxes.append(new_bbox)
                         multibox_new_boxes_count += len(new_bboxes)
                         logger.info(
-                            f"Multibox-Region {idx}: {len(new_bboxes)} Boxen erkannt und hinzugefügt"
+                            f"Multibox-Region: {len(new_bboxes)} Boxen hinzugefügt"
                         )
                     else:
                         # Keine Boxen gefunden - entferne temporäre Box
@@ -392,26 +395,9 @@ async def process_bbox_review_job(job_id: int) -> None:
                 ollama_result = ocr_results.get("ollama_vision")
                 tesseract_result = ocr_results.get("tesseract")
 
-                # Log OCR-Ergebnisse für Debugging
-                logger.info(
-                    f"OCR-Ergebnisse für BBox {idx}: ollama_result={ollama_result is not None}, "
-                    f"tesseract_result={tesseract_result is not None}, "
-                    f"auto_confirmed={ocr_results.get('auto_confirmed', False)}"
+                logger.debug(
+                    f"BBox {idx}: ollama={ollama_result is not None}, tesseract={tesseract_result is not None}"
                 )
-                if ollama_result:
-                    ollama_text_raw = ollama_result.get("text", "")
-                    logger.info(
-                        f"Ollama-Text-Länge: {len(ollama_text_raw)}, "
-                        f"Ollama-Text (erste 100 Zeichen): '{ollama_text_raw[:100]}', "
-                        f"Ollama-Fehler: {ollama_result.get('error', 'None')}"
-                    )
-                if tesseract_result:
-                    tesseract_text_raw = tesseract_result.get("text", "")
-                    logger.info(
-                        f"Tesseract-Text-Länge: {len(tesseract_text_raw)}, "
-                        f"Tesseract-Text (erste 100 Zeichen): '{tesseract_text_raw[:100]}', "
-                        f"Tesseract-Fehler: {tesseract_result.get('error', 'None')}"
-                    )
 
                 # Prüfe auf Fehler: Ollama muss vorhanden sein und keinen Fehler haben
                 has_error = (
@@ -477,37 +463,30 @@ async def process_bbox_review_job(job_id: int) -> None:
                     updated_bbox["differences"] = ocr_results.get("differences", [])
 
                 updated_bboxes[idx] = updated_bbox
-                logger.info(
-                    f"BBox {idx} aktualisiert: text='{updated_bbox.get('text', '')[:50]}...', "
-                    f"review_status={updated_bbox.get('review_status')}"
+                logger.debug(
+                    f"BBox {idx} aktualisiert, review_status={updated_bbox.get('review_status')}"
                 )
 
         # Entferne temporäre multibox_region Boxen (in umgekehrter Reihenfolge, um Indizes stabil zu halten)
         if multibox_indices_to_remove:
             for idx in sorted(multibox_indices_to_remove, reverse=True):
                 if idx < len(updated_bboxes):
-                    removed_bbox = updated_bboxes.pop(idx)
-                    logger.info(
-                        f"Temporäre Multibox-Region Box {idx} entfernt: {removed_bbox.get('bbox_pixel')}"
-                    )
+                    updated_bboxes.pop(idx)
+                    logger.debug(f"Multibox-Region Box {idx} entfernt")
 
         # Aktualisiere OCRResult mit neuen BBox-Daten
         ocr_result.bbox_data = updated_bboxes
         flag_modified(ocr_result, "bbox_data")
-        logger.info(
-            f"Speichere BBox-Daten für Seite {job.document_page_id}: "
-            f"{len(updated_bboxes)} BBoxen, davon {len(bboxes_to_process)} verarbeitet, "
-            f"{multibox_new_boxes_count} neue Boxen aus Multibox-Regionen"
+        logger.debug(
+            f"Seite {job.document_page_id}: {len(updated_bboxes)} BBoxen, {multibox_new_boxes_count} aus Multibox"
         )
         db.commit()
-        logger.info(
-            f"BBox-Daten erfolgreich in Datenbank gespeichert für Seite {job.document_page_id}"
-        )
-        
+
         # Wenn neue Boxen aus Multibox-Regionen hinzugefügt wurden, erstelle einen neuen Review-Job
         # für diese Boxen (falls noch keiner existiert)
         if multibox_new_boxes_count > 0:
             from sqlalchemy import func
+
             existing_review_job = (
                 db.query(OCRJob)
                 .filter(
@@ -534,8 +513,8 @@ async def process_bbox_review_job(job_id: int) -> None:
                 )
                 db.add(new_review_job)
                 db.commit()
-                logger.info(
-                    f"Neuer Review-Job für {multibox_boxes_added} neue Boxen erstellt (Job-ID: {new_review_job.id})"
+                logger.debug(
+                    f"Neuer Review-Job für {multibox_new_boxes_count} Boxen (ID: {new_review_job.id})"
                 )
 
         # Abschluss
@@ -618,7 +597,7 @@ def _multibox_fallback_region_box(
     ]
     return [
         {
-            "text": "[Bitte manuell prüfen – keine Unterboxen erkannt]",
+            "text": "[Bitte manuell prüfen - keine Unterboxen erkannt]",
             "bbox": bbox_normalized,
             "bbox_pixel": [x1_region, y1_region, x2_region, y2_region],
             "review_status": "new",
@@ -655,7 +634,9 @@ async def process_multibox_region(
         # Hole multibox_crop_path
         crop_path = bbox_item.get("multibox_crop_path")
         if not crop_path:
-            logger.error(f"multibox_crop_path fehlt für BBox {bbox_item.get('bbox_pixel')}")
+            logger.error(
+                f"multibox_crop_path fehlt für BBox {bbox_item.get('bbox_pixel')}"
+            )
             return []
 
         crop_path_obj = Path(crop_path)
@@ -666,16 +647,17 @@ async def process_multibox_region(
         # Hole Region-Koordinaten (Original-Koordinaten auf der Seite)
         region_bbox_pixel = bbox_item.get("bbox_pixel")
         if not region_bbox_pixel or len(region_bbox_pixel) != 4:
-            logger.error(f"Ungültige bbox_pixel für Multibox-Region: {region_bbox_pixel}")
+            logger.error(
+                f"Ungültige bbox_pixel für Multibox-Region: {region_bbox_pixel}"
+            )
             return []
 
         x1_region, y1_region, x2_region, y2_region = region_bbox_pixel
         region_width = x2_region - x1_region
         region_height = y2_region - y1_region
 
-        logger.info(
-            f"Multibox-Region: Region-Box=[{x1_region}, {y1_region}, {x2_region}, {y2_region}], "
-            f"Region-Größe={region_width}x{region_height}, Crop-Pfad={crop_path}"
+        logger.debug(
+            f"Multibox-Region: Region=[{x1_region},{y1_region},{x2_region},{y2_region}], Crop={crop_path}"
         )
 
         # Hole OCR-Bild-Dimensionen
@@ -691,6 +673,7 @@ async def process_multibox_region(
         # Führe OCR mit BBox-Extraktion auf dem gecroppten Bild durch
         # Logge Crop-Bild-Größe vor OCR und hole Bildgröße für Prompt
         from PIL import Image as PILImage
+
         crop_img_size = None
         crop_img_width_for_prompt = None
         crop_img_height_for_prompt = None
@@ -699,21 +682,23 @@ async def process_multibox_region(
             crop_img_size = crop_img_check.size
             crop_img_width_for_prompt = crop_img_size[0]
             crop_img_height_for_prompt = crop_img_size[1]
-            logger.info(
-                f"[Multibox-Region] Crop-Bild-Größe (PIL): {crop_img_width_for_prompt}x{crop_img_height_for_prompt} Pixel"
+            logger.debug(
+                f"[Multibox-Region] Crop-Bild-Größe (PIL): {crop_img_width_for_prompt}x{crop_img_height_for_prompt} px"
             )
         except Exception as e:
-            logger.warning(f"[Multibox-Region] Konnte Crop-Bild-Größe nicht prüfen: {e}")
-        
+            logger.warning(
+                f"[Multibox-Region] Konnte Crop-Bild-Größe nicht prüfen: {e}"
+            )
+
         # Verwende Standard-Prompt (wie ursprüngliche OCR)
         # WICHTIG: Keine Prompt-Änderungen - der ursprüngliche Prompt funktioniert
         # Das Problem liegt in der Transformation, nicht im Prompt
-        
+
         ollama_ocr = OllamaVisionOCR()
         ocr_result_data = await asyncio.to_thread(
             ollama_ocr.extract_text_with_bbox, str(crop_path_obj)
         )
-        
+
         if isinstance(ocr_result_data, Exception) or ocr_result_data.get("error"):
             error_msg = (
                 str(ocr_result_data)
@@ -732,56 +717,33 @@ async def process_multibox_region(
             )
             # Fallback: Eine Box für die ganze Region, damit der Nutzer nicht leer dasteht
             return _multibox_fallback_region_box(
-                x1_region, y1_region, x2_region, y2_region,
-                ocr_image_width, ocr_image_height,
+                x1_region,
+                y1_region,
+                x2_region,
+                y2_region,
+                ocr_image_width,
+                ocr_image_height,
             )
 
         crop_image_width = ocr_result_data.get("image_width", 0)
         crop_image_height = ocr_result_data.get("image_height", 0)
 
-        # Logge Bildgröße, die OCR-LLM zurückgibt (nach Parsing)
-        if crop_img_size:
-            logger.info(
-                f"[Multibox-Region] OCR-LLM Bildgröße (aus Result): {crop_image_width}x{crop_image_height} Pixel, "
-                f"PIL-Crop-Größe (vor OCR): {crop_img_size[0]}x{crop_img_size[1]} Pixel"
-            )
-        else:
-            logger.info(
-                f"[Multibox-Region] OCR-LLM Bildgröße (aus Result): {crop_image_width}x{crop_image_height} Pixel"
-            )
-
-        logger.info(
-            f"Multibox-Region: {len(detected_bboxes)} Boxen erkannt, "
-            f"Crop-Bild-Größe={crop_image_width}x{crop_image_height}"
+        logger.debug(
+            f"[Multibox-Region] OCR-LLM Bildgröße: {crop_image_width}x{crop_image_height} px"
         )
-        
-        # Logge alle erkannten Boxen im Detail
-        logger.info(
-            f"Erkannte Boxen vom OCR (normalized 0-1): {len(detected_bboxes)} Boxen"
-        )
-        for idx, detected_bbox in enumerate(detected_bboxes):
-            bbox_norm = detected_bbox.get("bbox", [])
-            text = detected_bbox.get("text", "").strip()[:50]  # Erste 50 Zeichen
-            logger.info(
-                f"  Box {idx}: bbox={bbox_norm}, text='{text}', "
-                f"bbox_pixel (wenn skaliert) würde sein: "
-                f"[{int(bbox_norm[0] * crop_image_width) if len(bbox_norm) > 0 else '?'}, "
-                f"{int(bbox_norm[1] * crop_image_height) if len(bbox_norm) > 1 else '?'}, "
-                f"{int(bbox_norm[2] * crop_image_width) if len(bbox_norm) > 2 else '?'}, "
-                f"{int(bbox_norm[3] * crop_image_height) if len(bbox_norm) > 3 else '?'}]"
-            )
+        logger.info(f"Multibox-Region: {len(detected_bboxes)} Boxen vom OCR erkannt")
 
         # Transformiere erkannte Boxen zurück auf Original-Seite
         new_bboxes = []
-        boxes_filtered_outside = 0
+        _boxes_filtered_outside = 0
         boxes_filtered_invalid = 0
         boxes_filtered_empty_text = 0
-        
+
         for idx, detected_bbox in enumerate(detected_bboxes):
             # Hole Koordinaten aus erkannten Box (normalized 0-1)
             bbox_normalized = detected_bbox.get("bbox")
             detected_text = detected_bbox.get("text", "").strip()
-            
+
             if not bbox_normalized or len(bbox_normalized) != 4:
                 boxes_filtered_invalid += 1
                 logger.warning(
@@ -796,7 +758,7 @@ async def process_multibox_region(
             # Bestehende Boxen können Werte bis 145% haben, was bedeutet, dass Werte > 1.0
             # gültig sind und die Box über den Rand des Crop-Bildes hinausgeht.
             # Wir verwenden die originalen normalisierten Werte direkt.
-            
+
             # Stelle sicher, dass x2 > x1 und y2 > y1 (mindestens)
             if x2_crop_norm <= x1_crop_norm:
                 logger.warning(
@@ -819,100 +781,138 @@ async def process_multibox_region(
             y1_crop_pixel = int(y1_crop_norm * crop_image_height)
             x2_crop_pixel = int(x2_crop_norm * crop_image_width)
             y2_crop_pixel = int(y2_crop_norm * crop_image_height)
-            
+
             # Begrenze nur negative Werte (nicht positive Werte > crop_image_width/height)
             x1_crop_pixel = max(0, x1_crop_pixel)
             y1_crop_pixel = max(0, y1_crop_pixel)
-            x2_crop_pixel = max(x1_crop_pixel + 1, x2_crop_pixel)  # Stelle sicher, dass x2 > x1
-            y2_crop_pixel = max(y1_crop_pixel + 1, y2_crop_pixel)  # Stelle sicher, dass y2 > y1
-            
-            logger.info(
-                f"Box {idx}: Normalized (original)={bbox_normalized}, "
-                f"Normalized (nach Konvertierung)=[{x1_crop_norm:.4f}, {y1_crop_norm:.4f}, {x2_crop_norm:.4f}, {y2_crop_norm:.4f}], "
-                f"Crop-Pixel=[{x1_crop_pixel}, {y1_crop_pixel}, {x2_crop_pixel}, {y2_crop_pixel}], "
-                f"Crop-Größe={x2_crop_pixel - x1_crop_pixel}x{y2_crop_pixel - y1_crop_pixel}, "
-                f"Text: '{detected_text[:50]}'"
+            x2_crop_pixel = max(
+                x1_crop_pixel + 1, x2_crop_pixel
+            )  # Stelle sicher, dass x2 > x1
+            y2_crop_pixel = max(
+                y1_crop_pixel + 1, y2_crop_pixel
+            )  # Stelle sicher, dass y2 > y1
+
+            logger.debug(
+                f"Box {idx}: norm=[{x1_crop_norm:.2f},{y1_crop_norm:.2f},{x2_crop_norm:.2f},{y2_crop_norm:.2f}] "
+                f"→ crop_px=[{x1_crop_pixel},{y1_crop_pixel},{x2_crop_pixel},{y2_crop_pixel}]"
             )
 
             # Transformiere erkannte Boxen zurück auf Original-Seite
             # Die erkannten Boxen sind relativ zum Crop-Bild (normalized 0-1)
             # Die Region-Box wurde mit originalen Koordinaten gespeichert
             # Wir skalieren die erkannten Boxen relativ zur Region-Größe und positionieren sie relativ zur Region
-            
-            if crop_image_width > 0 and crop_image_height > 0 and region_width > 0 and region_height > 0:
+
+            if (
+                crop_image_width > 0
+                and crop_image_height > 0
+                and region_width > 0
+                and region_height > 0
+            ):
                 # WICHTIG: Das Crop-Bild wurde mit * 0.7 für X-Koordinaten erstellt (wie in bbox_ocr.py)
                 # Die Region-Box-Koordinaten sind die originalen OCR-Koordinaten
                 # Das Crop-Bild ist daher: crop_width = region_width * 0.7
-                # 
+                #
                 # Die normalisierten Koordinaten sind relativ zum Crop-Bild (0.0 = Anfang, 1.0 = Ende)
                 # Werte > 1.0 bedeuten, dass die Box über den Rand des Crop-Bildes hinausgeht
-                # 
+                #
                 # Um zurück zu transformieren:
                 # - Die normalisierten Koordinaten skalieren wir direkt auf die Region-Größe
                 # - x_original = x1_region + (x_crop_norm * region_width)
                 # - Da crop_width = region_width * 0.7, ist das äquivalent zu: x_original = x1_region + (x_crop_pixel / 0.7)
                 # - ABER: Wenn x_crop_norm > 1.0, dann ist x_crop_pixel > crop_width, und wir müssen direkt mit norm arbeiten
-                # 
+                #
                 # Y-Koordinaten bleiben unverändert (keine Skalierung beim Cropping)
-                
+
                 # Transformiere von normalisierten Crop-Koordinaten zurück zu originalen OCR-Koordinaten
                 # WICHTIG: Die normalisierten Koordinaten sind relativ zum Crop-Bild
                 # Das Crop-Bild wurde mit * 0.7 für X-Koordinaten erstellt
                 # WICHTIG: OCR kann Koordinaten zurückgeben, die größer sind als das Crop-Bild
                 # Begrenze daher die Pixel-Koordinaten auf die Crop-Bild-Größe vor Transformation
-                
+
                 # Rücktransformation: Crop-Pixel → OCR-Koordinaten.
                 # Crop (0,0) entspricht Region-Start (x1_region, y1_region). Crop-Breite = region_width*0.7.
                 # Daher: x_original = x1_region + (crop_pixel_x / 0.7)
                 #
                 # --- ENTSCHEIDENDE KORREKTUR FÜR MULTIBOX (+X): ---
-                # DeepSeek-OCR liefert BBox-Koordinaten in 0–1000-Skala, nicht in Crop-Pixel.
+                # DeepSeek-OCR liefert BBox-Koordinaten in 0-1000-Skala, nicht in Crop-Pixel.
                 # Ohne diese Heuristik würden Werte > crop_dim stumpf gekappt (z. B. 956→566)
                 # und die Box käme falsch/zu klein an. Wenn x2 oder y2 die Crop-Größe übersteigt,
-                # alle vier Koordinaten als 0–1000 interpretieren: crop_pixel = (raw/1000)*crop_dim.
+                # alle vier Koordinaten als 0-1000 interpretieren: crop_pixel = (raw/1000)*crop_dim.
                 # ---
                 x1_crop_pixel_raw = x1_crop_norm * crop_image_width
                 x2_crop_pixel_raw = x2_crop_norm * crop_image_width
                 y1_crop_pixel_raw = y1_crop_norm * crop_image_height
                 y2_crop_pixel_raw = y2_crop_norm * crop_image_height
                 use_1000_scale = (
-                    (x2_crop_pixel_raw > crop_image_width or y2_crop_pixel_raw > crop_image_height)
+                    (
+                        x2_crop_pixel_raw > crop_image_width
+                        or y2_crop_pixel_raw > crop_image_height
+                    )
                     and crop_image_width > 0
                     and crop_image_height > 0
                 )
                 if use_1000_scale:
-                    logger.info(
-                        f"Box {idx}: LLM-Koordinaten über Crop-Größe "
-                        f"(x2={x2_crop_pixel_raw:.0f}>{crop_image_width} oder y2={y2_crop_pixel_raw:.0f}>{crop_image_height}), "
-                        "interpretiere als 0–1000-Skala"
+                    logger.debug(
+                        f"Box {idx}: LLM-Koordinaten > Crop-Größe → 0-1000-Skala"
                     )
-                    x1_crop_pixel = int(max(0, min((x1_crop_pixel_raw / 1000.0) * crop_image_width, crop_image_width)))
-                    x2_crop_pixel = int(max(0, min((x2_crop_pixel_raw / 1000.0) * crop_image_width, crop_image_width)))
-                    y1_crop_pixel = int(max(0, min((y1_crop_pixel_raw / 1000.0) * crop_image_height, crop_image_height)))
-                    y2_crop_pixel = int(max(0, min((y2_crop_pixel_raw / 1000.0) * crop_image_height, crop_image_height)))
+                    x1_crop_pixel = int(
+                        max(
+                            0,
+                            min(
+                                (x1_crop_pixel_raw / 1000.0) * crop_image_width,
+                                crop_image_width,
+                            ),
+                        )
+                    )
+                    x2_crop_pixel = int(
+                        max(
+                            0,
+                            min(
+                                (x2_crop_pixel_raw / 1000.0) * crop_image_width,
+                                crop_image_width,
+                            ),
+                        )
+                    )
+                    y1_crop_pixel = int(
+                        max(
+                            0,
+                            min(
+                                (y1_crop_pixel_raw / 1000.0) * crop_image_height,
+                                crop_image_height,
+                            ),
+                        )
+                    )
+                    y2_crop_pixel = int(
+                        max(
+                            0,
+                            min(
+                                (y2_crop_pixel_raw / 1000.0) * crop_image_height,
+                                crop_image_height,
+                            ),
+                        )
+                    )
                 else:
-                    x1_crop_pixel = int(max(0, min(x1_crop_pixel_raw, crop_image_width)))
-                    x2_crop_pixel = int(max(x1_crop_pixel + 1, min(x2_crop_pixel_raw, crop_image_width)))
-                    y1_crop_pixel = int(max(0, min(y1_crop_pixel_raw, crop_image_height)))
-                    y2_crop_pixel = int(max(y1_crop_pixel + 1, min(y2_crop_pixel_raw, crop_image_height)))
+                    x1_crop_pixel = int(
+                        max(0, min(x1_crop_pixel_raw, crop_image_width))
+                    )
+                    x2_crop_pixel = int(
+                        max(x1_crop_pixel + 1, min(x2_crop_pixel_raw, crop_image_width))
+                    )
+                    y1_crop_pixel = int(
+                        max(0, min(y1_crop_pixel_raw, crop_image_height))
+                    )
+                    y2_crop_pixel = int(
+                        max(
+                            y1_crop_pixel + 1, min(y2_crop_pixel_raw, crop_image_height)
+                        )
+                    )
                 x1_original = int(x1_region + (x1_crop_pixel / 0.7))
                 x2_original = int(x1_region + (x2_crop_pixel / 0.7))
                 y1_original = y1_region + y1_crop_pixel
                 y2_original = y1_region + y2_crop_pixel
-                
-                logger.info(
-                    f"Box {idx}: Transformation Details: "
-                    f"Crop-Normalized=[{x1_crop_norm:.4f}, {y1_crop_norm:.4f}, {x2_crop_norm:.4f}, {y2_crop_norm:.4f}], "
-                    f"Crop-Pixel=[{x1_crop_pixel}, {y1_crop_pixel}, {x2_crop_pixel}, {y2_crop_pixel}], "
-                    f"Crop-Bild={crop_image_width}x{crop_image_height}, "
-                    f"Region=[{x1_region}, {y1_region}, {x2_region}, {y2_region}], "
-                    f"Region-Größe={region_width}x{region_height}, "
-                    f"Crop-Start (X) in skaliertem Bild={x1_region * 0.7:.1f} (= {x1_region} * 0.7), "
-                    f"Berechnet: x1={x1_original} (= x1_region + x1_crop_pixel/0.7 = {x1_region} + {x1_crop_pixel}/0.7), "
-                    f"x2={x2_original} (= x1_region + x2_crop_pixel/0.7 = {x1_region} + {x2_crop_pixel}/0.7), "
-                    f"y1={y1_original} (={y1_region} + {y1_crop_norm:.4f}*{crop_image_height}={y1_region + y1_crop_norm * crop_image_height:.1f}), "
-                    f"y2={y2_original} (={y1_region} + {y2_crop_norm:.4f}*{crop_image_height}={y1_region + y2_crop_norm * crop_image_height:.1f}), "
-                    f"Original-Größe={x2_original - x1_original}x{y2_original - y1_original}"
+
+                logger.debug(
+                    f"Box {idx}: → bbox_pixel=[{x1_original},{y1_original},{x2_original},{y2_original}]"
                 )
             else:
                 boxes_filtered_invalid += 1
@@ -929,13 +929,13 @@ async def process_multibox_region(
             y1_before_clip = y1_original
             x2_before_clip = x2_original
             y2_before_clip = y2_original
-            
+
             # Begrenze auf Region-Grenzen
             x1_original = max(x1_region, x1_original)
             y1_original = max(y1_region, y1_original)
             x2_original = min(x2_region, x2_original)
             y2_original = min(y2_region, y2_original)
-            
+
             # Stelle sicher, dass x2 > x1 und y2 > y1
             if x2_original <= x1_original or y2_original <= y1_original:
                 boxes_filtered_invalid += 1
@@ -947,16 +947,15 @@ async def process_multibox_region(
                     f"Text: '{detected_text[:50]}'"
                 )
                 continue
-            
-            # Logge wenn Box begrenzt wurde
-            if (x1_before_clip != x1_original or y1_before_clip != y1_original or 
-                x2_before_clip != x2_original or y2_before_clip != y2_original):
-                logger.info(
-                    f"Box {idx}: Auf Region-Grenzen begrenzt: "
-                    f"Vorher=[{x1_before_clip}, {y1_before_clip}, {x2_before_clip}, {y2_before_clip}], "
-                    f"Nachher=[{x1_original}, {y1_original}, {x2_original}, {y2_original}], "
-                    f"Region=[{x1_region}, {y1_region}, {x2_region}, {y2_region}], "
-                    f"Text: '{detected_text[:50]}'"
+
+            if (
+                x1_before_clip != x1_original
+                or y1_before_clip != y1_original
+                or x2_before_clip != x2_original
+                or y2_before_clip != y2_original
+            ):
+                logger.debug(
+                    f"Box {idx}: auf Region-Grenzen begrenzt → [{x1_original},{y1_original},{x2_original},{y2_original}]"
                 )
 
             # Kein Clipping auf Bildgrenzen: Box darf über Seitenrand hinausgehen (Viewer/Crop-Preview zeigen außerhalb grau)
@@ -979,7 +978,7 @@ async def process_multibox_region(
                     f"Koordinaten=[{x1_original}, {y1_original}, {x2_original}, {y2_original}]"
                 )
                 continue
-                
+
             new_bbox = {
                 "text": detected_text,
                 "bbox": bbox_normalized_new,
@@ -998,11 +997,8 @@ async def process_multibox_region(
             }
 
             new_bboxes.append(new_bbox)
-            logger.info(
-                f"Box {idx}: ✓ Erfolgreich erstellt: text='{detected_text[:50]}', "
-                f"bbox_pixel=[{x1_original}, {y1_original}, {x2_original}, {y2_original}], "
-                f"Größe={x2_original - x1_original}x{y2_original - y1_original}, "
-                f"bbox_normalized={[f'{v:.4f}' for v in bbox_normalized_new]}"
+            logger.debug(
+                f"Box {idx}: erstellt bbox_pixel=[{x1_original},{y1_original},{x2_original},{y2_original}]"
             )
 
         # Fallback: Wenn alle Boxen rausgefiltert wurden, eine Box für die ganze Region
@@ -1012,16 +1008,21 @@ async def process_multibox_region(
                 "Fallback: Eine Box für die ganze Region."
             )
             new_bboxes = _multibox_fallback_region_box(
-                x1_region, y1_region, x2_region, y2_region,
-                ocr_image_width, ocr_image_height,
+                x1_region,
+                y1_region,
+                x2_region,
+                y2_region,
+                ocr_image_width,
+                ocr_image_height,
             )
 
-        # Zusammenfassung der Verarbeitung
         logger.info(
-            f"Multibox-Region-Verarbeitung abgeschlossen: "
-            f"{len(new_bboxes)} von {len(detected_bboxes)} Boxen erfolgreich erstellt. "
-            f"Gefiltert: {boxes_filtered_invalid} ungültig, {boxes_filtered_outside} außerhalb Region, "
-            f"{boxes_filtered_empty_text} leerer Text"
+            f"Multibox-Region: {len(new_bboxes)} Boxen übernommen"
+            + (
+                f", {boxes_filtered_invalid} ungültig, {boxes_filtered_empty_text} leer"
+                if (boxes_filtered_invalid or boxes_filtered_empty_text)
+                else ""
+            )
         )
 
         # Lösche temporäre Crop-Datei
@@ -1030,7 +1031,9 @@ async def process_multibox_region(
                 crop_path_obj.unlink()
                 logger.debug(f"Temporäre Crop-Datei gelöscht: {crop_path}")
         except Exception as e:
-            logger.warning(f"Fehler beim Löschen temporärer Crop-Datei {crop_path}: {e}")
+            logger.warning(
+                f"Fehler beim Löschen temporärer Crop-Datei {crop_path}: {e}"
+            )
 
         return new_bboxes
 

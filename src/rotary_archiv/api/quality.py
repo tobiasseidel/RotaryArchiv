@@ -264,10 +264,12 @@ def get_quality_pages(
                 except json.JSONDecodeError:
                     bbox_data_list = []
             bbox_data_list = bbox_data_list if isinstance(bbox_data_list, list) else []
-            total_bboxes = len(bbox_data_list)
+            # Nur OCR- und Ignore-Boxen für Review-Statistik (Notizen ausnehmen)
+            review_bboxes = [b for b in bbox_data_list if b.get("box_type") != "note"]
+            total_bboxes = len(review_bboxes)
             reviewed_count = sum(
                 1
-                for b in bbox_data_list
+                for b in review_bboxes
                 if b.get("review_status") in ("confirmed", "rejected", "auto_confirmed")
             )
             reviewed_pct = (
@@ -704,10 +706,11 @@ def get_page_quality_metrics(page_id: int, db: Session = Depends(get_db)):
         except json.JSONDecodeError:
             bbox_data_list = []
     bbox_data_list = bbox_data_list if isinstance(bbox_data_list, list) else []
-    total_bboxes = len(bbox_data_list)
+    review_bboxes = [b for b in bbox_data_list if b.get("box_type") != "note"]
+    total_bboxes = len(review_bboxes)
     reviewed_count = sum(
         1
-        for b in bbox_data_list
+        for b in review_bboxes
         if b.get("review_status") in ("confirmed", "rejected", "auto_confirmed")
     )
     result["reviewed_pct"] = (

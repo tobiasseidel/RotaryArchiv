@@ -171,14 +171,12 @@ class OllamaVisionOCR:
                 write=settings.ollama_timeout_seconds,
                 pool=10.0,
             )
-            
-            logger.info(
-                f"[OCR-LLM] Starte HTTP-Request zu {self.base_url}/api/chat, "
-                f"Model: {self.model}, Timeout: {settings.ollama_timeout_seconds}s, "
-                f"Bildgröße (Base64): {len(image_b64_clean)} Zeichen"
+
+            logger.debug(
+                f"[OCR-LLM] Request {self.model}, Base64 {len(image_b64_clean)} Zeichen"
             )
             request_start_time = time.time()
-            
+
             with httpx.Client(timeout=timeout) as client:
                 # Verwende /api/chat für Vision-Modelle (z.B. deepseek-ocr)
                 # Laut Dokumentation: images Array gehört INSIDE das message-Objekt
@@ -196,13 +194,12 @@ class OllamaVisionOCR:
                         "stream": False,
                     },
                 )
-                
+
                 request_duration = time.time() - request_start_time
-                logger.info(
-                    f"[OCR-LLM] HTTP-Request abgeschlossen nach {request_duration:.2f}s, "
-                    f"Status: {response.status_code}"
+                logger.debug(
+                    f"[OCR-LLM] Request {request_duration:.1f}s, Status {response.status_code}"
                 )
-                
+
                 response.raise_for_status()
 
                 # Versuche JSON zu parsen
@@ -229,7 +226,11 @@ class OllamaVisionOCR:
                         "headers": dict(response.headers),
                     }
         except httpx.TimeoutException as e:
-            elapsed_time = time.time() - request_start_time if 'request_start_time' in locals() else 0
+            elapsed_time = (
+                time.time() - request_start_time
+                if "request_start_time" in locals()
+                else 0
+            )
             logger.error(
                 f"[OCR-LLM] Ollama Vision Timeout nach {elapsed_time:.2f}s "
                 f"(konfiguriert: {settings.ollama_timeout_seconds}s): {e}"
@@ -270,10 +271,10 @@ class OllamaVisionOCR:
         if not response_text:
             logger.warning("[OCR-LLM] _parse_grounding_format: Leere Response")
             return None
-            
+
         has_ref_tag = "<|ref|>" in response_text
         has_det_tag = "<|det|>" in response_text
-        
+
         if not has_ref_tag or not has_det_tag:
             logger.warning(
                 f"[OCR-LLM] _parse_grounding_format: Grounding-Format nicht gefunden. "
@@ -287,25 +288,23 @@ class OllamaVisionOCR:
         # Pattern: <|ref|>text<|/ref|><|det|>[[x1,y1,x2,y2]]<|/det|>\nactual_text
         pattern = r"<\|ref\|>([^<]*)<\|/ref\|><\|det\|>\[\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]\]<\|/det\|>\s*\n?([^\n<]*)"
         matches = re.findall(pattern, response_text)
-        
-        logger.info(
-            f"[OCR-LLM] _parse_grounding_format: Pattern-Matches gefunden: {len(matches)}"
-        )
-        
+
+        logger.debug(f"[OCR-LLM] _parse_grounding_format: {len(matches)} Matches")
+
         # Warnung wenn sehr viele Matches (könnte auf OCR-Problem hinweisen)
         if len(matches) > 100:
             logger.warning(
                 f"[OCR-LLM] _parse_grounding_format: Sehr viele Matches ({len(matches)}), "
                 f"könnte auf OCR-Problem hinweisen. Bildgröße: {image_width}x{image_height}"
             )
-        
+
         # Wenn keine Matches, versuche alternative Patterns
         if len(matches) == 0:
             # Versuche Pattern ohne Newline nach </det>
             pattern2 = r"<\|ref\|>([^<]*)<\|/ref\|><\|det\|>\[\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]\]<\|/det\|>([^<]*)"
             matches2 = re.findall(pattern2, response_text)
-            logger.info(
-                f"[OCR-LLM] _parse_grounding_format: Alternative Pattern-Matches: {len(matches2)}"
+            logger.debug(
+                f"[OCR-LLM] _parse_grounding_format: Alternative Pattern: {len(matches2)} Matches"
             )
             if len(matches2) > 0:
                 matches = matches2
@@ -314,13 +313,9 @@ class OllamaVisionOCR:
             ref_text = match[0].strip()
             x1, y1, x2, y2 = int(match[1]), int(match[2]), int(match[3]), int(match[4])
 
-            # Logge nur erste 10 Boxen im Detail, dann nur noch Warnungen
             if idx < 10:
-                logger.info(
-                    f"[OCR-LLM] Box {idx}: Rohe Pixel-Koordinaten vom LLM: "
-                    f"[{x1}, {y1}, {x2}, {y2}], "
-                    f"Bildgröße für Normalisierung: {image_width}x{image_height}, "
-                    f"Text: '{ref_text[:50]}'"
+                logger.debug(
+                    f"[OCR-LLM] Box {idx}: [{x1},{y1},{x2},{y2}] Bild {image_width}x{image_height}"
                 )
 
             # Filtere offensichtlich ungültige Boxen früh (alle Koordinaten = 0)
@@ -350,7 +345,7 @@ class OllamaVisionOCR:
                             f"[OCR-LLM] Box {idx}: Ungültige Y-Koordinaten (y1=y2={y1}), überspringe"
                         )
                     continue
-            
+
             # Wenn x1=x2 (keine Breite), versuche zu reparieren
             if x1 == x2:
                 if x1 == 0 and image_width > 0:
@@ -368,7 +363,7 @@ class OllamaVisionOCR:
                             f"[OCR-LLM] Box {idx}: Ungültige X-Koordinaten (x1=x2={x1}), überspringe"
                         )
                     continue
-            
+
             # Ungültige Boxen (x1>=x2 oder y1>=y2 nach Reparatur) vom Modell nicht speichern
             if x1 >= x2 or y1 >= y2:
                 if idx < 10:  # Logge nur erste 10
@@ -380,10 +375,8 @@ class OllamaVisionOCR:
 
             # Prüfe ob Pixel-Koordinaten außerhalb Bildgröße liegen
             if x2 > image_width or y2 > image_height:
-                logger.warning(
-                    f"[OCR-LLM] Box {idx}: Pixel-Koordinaten außerhalb Bildgröße! "
-                    f"Box: [{x1}, {y1}, {x2}, {y2}], Bild: {image_width}x{image_height}, "
-                    f"Abweichungen: x2 um {x2 - image_width} Pixel, y2 um {y2 - image_height} Pixel"
+                logger.debug(
+                    f"[OCR-LLM] Box {idx}: Koordinaten außerhalb [{x1},{y1},{x2},{y2}] Bild {image_width}x{image_height}"
                 )
 
             actual_text = (
@@ -401,14 +394,9 @@ class OllamaVisionOCR:
                     x2 / image_width,  # x_max (relativ)
                     y2 / image_height,  # y_max (relativ)
                 ]
-                
-                # Logge Normalisierung
-                logger.info(
-                    f"[OCR-LLM] Box {idx}: Normalisiert: "
-                    f"Pixel=[{x1}, {y1}, {x2}, {y2}] → "
-                    f"Normalized=[{bbox_normalized[0]:.4f}, {bbox_normalized[1]:.4f}, "
-                    f"{bbox_normalized[2]:.4f}, {bbox_normalized[3]:.4f}], "
-                    f"Werte > 1.0: x2={bbox_normalized[2] > 1.0}, y2={bbox_normalized[3] > 1.0}"
+
+                logger.debug(
+                    f"[OCR-LLM] Box {idx}: Pixel→Norm [{bbox_normalized[0]:.2f},{bbox_normalized[1]:.2f},{bbox_normalized[2]:.2f},{bbox_normalized[3]:.2f}]"
                 )
             else:
                 bbox_normalized = [x1, y1, x2, y2]  # Pixel-Koordinaten als Fallback
@@ -463,14 +451,13 @@ class OllamaVisionOCR:
                 image = Image.open(file_path_obj)
 
             image_width, image_height = image.size
-            
+
             # Verwende Standard-Prompt wenn keiner angegeben
             # WICHTIG: Prompt nicht erweitern, da lange Prompts dazu führen, dass OCR-LLM nur den Prompt wiederholt
             if prompt is None:
                 prompt = default_bbox_prompt
-            logger.info(
-                f"[OCR-LLM] Bild geladen: {file_path}, "
-                f"Original-Größe: {image_width}x{image_height} Pixel"
+            logger.debug(
+                f"[OCR-LLM] Bild: {file_path}, {image_width}x{image_height} px"
             )
 
             # Konvertiere PIL Image zu Base64
@@ -500,11 +487,7 @@ class OllamaVisionOCR:
                 new_height = int(image_height * ratio)
                 image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
                 image_width, image_height = image.size
-                logger.info(
-                    f"[OCR-LLM] Bild resized: {new_width}x{new_height} Pixel "
-                    f"(Ratio: {ratio:.3f}, Dateigröße: {image_size_mb:.2f}MB → "
-                    f"{len(image_bytes) / (1024 * 1024):.2f}MB nach Resize)"
-                )
+                logger.debug(f"[OCR-LLM] Bild resized: {new_width}x{new_height} px")
                 # Neu kodieren nach Resize - verwende JPEG mit niedriger Qualität für kleinere Dateigröße
                 buffer = io.BytesIO()
                 # Konvertiere RGBA zu RGB falls nötig (JPEG unterstützt kein Alpha)
@@ -547,32 +530,11 @@ class OllamaVisionOCR:
             response_data = self._process_image_full(image_b64, prompt)
             response_text = response_data.get("content", "")
 
-            # Logge rohe OCR-Antwort (erste 1000 Zeichen für Debugging)
-            logger.info(
-                f"[OCR-LLM] Rohe OCR-Antwort (erste 1000 Zeichen): {response_text[:1000]}"
-            )
-            logger.info(
-                f"[OCR-LLM] Rohe OCR-Antwort (letzte 1000 Zeichen): {response_text[-1000:]}"
-            )
-            
-            # Prüfe, ob Grounding-Format vorhanden ist
-            has_ref_tag = "<|ref|>" in response_text
-            has_det_tag = "<|det|>" in response_text
-            logger.info(
-                f"[OCR-LLM] Grounding-Format-Check: <|ref|> vorhanden: {has_ref_tag}, "
-                f"<|det|> vorhanden: {has_det_tag}"
-            )
-            
-            logger.info(
-                f"[OCR-LLM] Parse BBoxes: Bildgröße für Normalisierung: {image_width}x{image_height}, "
-                f"Response-Länge: {len(response_text)} Zeichen"
-            )
+            logger.debug(f"[OCR-LLM] Response: {len(response_text)} Zeichen")
             bbox_list = self._parse_grounding_format(
                 response_text, image_width, image_height
             )
-            logger.info(
-                f"[OCR-LLM] Parse Ergebnis: {len(bbox_list) if bbox_list else 0} Boxen erkannt"
-            )
+            logger.debug(f"[OCR-LLM] Parse: {len(bbox_list) if bbox_list else 0} Boxen")
 
             # Extrahiere Text aus BBox-Daten oder verwende rohe Antwort
             if bbox_list:

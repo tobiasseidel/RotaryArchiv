@@ -42,6 +42,16 @@ class BBoxItem(BaseModel):
     differences: list[dict[str, Any]] | None = Field(
         default=None, description="Liste von Unterschieden zwischen OCR-Ergebnissen"
     )
+    # Box-Typ und Notiz (optional)
+    box_type: str | None = Field(
+        default=None,
+        description="Typ: ocr, ignore_region, note",
+    )
+    note_author: str | None = Field(default=None, description="Autor der Notiz")
+    note_text: str | None = Field(default=None, description="Text der Notiz")
+    note_created_at: str | None = Field(
+        default=None, description="Erstellungszeitpunkt der Notiz (ISO)"
+    )
 
 
 class OCRResultResponse(BaseModel):

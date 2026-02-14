@@ -183,6 +183,78 @@
         .inspect-controls {
             display: flex;
             gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .inspect-add-box-wrapper {
+            position: relative;
+        }
+
+        .inspect-add-box-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 2px;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 1100;
+            min-width: 180px;
+        }
+
+        .inspect-add-box-option {
+            display: block;
+            width: 100%;
+            padding: 8px 12px;
+            text-align: left;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 14px;
+            border-radius: 0;
+        }
+
+        .inspect-add-box-option:hover {
+            background: #f0f0f0;
+        }
+
+        .inspect-add-box-option:first-child {
+            border-radius: 4px 4px 0 0;
+        }
+
+        .inspect-add-box-option:last-child {
+            border-radius: 0 0 4px 4px;
+        }
+
+        /* Notiz-Kontextbubble: lesbar, klare Struktur */
+        .inspect-popup-note .inspect-popup-note-content {
+            min-width: 300px;
+            max-width: 420px;
+            padding: 4px 0;
+        }
+        .inspect-popup-note .inspect-popup-note-meta {
+            font-size: 12px;
+            color: #555;
+            margin-bottom: 8px;
+        }
+        .inspect-popup-note .inspect-popup-note-text {
+            white-space: pre-wrap;
+            word-break: break-word;
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 8px 0 12px 0;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .inspect-popup-note .inspect-popup-note-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
         }
 
         .btn {
@@ -252,8 +324,40 @@
             display: none;
         }
 
+        /* Inspect-View: immer 100 % Fensterbreite und -höhe, Leaflet füllt den Rest unter dem Header */
         #pageInspectView.active {
-            display: block;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100vw;
+            height: 100vh;
+            padding: 0;
+            margin: 0;
+            max-width: none;
+            border-radius: 0;
+            box-shadow: none;
+            background: #fff;
+            z-index: 100;
+        }
+
+        #pageInspectView.active .inspect-header {
+            flex-shrink: 0;
+            margin-bottom: 0;
+            padding: 10px 16px;
+            position: relative;
+            z-index: 1000;
+        }
+
+        /* Leaflet braucht eine definierte Höhe – explizit mit calc, damit die Karte sichtbar ist */
+        #pageInspectView.active #map {
+            flex: 1;
+            min-height: 0;
+            width: 100%;
+            height: calc(100vh - 120px);
         }
 
         /* Vollbild-Modus: Map füllt gesamten Bildschirm */
@@ -950,9 +1054,17 @@
             <div class="inspect-controls">
                 <button class="btn btn-secondary" id="prevPageBtn" style="display: none;">← Vorherige Seite</button>
                 <button class="btn btn-secondary" id="nextPageBtn" style="display: none;">Nächste Seite →</button>
-                <button class="btn btn-success" id="addBBoxBtn" title="Eine Box hinzufügen">+1</button>
-                <button class="btn btn-success" id="addMultipleBBoxBtn" title="Mehrere Boxen automatisch erkennen">+X</button>
+                <div class="inspect-add-box-wrapper" id="addBoxWrapper">
+                    <button class="btn btn-success" type="button" id="addBoxMainBtn" title="Box hinzufügen">+</button>
+                    <div id="addBoxDropdown" class="inspect-add-box-dropdown" style="display: none;">
+                        <button type="button" class="inspect-add-box-option" data-mode="single">Eine Box (+1)</button>
+                        <button type="button" class="inspect-add-box-option" data-mode="multiple">Mehrere Boxen (+X)</button>
+                        <button type="button" class="inspect-add-box-option" data-mode="ignore_region">Ignore-Bereich</button>
+                        <button type="button" class="inspect-add-box-option" data-mode="note">Notiz</button>
+                    </div>
+                </div>
                 <button class="btn btn-secondary" id="editBoxModeBtn" title="Boxen-Positionen und Maße ändern">Boxen bearbeiten</button>
+                <button class="btn btn-secondary" id="multiboxSelectBtn" title="Rechteck zeichnen – alle darin liegenden Boxen auswählen">Mehrere auswählen</button>
                 <button class="btn btn-secondary" id="measureSkewBtn" title="Schrägwinkel der Seite messen (Hough)">Schräge messen</button>
                 <button class="btn btn-secondary" id="measureSkewDebugBtn" title="Schrägwinkel mit Debug-Informationen messen">Schräge debuggen</button>
                 <button class="btn btn-secondary" id="showDeskewedBtn" title="Begradigte Seite mit erkannten Linien anzeigen">Begradigt anzeigen</button>
@@ -966,7 +1078,16 @@
             <strong>Aktuelle Positionen (x1, y1, x2, y2):</strong>
             <div id="inspectBoxPositionsList"></div>
         </div>
-        <div id="map" style="height: 600px; width: 100%; position: relative;"></div>
+        <div id="inspectMultiboxActionsPanel" style="display: none; margin-bottom: 8px; padding: 8px; background: #e8f4fd; border: 1px solid #3388ff; border-radius: 4px;">
+            <strong id="inspectMultiboxSelectionCount">0 Boxen ausgewählt</strong>
+            <span style="margin-left: 12px;">
+                <button class="btn btn-secondary" id="inspectMultiboxClearBtn" style="padding: 4px 8px; font-size: 12px;">Auswahl aufheben</button>
+                <button class="btn btn-secondary" id="inspectMultiboxIgnoreBtn" style="padding: 4px 8px; font-size: 12px; margin-left: 4px;">Ignorieren</button>
+                <button class="btn btn-warning" id="inspectMultiboxRecalcBtn" style="padding: 4px 8px; font-size: 12px; margin-left: 4px; background: #ff9800; color: white;">Neu berechnen</button>
+                <button class="btn btn-danger" id="inspectMultiboxDeleteBtn" style="padding: 4px 8px; font-size: 12px; margin-left: 4px;">Löschen</button>
+            </span>
+        </div>
+        <div id="map"></div>
     </div>
 
     <!-- Edit Dialog -->
@@ -990,6 +1111,21 @@
                 <button class="btn btn-warning" onclick="recalcBBoxOCR()" style="background: #ff9800; color: white;">OCR neu berechnen</button>
                 <button class="btn btn-success" onclick="saveReviewedText()">Geprüft speichern</button>
                 <button class="btn btn-primary" onclick="saveReviewedTextAndNext()">& Next</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notiz-Dialog (neu oder bearbeiten) -->
+    <div id="noteDialogOverlay" class="edit-dialog-overlay" style="display: none;" onclick="closeNoteDialog(event)">
+        <div class="edit-dialog" onclick="event.stopPropagation()" style="max-width: 480px;">
+            <h2 id="noteDialogTitle">Notiz</h2>
+            <label for="noteDialogAuthor">Autor</label>
+            <input type="text" id="noteDialogAuthor" placeholder="Name" style="width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px;">
+            <label for="noteDialogText">Text</label>
+            <textarea id="noteDialogText" placeholder="Notiztext..." style="width: 100%; min-height: 80px; padding: 8px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px;"></textarea>
+            <div class="dialog-buttons">
+                <button type="button" class="btn btn-secondary" onclick="closeNoteDialog()">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="noteDialogSaveBtn" onclick="saveNoteDialog()">Speichern</button>
             </div>
         </div>
     </div>
@@ -1020,6 +1156,13 @@
         let bboxListSortBy = null;
         let bboxListSortDir = 'asc';
         let bboxListShowPreviews = false;  // Ob Vorschaubilder angezeigt werden sollen
+
+        // Inspect Multibox-Auswahl (früh initialisieren, da loadPageInspect beim Routing aufgerufen wird)
+        let inspectMultiboxSelectMode = false;
+        let inspectSelectedBBoxIndices = new Set();
+        let isAddingIgnoreRegion = false;
+        let isAddingNoteBox = false;
+        let pendingNoteBoxBounds = null;
 
         // Quality-Metriken Config
         const qualityBBoxCache = {}; // BBox-Daten pro page_id nach Aufklappen
@@ -1389,6 +1532,23 @@
 
         window.addEventListener('hashchange', handleRoute);
         handleRoute(); // Initial route
+
+        window.addEventListener('resize', () => {
+            if (typeof map !== 'undefined' && map && document.getElementById('pageInspectView').classList.contains('active')) {
+                map.invalidateSize();
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            const dd = document.getElementById('addBoxDropdown');
+            const wr = document.getElementById('addBoxWrapper');
+            if (dd && wr && dd.style.display === 'block' && !wr.contains(e.target)) {
+                dd.style.display = 'none';
+                if (typeof toggleAddBBoxMode === 'function') {
+                    toggleAddBBoxMode();
+                }
+            }
+        });
 
         function showImportView() {
             const importView = document.getElementById('importView');
@@ -2705,6 +2865,28 @@
 
         async function loadPageInspect(pageId) {
             try {
+                // Multibox-Auswahl und Add-Box-Modi zurücksetzen beim Seitenwechsel
+                inspectSelectedBBoxIndices.clear();
+                inspectMultiboxSelectMode = false;
+                isAddingIgnoreRegion = false;
+                isAddingNoteBox = false;
+                pendingNoteBoxBounds = null;
+                document.getElementById('inspectMultiboxActionsPanel').style.display = 'none';
+                const multiboxBtn = document.getElementById('multiboxSelectBtn');
+                if (multiboxBtn) {
+                    multiboxBtn.classList.remove('btn-warning');
+                    multiboxBtn.classList.add('btn-secondary');
+                    multiboxBtn.textContent = 'Mehrere auswählen';
+                }
+                const addBoxBtnEl = document.getElementById('addBoxMainBtn');
+                if (addBoxBtnEl) {
+                    addBoxBtnEl.classList.remove('btn-warning');
+                    addBoxBtnEl.classList.add('btn-success');
+                    addBoxBtnEl.textContent = '+';
+                }
+                const addBoxDropEl = document.getElementById('addBoxDropdown');
+                if (addBoxDropEl) addBoxDropEl.style.display = 'none';
+
                 // Validiere pageId
                 if (pageId === null || pageId === undefined || isNaN(pageId)) {
                     console.error('loadPageInspect aufgerufen mit ungültigem pageId:', pageId);
@@ -2910,80 +3092,82 @@
                                     [y_max, x_max]   // Untere rechte Ecke [y, x]
                                 ];
 
-                                // Bestimme Farbe basierend auf Review-Status
-                                let rectColor = '#3388ff'; // Standard: Blau (pending)
-                                if (reviewStatus === 'confirmed') {
-                                    rectColor = '#000000'; // Schwarz (geprüft)
-                                } else if (reviewStatus === 'rejected') {
-                                    rectColor = '#842029'; // Rot
-                                } else if (reviewStatus === 'auto_confirmed') {
-                                    rectColor = '#084298'; // Blau (dunkler)
-                                } else if (reviewStatus === 'ignored') {
-                                    rectColor = '#6c757d'; // Grau
-                                } else if (reviewStatus === 'new') {
-                                    rectColor = '#ff9800'; // Orange (neu hinzugefügt)
-                                }
+                                const boxType = bboxItem.box_type || 'ocr';
+                                let rectColor = '#3388ff';
+                                let popupContent = '';
+                                let overlayTextContent = bboxItem.text || '';
 
-                                // Erstelle Popup mit Review-Informationen
-                                let popupContent = `<strong>Text:</strong> ${bboxItem.text || ''}<br>`;
-                                popupContent += `<strong>Status:</strong> `;
-
-                                let statusBadge = '';
-                                switch (reviewStatus) {
-                                    case 'confirmed':
-                                        statusBadge = '<span style="color: #000000; font-weight: bold;">✓ Geprüft</span>';
-                                        break;
-                                    case 'rejected':
-                                        statusBadge = '<span style="color: #842029; font-weight: bold;">✗ Abgelehnt</span>';
-                                        break;
-                                    case 'auto_confirmed':
-                                        statusBadge = '<span style="color: #084298; font-weight: bold;">✓ Auto-bestätigt</span>';
-                                        break;
-                                    case 'ignored':
-                                        statusBadge = '<span style="color: #6c757d; font-weight: bold;">⊘ Ignoriert</span>';
-                                        break;
-                                    case 'new':
-                                        statusBadge = '<span style="color: #ff9800; font-weight: bold;">+ Neu</span>';
-                                        break;
-                                    default:
-                                        statusBadge = '<span style="color: #856404;">⏳ Ausstehend</span>';
-                                }
-                                popupContent += statusBadge + '<br><br>';
-
-                                // OCR-Ergebnisse anzeigen
-                                if (ocrResults.tesseract || ocrResults.ollama_vision) {
-                                    popupContent += '<strong>OCR-Ergebnisse:</strong><br>';
-                                    if (ocrResults.tesseract) {
-                                        popupContent += `Tesseract: ${ocrResults.tesseract.text || ''}<br>`;
+                                if (boxType === 'ignore_region') {
+                                    rectColor = '#6c757d';
+                                    overlayTextContent = '[Ignore]';
+                                    popupContent = '<strong>Ignore-Bereich</strong><br><br>Bereich wird bei der Erkennung ausgelassen.<br><br>';
+                                    popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white; margin-right: 4px;" onclick="editBBox(${data.page_id}, ${bboxIndex})">Bearbeiten</button>`;
+                                    popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #dc3545; color: white;" onclick="deleteBBox(${data.page_id}, ${bboxIndex})">Löschen</button>`;
+                                } else if (boxType === 'note') {
+                                    rectColor = '#e65100';
+                                    const noteAuthor = bboxItem.note_author || '';
+                                    const noteCreated = bboxItem.note_created_at ? new Date(bboxItem.note_created_at).toLocaleString('de-DE') : '';
+                                    const noteText = bboxItem.note_text || '';
+                                    overlayTextContent = noteText.length > 40 ? noteText.slice(0, 40) + '…' : noteText || 'Notiz';
+                                    popupContent = '<div class="inspect-popup-note-content">';
+                                    popupContent += '<strong>Notiz</strong>';
+                                    popupContent += '<div class="inspect-popup-note-meta">';
+                                    if (noteAuthor) popupContent += 'Autor: ' + escapeHtml(noteAuthor);
+                                    if (noteAuthor && noteCreated) popupContent += ' · ';
+                                    if (noteCreated) popupContent += 'Erstellt: ' + noteCreated;
+                                    popupContent += '</div>';
+                                    popupContent += '<div class="inspect-popup-note-text">' + escapeHtml(noteText) + '</div>';
+                                    popupContent += '<div class="inspect-popup-note-actions">';
+                                    popupContent += `<button class="btn" style="padding: 6px 12px; font-size: 13px; background: #ff9800; color: white;" onclick="openNoteDialogForEditWithData(${data.page_id}, ${bboxIndex})">Bearbeiten</button>`;
+                                    popupContent += `<button class="btn" style="padding: 6px 12px; font-size: 13px; background: #dc3545; color: white;" onclick="deleteBBox(${data.page_id}, ${bboxIndex})">Löschen</button>`;
+                                    popupContent += '</div></div>';
+                                } else {
+                                    // OCR-Box
+                                    if (reviewStatus === 'confirmed') {
+                                        rectColor = '#000000';
+                                    } else if (reviewStatus === 'rejected') {
+                                        rectColor = '#842029';
+                                    } else if (reviewStatus === 'auto_confirmed') {
+                                        rectColor = '#084298';
+                                    } else if (reviewStatus === 'ignored') {
+                                        rectColor = '#6c757d';
+                                    } else if (reviewStatus === 'new') {
+                                        rectColor = '#ff9800';
                                     }
-                                    if (ocrResults.ollama_vision) {
-                                        popupContent += `Ollama: ${ocrResults.ollama_vision.text || ''}<br>`;
+                                    popupContent = `<strong>Text:</strong> ${bboxItem.text || ''}<br><strong>Status:</strong> `;
+                                    let statusBadge = '';
+                                    switch (reviewStatus) {
+                                        case 'confirmed': statusBadge = '<span style="color: #000000; font-weight: bold;">✓ Geprüft</span>'; break;
+                                        case 'rejected': statusBadge = '<span style="color: #842029; font-weight: bold;">✗ Abgelehnt</span>'; break;
+                                        case 'auto_confirmed': statusBadge = '<span style="color: #084298; font-weight: bold;">✓ Auto-bestätigt</span>'; break;
+                                        case 'ignored': statusBadge = '<span style="color: #6c757d; font-weight: bold;">⊘ Ignoriert</span>'; break;
+                                        case 'new': statusBadge = '<span style="color: #ff9800; font-weight: bold;">+ Neu</span>'; break;
+                                        default: statusBadge = '<span style="color: #856404;">⏳ Ausstehend</span>';
                                     }
-                                    popupContent += '<br>';
-                                }
-
-                                // Unterschiede anzeigen
-                                if (differences.length > 0) {
-                                    popupContent += '<strong>Unterschiede:</strong><br>';
-                                    differences.slice(0, 5).forEach(diff => {
-                                        popupContent += `Position ${diff.position}: "${diff.char1 || ''}" vs "${diff.char2 || ''}"<br>`;
-                                    });
-                                    if (differences.length > 5) {
-                                        popupContent += `... und ${differences.length - 5} weitere<br>`;
+                                    popupContent += statusBadge + '<br><br>';
+                                    if (ocrResults.tesseract || ocrResults.ollama_vision) {
+                                        popupContent += '<strong>OCR-Ergebnisse:</strong><br>';
+                                        if (ocrResults.tesseract) popupContent += `Tesseract: ${ocrResults.tesseract.text || ''}<br>`;
+                                        if (ocrResults.ollama_vision) popupContent += `Ollama: ${ocrResults.ollama_vision.text || ''}<br>`;
+                                        popupContent += '<br>';
                                     }
-                                    popupContent += '<br>';
+                                    if (differences.length > 0) {
+                                        popupContent += '<strong>Unterschiede:</strong><br>';
+                                        differences.slice(0, 5).forEach(diff => {
+                                            popupContent += `Position ${diff.position}: "${diff.char1 || ''}" vs "${diff.char2 || ''}"<br>`;
+                                        });
+                                        if (differences.length > 5) popupContent += `... und ${differences.length - 5} weitere<br>`;
+                                        popupContent += '<br>';
+                                    }
+                                    popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #ff9800; color: white; margin-right: 4px;" onclick="testBBoxReview(${data.page_id}, ${bboxIndex})">Test Review</button>`;
+                                    popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white; margin-right: 4px;" onclick="editBBox(${data.page_id}, ${bboxIndex})">Bearbeiten</button>`;
+                                    if (reviewStatus === 'pending') {
+                                        popupContent += `<button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="confirmBBox(${data.page_id}, ${bboxIndex})">Bestätigen</button>`;
+                                        popupContent += `<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="rejectBBox(${data.page_id}, ${bboxIndex})">Ablehnen</button>`;
+                                        popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #6c757d; color: white;" onclick="ignoreBBox(${data.page_id}, ${bboxIndex})">Ignorieren</button>`;
+                                    }
+                                    popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #dc3545; color: white;" onclick="deleteBBox(${data.page_id}, ${bboxIndex})">Löschen</button>`;
                                 }
-
-                                // Review-Buttons
-                                popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #ff9800; color: white; margin-right: 4px;" onclick="testBBoxReview(${data.page_id}, ${bboxIndex})">Test Review</button>`;
-                                popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white; margin-right: 4px;" onclick="editBBox(${data.page_id}, ${bboxIndex})">Bearbeiten</button>`;
-
-                                if (reviewStatus === 'pending') {
-                                    popupContent += `<button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="confirmBBox(${data.page_id}, ${bboxIndex})">Bestätigen</button>`;
-                                    popupContent += `<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="rejectBBox(${data.page_id}, ${bboxIndex})">Ablehnen</button>`;
-                                    popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #6c757d; color: white;" onclick="ignoreBBox(${data.page_id}, ${bboxIndex})">Ignorieren</button>`;
-                                }
-                                popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #dc3545; color: white;" onclick="deleteBBox(${data.page_id}, ${bboxIndex})">Löschen</button>`;
 
                                 // Erstelle Bounding Box Rectangle
                                 const rect = L.rectangle(rectBounds, {
@@ -2991,9 +3175,14 @@
                                     fillOpacity: 0.1,
                                     weight: 2,
                                     interactive: true  // Ermöglicht Klicks
-                                })
-                                    .bindPopup(popupContent, { autoPan: false })
-                                    .addTo(map);
+                                });
+                                const popupOpts = { autoPan: false };
+                                if (boxType === 'note') {
+                                    popupOpts.maxWidth = 420;
+                                    popupOpts.className = 'inspect-popup-note';
+                                }
+                                rect.bindPopup(popupContent, popupOpts);
+                                rect.addTo(map);
 
                                 // Erstelle Text-Overlay für OCR-Text mit Leaflet Marker
                                 const centerY = (y_min + y_max) / 2;
@@ -3005,7 +3194,9 @@
                                     visible: true,
                                     bboxIndex: bboxIndex,
                                     pageId: data.page_id,
-                                    textContent: bboxItem.text || ''
+                                    textContent: overlayTextContent,
+                                    defaultStyle: { color: rectColor, fillOpacity: 0.1, weight: 2 },
+                                    boxType: boxType
                                 };
                                 overlayItem.updateIcon = function() {
                                     const bounds = overlayItem.rect.getBounds();
@@ -3047,6 +3238,12 @@
                                             L.DomEvent.stop(e.originalEvent);
                                             L.DomEvent.preventDefault(e.originalEvent);
                                         }
+                                        // Bei Notizen: Bearbeiten = Notiz-Dialog öffnen (nicht Koordinaten bearbeiten)
+                                        if (overlayItem.boxType === 'note') {
+                                            openNoteDialogForEditWithData(overlayItem.pageId, overlayItem.bboxIndex);
+                                            if (rect.closePopup) rect.closePopup();
+                                            return;
+                                        }
                                         selectBoxForEditing(overlayItem);
                                         if (rect.closePopup) rect.closePopup();
                                         return;
@@ -3077,6 +3274,16 @@
                 document.getElementById('editBoxModeBtn').onclick = () => {
                     toggleEditBoxMode();
                 };
+
+                // Mehrere auswählen: Toggle-Button
+                document.getElementById('multiboxSelectBtn').onclick = () => {
+                    toggleMultiboxSelectMode();
+                };
+                // Aktionsleiste Multibox-Auswahl
+                document.getElementById('inspectMultiboxClearBtn').onclick = () => clearMultiboxSelection();
+                document.getElementById('inspectMultiboxIgnoreBtn').onclick = () => multiboxActionIgnore();
+                document.getElementById('inspectMultiboxRecalcBtn').onclick = () => multiboxActionRecalc();
+                document.getElementById('inspectMultiboxDeleteBtn').onclick = () => multiboxActionDelete();
 
                 // Vollbild-Button
                 document.getElementById('fullscreenBtn').onclick = () => {
@@ -3137,7 +3344,7 @@
                     }
                 });
 
-                // Map-Größe aktualisieren nach Fullscreen-Änderung
+                // Map-Größe aktualisieren nach Fullscreen-Änderung oder Fenster-Resize
                 const updateMapSize = () => {
                     setTimeout(() => {
                         if (map) {
@@ -3149,6 +3356,7 @@
                 document.addEventListener('webkitfullscreenchange', updateMapSize);
                 document.addEventListener('msfullscreenchange', updateMapSize);
                 document.addEventListener('mozfullscreenchange', updateMapSize);
+                updateMapSize(); // einmalig nach Layout (100 % Viewport)
 
                 // Zurück-Button
                 document.getElementById('backBtn').onclick = () => {
@@ -3160,15 +3368,38 @@
                     }
                 };
 
-                // Box hinzufügen Button (+1)
-                document.getElementById('addBBoxBtn').onclick = () => {
-                    toggleAddBBoxMode();
+                // Box hinzufügen: ein +-Button mit Dropdown
+                const addBoxMainBtn = document.getElementById('addBoxMainBtn');
+                const addBoxDropdown = document.getElementById('addBoxDropdown');
+                const addBoxWrapper = document.getElementById('addBoxWrapper');
+
+                addBoxMainBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (isAddingBBox) toggleAddBBoxMode();
+                    else if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
+                    else if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
+                    else if (isAddingNoteBox) toggleAddNoteBoxMode();
+                    else {
+                        addBoxDropdown.style.display = addBoxDropdown.style.display === 'none' ? 'block' : 'none';
+                    }
                 };
 
-                // Mehrere Boxen hinzufügen Button (+X)
-                document.getElementById('addMultipleBBoxBtn').onclick = () => {
-                    toggleAddMultipleBBoxMode();
-                };
+                document.querySelectorAll('.inspect-add-box-option').forEach((opt) => {
+                    opt.onclick = (e) => {
+                        e.stopPropagation();
+                        addBoxDropdown.style.display = 'none';
+                        const mode = opt.getAttribute('data-mode');
+                        if (mode === 'single') {
+                            toggleAddBBoxMode();
+                        } else if (mode === 'multiple') {
+                            toggleAddMultipleBBoxMode();
+                        } else if (mode === 'ignore_region') {
+                            toggleAddIgnoreRegionMode();
+                        } else if (mode === 'note') {
+                            toggleAddNoteBoxMode();
+                        }
+                    };
+                });
 
                 // Initialisiere Box-Zeichnen-Modus
                 setupBBoxDrawing();
@@ -4013,6 +4244,8 @@
         // Globale Variablen für Edit-Dialog
         let currentEditPageId = null;
         let currentEditBboxIndex = null;
+        let currentNoteEditPageId = null;
+        let currentNoteEditBboxIndex = null;
         let currentBboxData = null;
 
         async function editBBox(pageId, bboxIndex) {
@@ -4369,14 +4602,34 @@
             if (isAddingMultipleBBoxes) {
                 toggleAddMultipleBBoxMode();
             }
+            if (inspectMultiboxSelectMode) {
+                inspectMultiboxSelectMode = false;
+                clearMultiboxSelection();
+                const multiboxBtn = document.getElementById('multiboxSelectBtn');
+                if (multiboxBtn) {
+                    multiboxBtn.classList.remove('btn-warning');
+                    multiboxBtn.classList.add('btn-secondary');
+                    multiboxBtn.textContent = 'Mehrere auswählen';
+                }
+                if (map) {
+                    map.getContainer().classList.remove('drawing-mode');
+                    map.dragging.enable();
+                    map.boxZoom.enable();
+                    map.doubleClickZoom.enable();
+                }
+            }
+            if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
+            if (isAddingNoteBox) toggleAddNoteBoxMode();
             // Beim Aktivieren des Zeichen-Modus: Bearbeiten-Modus beenden
             if (!isAddingBBox && inspectEditBoxMode) {
                 setEditBoxMode(false);
             }
             isAddingBBox = !isAddingBBox;
-            const btn = document.getElementById('addBBoxBtn');
+            const btn = document.getElementById('addBoxMainBtn');
+            const drop = document.getElementById('addBoxDropdown');
 
             if (isAddingBBox) {
+                if (drop) drop.style.display = 'none';
                 btn.classList.add('btn-warning');
                 btn.classList.remove('btn-success');
                 btn.textContent = '✕ Abbrechen';
@@ -4389,9 +4642,10 @@
                     map.scrollWheelZoom.enable();
                 }
             } else {
+                if (drop) drop.style.display = 'none';
                 btn.classList.remove('btn-warning');
                 btn.classList.add('btn-success');
-                btn.textContent = '+1';
+                btn.textContent = '+';
                 if (map) {
                     map.getContainer().classList.remove('drawing-mode');
                     // Aktiviere Drag-Verhalten wieder
@@ -4414,11 +4668,31 @@
             if (isAddingBBox) {
                 toggleAddBBoxMode();
             }
+            if (inspectMultiboxSelectMode) {
+                inspectMultiboxSelectMode = false;
+                clearMultiboxSelection();
+                const multiboxBtn = document.getElementById('multiboxSelectBtn');
+                if (multiboxBtn) {
+                    multiboxBtn.classList.remove('btn-warning');
+                    multiboxBtn.classList.add('btn-secondary');
+                    multiboxBtn.textContent = 'Mehrere auswählen';
+                }
+                if (map) {
+                    map.getContainer().classList.remove('drawing-mode');
+                    map.dragging.enable();
+                    map.boxZoom.enable();
+                    map.doubleClickZoom.enable();
+                }
+            }
+            if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
+            if (isAddingNoteBox) toggleAddNoteBoxMode();
 
             isAddingMultipleBBoxes = !isAddingMultipleBBoxes;
-            const btn = document.getElementById('addMultipleBBoxBtn');
+            const btn = document.getElementById('addBoxMainBtn');
+            const drop = document.getElementById('addBoxDropdown');
 
             if (isAddingMultipleBBoxes) {
+                if (drop) drop.style.display = 'none';
                 btn.classList.add('btn-warning');
                 btn.classList.remove('btn-success');
                 btn.textContent = '✕ Abbrechen';
@@ -4428,12 +4702,13 @@
                     map.dragging.disable();
                     map.boxZoom.disable();
                     map.doubleClickZoom.disable();
-                    map.scrollWheelZoom.disable();
+                    map.scrollWheelZoom.enable();
                 }
             } else {
+                if (drop) drop.style.display = 'none';
                 btn.classList.remove('btn-warning');
                 btn.classList.add('btn-success');
-                btn.textContent = '+X';
+                btn.textContent = '+';
                 if (map) {
                     map.getContainer().classList.remove('drawing-mode');
                     // Aktiviere Drag-Verhalten wieder
@@ -4448,6 +4723,269 @@
                     drawingRectangle = null;
                 }
                 drawingStartPoint = null;
+            }
+        }
+
+        function toggleAddIgnoreRegionMode() {
+            if (inspectMultiboxSelectMode) {
+                inspectMultiboxSelectMode = false;
+                clearMultiboxSelection();
+                const mb = document.getElementById('multiboxSelectBtn');
+                if (mb) { mb.classList.remove('btn-warning'); mb.classList.add('btn-secondary'); mb.textContent = 'Mehrere auswählen'; }
+                if (map) { map.getContainer().classList.remove('drawing-mode'); map.dragging.enable(); map.boxZoom.enable(); map.doubleClickZoom.enable(); }
+            }
+            if (inspectEditBoxMode) setEditBoxMode(false);
+            if (isAddingBBox) toggleAddBBoxMode();
+            if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
+            if (isAddingNoteBox) toggleAddNoteBoxMode();
+
+            isAddingIgnoreRegion = !isAddingIgnoreRegion;
+            const btn = document.getElementById('addBoxMainBtn');
+            const drop = document.getElementById('addBoxDropdown');
+            if (isAddingIgnoreRegion) {
+                if (drop) drop.style.display = 'none';
+                btn.classList.add('btn-warning');
+                btn.classList.remove('btn-success');
+                btn.textContent = '✕ Abbrechen';
+                if (map) {
+                    map.getContainer().classList.add('drawing-mode');
+                    map.dragging.disable();
+                    map.boxZoom.disable();
+                    map.doubleClickZoom.disable();
+                    map.scrollWheelZoom.enable();
+                }
+            } else {
+                if (drop) drop.style.display = 'none';
+                btn.classList.remove('btn-warning');
+                btn.classList.add('btn-success');
+                btn.textContent = '+';
+                if (map) {
+                    map.getContainer().classList.remove('drawing-mode');
+                    map.dragging.enable();
+                    map.boxZoom.enable();
+                    map.doubleClickZoom.enable();
+                }
+                if (drawingRectangle && map) { map.removeLayer(drawingRectangle); drawingRectangle = null; }
+                drawingStartPoint = null;
+            }
+        }
+
+        function toggleAddNoteBoxMode() {
+            if (inspectMultiboxSelectMode) {
+                inspectMultiboxSelectMode = false;
+                clearMultiboxSelection();
+                const mb = document.getElementById('multiboxSelectBtn');
+                if (mb) { mb.classList.remove('btn-warning'); mb.classList.add('btn-secondary'); mb.textContent = 'Mehrere auswählen'; }
+                if (map) { map.getContainer().classList.remove('drawing-mode'); map.dragging.enable(); map.boxZoom.enable(); map.doubleClickZoom.enable(); }
+            }
+            if (inspectEditBoxMode) setEditBoxMode(false);
+            if (isAddingBBox) toggleAddBBoxMode();
+            if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
+            if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
+
+            isAddingNoteBox = !isAddingNoteBox;
+            const btn = document.getElementById('addBoxMainBtn');
+            const drop = document.getElementById('addBoxDropdown');
+            if (isAddingNoteBox) {
+                if (drop) drop.style.display = 'none';
+                btn.classList.add('btn-warning');
+                btn.classList.remove('btn-success');
+                btn.textContent = '✕ Abbrechen';
+                if (map) {
+                    map.getContainer().classList.add('drawing-mode');
+                    map.dragging.disable();
+                    map.boxZoom.disable();
+                    map.doubleClickZoom.disable();
+                    map.scrollWheelZoom.enable();
+                }
+            } else {
+                if (drop) drop.style.display = 'none';
+                btn.classList.remove('btn-warning');
+                btn.classList.add('btn-success');
+                btn.textContent = '+';
+                if (map) {
+                    map.getContainer().classList.remove('drawing-mode');
+                    map.dragging.enable();
+                    map.boxZoom.enable();
+                    map.doubleClickZoom.enable();
+                }
+                if (drawingRectangle && map) { map.removeLayer(drawingRectangle); drawingRectangle = null; }
+                drawingStartPoint = null;
+                pendingNoteBoxBounds = null;
+            }
+        }
+
+        function exitAddNoteBoxMode() {
+            isAddingNoteBox = false;
+            const btn = document.getElementById('addBoxMainBtn');
+            const drop = document.getElementById('addBoxDropdown');
+            if (drop) drop.style.display = 'none';
+            if (btn) {
+                btn.classList.remove('btn-warning');
+                btn.classList.add('btn-success');
+                btn.textContent = '+';
+            }
+            if (map) {
+                map.getContainer().classList.remove('drawing-mode');
+                map.dragging.enable();
+                map.boxZoom.enable();
+                map.doubleClickZoom.enable();
+            }
+        }
+
+        function toggleMultiboxSelectMode() {
+            if (inspectEditBoxMode) {
+                setEditBoxMode(false);
+            }
+            if (isAddingBBox) toggleAddBBoxMode();
+            if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
+            if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
+            if (isAddingNoteBox) toggleAddNoteBoxMode();
+
+            inspectMultiboxSelectMode = !inspectMultiboxSelectMode;
+            const btn = document.getElementById('multiboxSelectBtn');
+
+            if (inspectMultiboxSelectMode) {
+                if (btn) {
+                    btn.classList.add('btn-warning');
+                    btn.classList.remove('btn-secondary');
+                    btn.textContent = '✕ Abbrechen';
+                }
+                if (map) {
+                    map.getContainer().classList.add('drawing-mode');
+                    map.dragging.disable();
+                    map.boxZoom.disable();
+                    map.doubleClickZoom.disable();
+                    map.scrollWheelZoom.enable();
+                }
+            } else {
+                if (btn) {
+                    btn.classList.remove('btn-warning');
+                    btn.classList.add('btn-secondary');
+                    btn.textContent = 'Mehrere auswählen';
+                }
+                if (map) {
+                    map.getContainer().classList.remove('drawing-mode');
+                    map.dragging.enable();
+                    map.boxZoom.enable();
+                    map.doubleClickZoom.enable();
+                }
+                clearMultiboxSelection();
+                if (drawingRectangle && map) {
+                    map.removeLayer(drawingRectangle);
+                    drawingRectangle = null;
+                }
+                drawingStartPoint = null;
+            }
+        }
+
+        function updateMultiboxSelectionUI() {
+            const panel = document.getElementById('inspectMultiboxActionsPanel');
+            const countEl = document.getElementById('inspectMultiboxSelectionCount');
+            const n = inspectSelectedBBoxIndices.size;
+            if (countEl) countEl.textContent = n + ' Boxen ausgewählt';
+            if (panel) panel.style.display = n > 0 ? 'block' : 'none';
+
+            textOverlays.forEach((overlay) => {
+                const selected = inspectSelectedBBoxIndices.has(overlay.bboxIndex);
+                if (overlay.rect && overlay.defaultStyle) {
+                    if (selected) {
+                        overlay.rect.setStyle({ color: '#1565c0', weight: 4, fillOpacity: 0.25 });
+                    } else {
+                        overlay.rect.setStyle(overlay.defaultStyle);
+                    }
+                }
+            });
+        }
+
+        function clearMultiboxSelection() {
+            inspectSelectedBBoxIndices.clear();
+            updateMultiboxSelectionUI();
+        }
+
+        function getMultiboxBboxPayload() {
+            if (!currentPageData || !currentPageData.page_id) return [];
+            return Array.from(inspectSelectedBBoxIndices).map(idx => ({
+                page_id: currentPageData.page_id,
+                bbox_index: idx
+            }));
+        }
+
+        async function multiboxActionDelete() {
+            const bboxes = getMultiboxBboxPayload();
+            if (bboxes.length === 0) return;
+            if (!confirm(bboxes.length + ' Boxen wirklich löschen? Dies kann nicht rückgängig gemacht werden.')) return;
+            try {
+                const response = await fetch(`${API_BASE}/api/review/batch-delete`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bboxes })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.detail || response.statusText || 'Fehler beim Löschen');
+                showMessage(data.deleted + ' Boxen gelöscht', 'success');
+                clearMultiboxSelection();
+                inspectMultiboxSelectMode = false;
+                const multiboxBtn = document.getElementById('multiboxSelectBtn');
+                if (multiboxBtn) {
+                    multiboxBtn.classList.remove('btn-warning');
+                    multiboxBtn.classList.add('btn-secondary');
+                    multiboxBtn.textContent = 'Mehrere auswählen';
+                }
+                if (map) {
+                    map.getContainer().classList.remove('drawing-mode');
+                    map.dragging.enable();
+                    map.boxZoom.enable();
+                    map.doubleClickZoom.enable();
+                }
+                await loadPageInspect(currentPageData.page_id);
+            } catch (err) {
+                showMessage('Fehler: ' + err.message, 'error');
+            }
+        }
+
+        async function multiboxActionIgnore() {
+            const bboxes = getMultiboxBboxPayload();
+            if (bboxes.length === 0) return;
+            try {
+                const response = await fetch(`${API_BASE}/api/review/batch-change-status`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bboxes, new_status: 'ignored' })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.detail || response.statusText || 'Fehler beim Ignorieren');
+                showMessage(data.updated + ' Boxen ignoriert', 'success');
+                clearMultiboxSelection();
+                await loadPageInspect(currentPageData.page_id);
+            } catch (err) {
+                showMessage('Fehler: ' + err.message, 'error');
+            }
+        }
+
+        async function multiboxActionRecalc() {
+            const bboxes = getMultiboxBboxPayload();
+            if (bboxes.length === 0) return;
+            if (!confirm('OCR-Inhalte verwerfen und neu berechnen für ' + bboxes.length + ' Boxen?')) return;
+            try {
+                const response = await fetch(`${API_BASE}/api/review/batch-discard-and-recalc`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bboxes })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.detail || response.statusText || 'Fehler beim Neuberechnen');
+                const discarded = data.discarded || 0;
+                const jobsCreated = data.jobs_created || 0;
+                const jobsExisting = data.jobs_existing || 0;
+                let msg = 'OCR verworfen. ' + jobsCreated + ' Review-Job(s) erstellt';
+                if (jobsExisting > 0) msg += ' (' + jobsExisting + ' bereits vorhanden)';
+                msg += '.';
+                showMessage(msg, 'success');
+                clearMultiboxSelection();
+                await loadPageInspect(currentPageData.page_id);
+            } catch (err) {
+                showMessage('Fehler: ' + err.message, 'error');
             }
         }
 
@@ -4471,7 +5009,7 @@
         }
 
         function handleMapMouseDown(e) {
-            if (!isAddingBBox && !isAddingMultipleBBoxes) return;
+            if (!isAddingBBox && !isAddingMultipleBBoxes && !isAddingIgnoreRegion && !isAddingNoteBox && !inspectMultiboxSelectMode) return;
 
             // Verhindere Standard-Verhalten (wichtig: vor allem anderen)
             L.DomEvent.stopPropagation(e);
@@ -4499,7 +5037,7 @@
         }
 
         function handleMapMouseMove(e) {
-            if ((!isAddingBBox && !isAddingMultipleBBoxes) || !drawingStartPoint) return;
+            if ((!isAddingBBox && !isAddingMultipleBBoxes && !isAddingIgnoreRegion && !isAddingNoteBox && !inspectMultiboxSelectMode) || !drawingStartPoint) return;
 
             // Verhindere Drag während des Zeichnens
             L.DomEvent.stopPropagation(e);
@@ -4511,7 +5049,7 @@
         }
 
         async function handleMapMouseUp(e) {
-            if ((!isAddingBBox && !isAddingMultipleBBoxes) || !drawingStartPoint) return;
+            if ((!isAddingBBox && !isAddingMultipleBBoxes && !isAddingIgnoreRegion && !isAddingNoteBox && !inspectMultiboxSelectMode) || !drawingStartPoint) return;
 
             // Verhindere Standard-Verhalten
             L.DomEvent.stopPropagation(e);
@@ -4532,16 +5070,52 @@
                 return;
             }
 
-            // Speichere Bounds
+            // Entferne temporäres Rectangle
+            map.removeLayer(drawingRectangle);
+            drawingRectangle = null;
+            drawingStartPoint = null;
+
+            if (inspectMultiboxSelectMode) {
+                // Multibox-Auswahl: Alle vollständig innerhalb liegenden Boxen auswählen
+                const selSouth = bounds.getSouth();
+                const selNorth = bounds.getNorth();
+                const selWest = bounds.getWest();
+                const selEast = bounds.getEast();
+                inspectSelectedBBoxIndices.clear();
+                textOverlays.forEach((overlay) => {
+                    const boxBounds = overlay.rect.getBounds();
+                    const bSouth = boxBounds.getSouth();
+                    const bNorth = boxBounds.getNorth();
+                    const bWest = boxBounds.getWest();
+                    const bEast = boxBounds.getEast();
+                    const inside = selWest <= bWest && selEast >= bEast && selSouth <= bSouth && selNorth >= bNorth;
+                    if (inside) {
+                        inspectSelectedBBoxIndices.add(overlay.bboxIndex);
+                    }
+                });
+                updateMultiboxSelectionUI();
+                if (map.dragging) map.dragging.enable();
+                if (map.boxZoom) map.boxZoom.enable();
+                if (map.doubleClickZoom) map.doubleClickZoom.enable();
+                return;
+            }
+
+            // Speichere Bounds für +1/+X / Ignore / Notiz
             const mapBounds = [
                 [bounds.getSouthWest().lat, bounds.getSouthWest().lng],  // [y_min, x_min]
                 [bounds.getNorthEast().lat, bounds.getNorthEast().lng]  // [y_max, x_max]
             ];
 
-            // Entferne temporäres Rectangle
-            map.removeLayer(drawingRectangle);
-            drawingRectangle = null;
-            drawingStartPoint = null;
+            if (isAddingIgnoreRegion) {
+                await addIgnoreRegionFromDrawing(mapBounds);
+                return;
+            }
+            if (isAddingNoteBox) {
+                pendingNoteBoxBounds = mapBounds;
+                exitAddNoteBoxMode();
+                openNoteDialogForNew();
+                return;
+            }
 
             // Füge Box(en) hinzu je nach Modus
             if (isAddingBBox) {
@@ -4640,6 +5214,22 @@
             if (!active) {
                 clearEditBoxSelection();
             } else {
+                if (inspectMultiboxSelectMode) {
+                    inspectMultiboxSelectMode = false;
+                    clearMultiboxSelection();
+                    const multiboxBtn = document.getElementById('multiboxSelectBtn');
+                    if (multiboxBtn) {
+                        multiboxBtn.classList.remove('btn-warning');
+                        multiboxBtn.classList.add('btn-secondary');
+                        multiboxBtn.textContent = 'Mehrere auswählen';
+                    }
+                    if (map) {
+                        map.getContainer().classList.remove('drawing-mode');
+                        map.dragging.enable();
+                        map.boxZoom.enable();
+                        map.doubleClickZoom.enable();
+                    }
+                }
                 if (isAddingBBox) toggleAddBBoxMode();
                 if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
                 refreshInspectBoxPositionsPanel();
@@ -4892,6 +5482,189 @@
             }
         }
 
+        async function addIgnoreRegionFromDrawing(mapBounds) {
+            if (!currentPageData) {
+                showMessage('Keine Seiten-Daten verfügbar', 'error');
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/api/pages/${currentPageData.page_id}/inspect`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                const data = await response.json();
+                let ocrImageWidth = data.image_width, ocrImageHeight = data.image_height;
+                for (const ocrResult of data.ocr_results || []) {
+                    if (ocrResult.image_width && ocrResult.image_height) {
+                        ocrImageWidth = ocrResult.image_width;
+                        ocrImageHeight = ocrResult.image_height;
+                        break;
+                    }
+                }
+                const bbox_pixel = convertMapCoordsToBBoxPixel(
+                    mapBounds, ocrImageWidth, ocrImageHeight, data.image_width, data.image_height
+                );
+                const addResponse = await fetch(`${API_BASE}/api/review/pages/${currentPageData.page_id}/bboxes/add`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bbox_pixel, box_type: 'ignore_region' })
+                });
+                if (!addResponse.ok) {
+                    const err = await addResponse.json().catch(() => ({}));
+                    throw new Error(err.detail || addResponse.statusText);
+                }
+                showMessage('Ignore-Bereich hinzugefügt', 'success');
+                toggleAddIgnoreRegionMode();
+                if (map) savedMapView = { center: map.getCenter(), zoom: map.getZoom() };
+                await loadPageInspect(currentPageData.page_id);
+                if (map && savedMapView) {
+                    map.setView(savedMapView.center, savedMapView.zoom);
+                    savedMapView = null;
+                }
+            } catch (error) {
+                showMessage('Fehler: ' + error.message, 'error');
+            }
+        }
+
+        async function addNoteBoxFromDrawing(mapBounds, noteAuthor, noteText) {
+            if (!currentPageData) {
+                showMessage('Keine Seiten-Daten verfügbar', 'error');
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/api/pages/${currentPageData.page_id}/inspect`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                const data = await response.json();
+                let ocrImageWidth = data.image_width, ocrImageHeight = data.image_height;
+                for (const ocrResult of data.ocr_results || []) {
+                    if (ocrResult.image_width && ocrResult.image_height) {
+                        ocrImageWidth = ocrResult.image_width;
+                        ocrImageHeight = ocrResult.image_height;
+                        break;
+                    }
+                }
+                const bbox_pixel = convertMapCoordsToBBoxPixel(
+                    mapBounds, ocrImageWidth, ocrImageHeight, data.image_width, data.image_height
+                );
+                const addResponse = await fetch(`${API_BASE}/api/review/pages/${currentPageData.page_id}/bboxes/add`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bbox_pixel,
+                        box_type: 'note',
+                        note_author: noteAuthor,
+                        note_text: noteText
+                    })
+                });
+                if (!addResponse.ok) {
+                    const err = await addResponse.json().catch(() => ({}));
+                    throw new Error(err.detail || addResponse.statusText);
+                }
+                showMessage('Notiz hinzugefügt', 'success');
+                pendingNoteBoxBounds = null;
+                closeNoteDialog();
+                if (map) savedMapView = { center: map.getCenter(), zoom: map.getZoom() };
+                await loadPageInspect(currentPageData.page_id);
+                if (map && savedMapView) {
+                    map.setView(savedMapView.center, savedMapView.zoom);
+                    savedMapView = null;
+                }
+            } catch (error) {
+                showMessage('Fehler: ' + error.message, 'error');
+            }
+        }
+
+        function openNoteDialogForNew() {
+            currentNoteEditPageId = null;
+            currentNoteEditBboxIndex = null;
+            document.getElementById('noteDialogTitle').textContent = 'Notiz hinzufügen';
+            document.getElementById('noteDialogAuthor').value = '';
+            document.getElementById('noteDialogText').value = '';
+            document.getElementById('noteDialogOverlay').style.display = 'flex';
+            document.getElementById('noteDialogOverlay').classList.add('active');
+        }
+
+        function openNoteDialogForEdit(pageId, bboxIndex, author, text) {
+            currentNoteEditPageId = pageId;
+            currentNoteEditBboxIndex = bboxIndex;
+            document.getElementById('noteDialogTitle').textContent = 'Notiz bearbeiten';
+            document.getElementById('noteDialogAuthor').value = author || '';
+            document.getElementById('noteDialogText').value = text || '';
+            document.getElementById('noteDialogOverlay').style.display = 'flex';
+            document.getElementById('noteDialogOverlay').classList.add('active');
+        }
+
+        async function openNoteDialogForEditWithData(pageId, bboxIndex) {
+            let author = '';
+            let text = '';
+            if (currentInspectData && currentPageData && currentPageData.page_id === pageId && currentInspectData.ocr_results) {
+                for (const ocr of currentInspectData.ocr_results) {
+                    if (ocr.bbox_data && ocr.bbox_data[bboxIndex]) {
+                        const item = ocr.bbox_data[bboxIndex];
+                        if (item.box_type === 'note') {
+                            author = item.note_author || '';
+                            text = item.note_text || '';
+                        }
+                        break;
+                    }
+                }
+            }
+            if (author === '' && text === '') {
+                try {
+                    const r = await fetch(`${API_BASE}/api/review/pages/${pageId}/bboxes`);
+                    if (r.ok) {
+                        const data = await r.json();
+                        const list = data.bboxes || [];
+                        if (list[bboxIndex]) {
+                            author = list[bboxIndex].note_author || '';
+                            text = list[bboxIndex].note_text || '';
+                        }
+                    }
+                } catch (e) {}
+            }
+            openNoteDialogForEdit(pageId, bboxIndex, author, text);
+        }
+
+        function closeNoteDialog(event) {
+            if (event && event.target.id !== 'noteDialogOverlay') return;
+            document.getElementById('noteDialogOverlay').style.display = 'none';
+            document.getElementById('noteDialogOverlay').classList.remove('active');
+            pendingNoteBoxBounds = null;
+            currentNoteEditPageId = null;
+            currentNoteEditBboxIndex = null;
+        }
+
+        async function saveNoteDialog() {
+            const author = document.getElementById('noteDialogAuthor').value.trim();
+            const text = document.getElementById('noteDialogText').value.trim();
+            if (!text) {
+                showMessage('Bitte Notiztext eingeben', 'error');
+                return;
+            }
+            if (currentNoteEditPageId != null && currentNoteEditBboxIndex != null) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/review/pages/${currentNoteEditPageId}/bboxes/${currentNoteEditBboxIndex}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ note_author: author || '', note_text: text })
+                    });
+                    if (!response.ok) {
+                        const err = await response.json().catch(() => ({}));
+                        throw new Error(err.detail || response.statusText);
+                    }
+                    showMessage('Notiz gespeichert', 'success');
+                    closeNoteDialog();
+                    await loadPageInspect(currentNoteEditPageId);
+                } catch (e) {
+                    showMessage('Fehler: ' + e.message, 'error');
+                }
+                return;
+            }
+            if (pendingNoteBoxBounds) {
+                await addNoteBoxFromDrawing(pendingNoteBoxBounds, author || '', text);
+            } else {
+                closeNoteDialog();
+            }
+        }
+
         async function addMultipleBBoxesFromDrawing(mapBounds) {
             if (!currentPageData) {
                 showMessage('Keine Seiten-Daten verfügbar', 'error');
@@ -4979,12 +5752,14 @@
                 // Verlasse Zeichnen-Modus explizit
                 if (isAddingMultipleBBoxes) {
                     isAddingMultipleBBoxes = false;
-                    const btn = document.getElementById('addMultipleBBoxBtn');
+                    const btn = document.getElementById('addBoxMainBtn');
+                    const drop = document.getElementById('addBoxDropdown');
                     if (btn) {
                         btn.classList.remove('btn-warning');
                         btn.classList.add('btn-success');
-                        btn.textContent = '+X';
+                        btn.textContent = '+';
                     }
+                    if (drop) drop.style.display = 'none';
                     if (map) {
                         map.getContainer().classList.remove('drawing-mode');
                         map.dragging.enable();
