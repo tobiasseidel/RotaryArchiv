@@ -28,6 +28,7 @@ from src.rotary_archiv.utils.quality_metrics import (
     compute_black_pixels_per_char,
     compute_coverage,
     compute_density,
+    compute_region_coverage_and_black_pixels,
 )
 
 logger = logging.getLogger(__name__)
@@ -338,9 +339,11 @@ async def process_bbox_review_job(job_id: int) -> None:
 
             # Prüfe ob dies eine multibox_region Box ist (+X wieder aktiv für weiteren Versuch)
             if bbox_item.get("multibox_region") is True:
+                is_persistent = bbox_item.get("persistent_multibox_region") is True
                 # Spezielle Verarbeitung für Multibox-Regionen
                 logger.debug(
                     f"Multibox-Region BBox {idx} auf Seite {job.document_page_id}"
+                    + (" (persistent)" if is_persistent else "")
                 )
                 try:
                     new_bboxes = await process_multibox_region(
@@ -351,28 +354,55 @@ async def process_bbox_review_job(job_id: int) -> None:
                         page=page,
                     )
                     if new_bboxes:
-                        # Markiere temporäre Box zum Entfernen
-                        multibox_indices_to_remove.append(idx)
-                        # Füge neue Boxen hinzu
+                        if not is_persistent:
+                            multibox_indices_to_remove.append(idx)
+                        else:
+                            # Persistente Region: Box behalten, Status ocr_done setzen
+                            updated_bboxes[idx] = updated_bboxes[idx].copy()
+                            updated_bboxes[idx]["review_status"] = "ocr_done"
+                            updated_bboxes[idx]["text"] = "[Region - OCR abgeschlossen]"
+                            updated_bboxes[idx].pop("multibox_crop_path", None)
+                            logger.info(
+                                f"Persistente Multibox-Region {idx}: Box behalten, "
+                                f"{len(new_bboxes)} Unterboxen hinzugefügt"
+                            )
                         for new_bbox in new_bboxes:
                             updated_bboxes.append(new_bbox)
                         multibox_new_boxes_count += len(new_bboxes)
-                        logger.info(
-                            f"Multibox-Region: {len(new_bboxes)} Boxen hinzugefügt"
-                        )
+                        if not is_persistent:
+                            logger.info(
+                                f"Multibox-Region: {len(new_bboxes)} Boxen hinzugefügt"
+                            )
                     else:
-                        # Keine Boxen gefunden - entferne temporäre Box
-                        multibox_indices_to_remove.append(idx)
-                        logger.warning(
-                            f"Multibox-Region {idx}: Keine Boxen erkannt, entferne temporäre Box"
-                        )
+                        if not is_persistent:
+                            multibox_indices_to_remove.append(idx)
+                            logger.warning(
+                                f"Multibox-Region {idx}: Keine Boxen erkannt, entferne temporäre Box"
+                            )
+                        else:
+                            # Persistente Region: Box behalten, ocr_done (keine Unterboxen)
+                            updated_bboxes[idx] = updated_bboxes[idx].copy()
+                            updated_bboxes[idx]["review_status"] = "ocr_done"
+                            updated_bboxes[idx][
+                                "text"
+                            ] = "[Region - keine Unterboxen erkannt]"
+                            updated_bboxes[idx].pop("multibox_crop_path", None)
+                            logger.warning(
+                                f"Persistente Multibox-Region {idx}: Keine Boxen erkannt, Box bleibt"
+                            )
                 except Exception as e:
                     logger.error(
                         f"Fehler bei Multibox-Region-Verarbeitung für BBox {idx}: {e}",
                         exc_info=True,
                     )
-                    # Bei Fehler: entferne temporäre Box
-                    multibox_indices_to_remove.append(idx)
+                    if not is_persistent:
+                        multibox_indices_to_remove.append(idx)
+                    else:
+                        # Persistente Region: Box behalten, Status pending (Fehler)
+                        updated_bboxes[idx] = updated_bboxes[idx].copy()
+                        updated_bboxes[idx]["review_status"] = "pending"
+                        updated_bboxes[idx]["text"] = "[Region - Fehler bei Erkennung]"
+                        updated_bboxes[idx].pop("multibox_crop_path", None)
                 continue  # Überspringe normale OCR-Verarbeitung
 
             # Normale BBox-Verarbeitung
@@ -1292,6 +1322,286 @@ async def process_quality_job(job_id: int) -> None:
             db.commit()
 
         print(f"Quality Job {job_id} fehlgeschlagen: {e}")
+
+    finally:
+        db.close()
+
+
+def _bbox_inside_region(child_pixel: list, region_pixel: list) -> bool:
+    """Prüft ob child_pixel [x1,y1,x2,y2] vollständig innerhalb region_pixel liegt."""
+    if (
+        not child_pixel
+        or len(child_pixel) != 4
+        or not region_pixel
+        or len(region_pixel) != 4
+    ):
+        return False
+    cx1, cy1, cx2, cy2 = child_pixel
+    rx1, ry1, rx2, ry2 = region_pixel
+    return cx1 >= rx1 and cy1 >= ry1 and cx2 <= rx2 and cy2 <= ry2
+
+
+async def process_persistent_region_quality_job(job_id: int) -> None:
+    """
+    Verarbeite einen Persistent-Region-Quality-Job: Pro persistente Multibox-Region
+    auf der Seite Coverage und schwarze Pixel (gecropptes Bild, Kind-Boxen) berechnen.
+    """
+    db = SessionLocal()
+    job = None
+
+    try:
+        job = db.query(OCRJob).filter(OCRJob.id == job_id).first()
+        if not job:
+            return
+
+        if not job.document_page_id:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = (
+                "Persistent-Region-Quality-Job benötigt document_page_id"
+            )
+            db.commit()
+            return
+
+        page = (
+            db.query(DocumentPage)
+            .filter(DocumentPage.id == job.document_page_id)
+            .first()
+        )
+        if not page:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Seite nicht gefunden"
+            db.commit()
+            return
+
+        document = db.query(Document).filter(Document.id == page.document_id).first()
+        if not document:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Dokument nicht gefunden"
+            db.commit()
+            return
+
+        job.status = OCRJobStatus.RUNNING
+        job.started_at = datetime.now()
+        job.progress = 0.0
+        job.current_step = f"Lade OCRResult für Seite {page.page_number}"
+        db.commit()
+
+        ocr_result = (
+            db.query(OCRResult)
+            .filter(
+                OCRResult.document_page_id == job.document_page_id,
+                OCRResult.bbox_data.isnot(None),
+            )
+            .order_by(OCRResult.created_at.desc())
+            .first()
+        )
+
+        if not ocr_result or not ocr_result.bbox_data:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Keine BBox-Daten für diese Seite gefunden"
+            db.commit()
+            return
+
+        if isinstance(ocr_result.bbox_data, str):
+            bbox_list = json.loads(ocr_result.bbox_data)
+        else:
+            bbox_list = list(ocr_result.bbox_data)
+
+        if not isinstance(bbox_list, list):
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "bbox_data ist keine Liste"
+            db.commit()
+            return
+
+        job.progress = 15.0
+        job.current_step = f"Lade Seitenbild für Seite {page.page_number}"
+        db.commit()
+
+        from PIL import Image
+
+        from src.rotary_archiv.config import settings
+        from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
+
+        try:
+            if not page.file_path:
+                pdf_path = get_file_path(document.file_path)
+                if not pdf_path.exists():
+                    raise FileNotFoundError(f"PDF nicht gefunden: {pdf_path}")
+                img = extract_page_as_image(str(pdf_path), page.page_number, dpi=200)
+            else:
+                file_path = get_file_path(page.file_path)
+                if not file_path.exists():
+                    raise FileNotFoundError(f"Seiten-Datei nicht gefunden: {file_path}")
+                is_img = (
+                    page.file_type
+                    and page.file_type.lower()
+                    in ("image/png", "image/jpeg", "image/jpg")
+                ) or str(file_path).lower().endswith((".png", ".jpg", ".jpeg"))
+                if is_img:
+                    img = Image.open(file_path).convert("RGB")
+                else:
+                    from pdf2image import convert_from_path
+
+                    convert_kwargs = {
+                        "first_page": page.page_number,
+                        "last_page": page.page_number,
+                        "dpi": 200,
+                    }
+                    if settings.poppler_path:
+                        pp = Path(settings.poppler_path)
+                        if pp.exists():
+                            convert_kwargs["poppler_path"] = str(pp)
+                    images = convert_from_path(str(file_path), **convert_kwargs)
+                    if not images:
+                        raise ValueError("PDF konnte nicht zu Bild konvertiert werden")
+                    img = images[0]
+
+            if page.deskew_angle is not None:
+                from src.rotary_archiv.utils.image_utils import deskew_image
+
+                img = deskew_image(img, page.deskew_angle)
+
+            if (
+                ocr_result.image_width
+                and ocr_result.image_height
+                and img.size != (ocr_result.image_width, ocr_result.image_height)
+            ):
+                img = img.resize(
+                    (
+                        ocr_result.image_width,
+                        ocr_result.image_height,
+                    ),
+                    Image.Resampling.LANCZOS,
+                )
+        except Exception as e:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = f"Fehler beim Laden des Seitenbilds: {e!s}"
+            db.commit()
+            return
+
+        regions = [
+            (idx, b)
+            for idx, b in enumerate(bbox_list)
+            if b.get("persistent_multibox_region") is True
+            and b.get("bbox_pixel")
+            and len(b.get("bbox_pixel", [])) == 4
+        ]
+
+        if not regions:
+            job.progress = 100.0
+            job.status = OCRJobStatus.COMPLETED
+            job.current_step = "Keine persistente Region auf dieser Seite"
+            job.completed_at = datetime.now()
+            quality_metrics = ocr_result.quality_metrics or {}
+            if isinstance(quality_metrics, str):
+                quality_metrics = json.loads(quality_metrics)
+            quality_metrics = dict(quality_metrics)
+            quality_metrics["persistent_region_metrics"] = []
+            ocr_result.quality_metrics = quality_metrics
+            flag_modified(ocr_result, "quality_metrics")
+            db.commit()
+            return
+
+        persistent_region_metrics = []
+        total_regions = len(regions)
+        for region_idx, (r_idx, r_item) in enumerate(regions):
+            job.progress = 30.0 + (60.0 * region_idx / total_regions)
+            job.current_step = (
+                f"Berechne Region {region_idx + 1}/{total_regions} (BBox {r_idx})"
+            )
+            db.commit()
+
+            region_pixel = r_item.get("bbox_pixel")
+
+            children: list[dict] = []
+            for idx, b in enumerate(bbox_list):
+                if idx == r_idx:
+                    continue
+                if b.get("box_type") in ("ignore_region", "note"):
+                    continue
+                if b.get("persistent_multibox_region") is True:
+                    continue
+                bp = b.get("bbox_pixel")
+                if not bp or len(bp) != 4:
+                    continue
+                if not _bbox_inside_region(bp, region_pixel):
+                    continue
+                children.append(
+                    {
+                        "index": idx,
+                        "bbox_pixel": bp,
+                        "text": b.get("text") or "",
+                        "reviewed_text": b.get("reviewed_text"),
+                    }
+                )
+
+            try:
+                result = compute_region_coverage_and_black_pixels(
+                    img,
+                    region_pixel,
+                    children,
+                    dark_threshold=200,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Fehler bei Region %s (BBox %s): %s", region_idx, r_idx, e
+                )
+                persistent_region_metrics.append(
+                    {
+                        "region_bbox_index": r_idx,
+                        "coverage_ratio": None,
+                        "uncovered_ratio": None,
+                        "total_dark_pixels_region": None,
+                        "child_count": len(children),
+                        "children": [],
+                        "error": str(e),
+                    }
+                )
+                continue
+
+            cov = result.get("coverage", {})
+            persistent_region_metrics.append(
+                {
+                    "region_bbox_index": r_idx,
+                    "coverage_ratio": cov.get("coverage_ratio"),
+                    "uncovered_ratio": cov.get("uncovered_ratio"),
+                    "total_dark_pixels_region": result.get("total_dark_pixels_region"),
+                    "child_count": len(children),
+                    "children": result.get("children", []),
+                }
+            )
+
+        job.progress = 92.0
+        job.current_step = "Speichere Qualitätsmetriken"
+        db.commit()
+
+        quality_metrics = ocr_result.quality_metrics or {}
+        if isinstance(quality_metrics, str):
+            quality_metrics = json.loads(quality_metrics)
+        quality_metrics = dict(quality_metrics)
+        quality_metrics["persistent_region_metrics"] = persistent_region_metrics
+        ocr_result.quality_metrics = quality_metrics
+        flag_modified(ocr_result, "quality_metrics")
+        db.commit()
+
+        job.current_step = f"Abgeschlossen - {len(persistent_region_metrics)} Regionen"
+        job.progress = 100.0
+        job.status = OCRJobStatus.COMPLETED
+        job.completed_at = datetime.now()
+        db.commit()
+
+    except Exception as e:
+        if job:
+            db.refresh(job)
+            if job.status not in [
+                OCRJobStatus.CANCELLED,
+                OCRJobStatus.ARCHIVED,
+            ]:
+                job.status = OCRJobStatus.FAILED
+                job.error_message = str(e)
+                job.completed_at = datetime.now()
+                db.commit()
+        logger.exception("Persistent-Region-Quality Job %s fehlgeschlagen", job_id)
 
     finally:
         db.close()

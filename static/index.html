@@ -694,6 +694,7 @@
             <li><a href="#" id="navQuality" onclick="showQualityView(); return false;">Seiten</a></li>
             <li><a href="#" id="navDeskew" onclick="showDeskewView(); return false;">Winkel</a></li>
             <li><a href="#" id="navBboxList" onclick="showBboxListView(); return false;">BBox-Liste</a></li>
+            <li><a href="#" id="navPersistentRegions" onclick="showPersistentRegionsView(); return false;">Persistente Regionen</a></li>
         </ul>
     </nav>
 
@@ -903,6 +904,57 @@
         </div>
     </div>
 
+    <!-- Persistente Regionen View -->
+    <div id="persistentRegionsView" class="container" style="display: none;">
+        <h1>Persistente Regionen</h1>
+        <p class="subtitle">Persistente Multibox-Regionen und Kind-Boxen mit Qualitätsmetriken</p>
+        <div id="persistentRegionsMessages" style="margin-bottom: 10px;"></div>
+        <div style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px;">
+            <h3 style="margin-top: 0; margin-bottom: 10px;">Filter</h3>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: end;">
+                <div>
+                    <label for="persistentRegionsFilterDocumentId" style="display: block; margin-bottom: 5px; font-size: 12px;">Dokument-ID:</label>
+                    <input type="number" id="persistentRegionsFilterDocumentId" placeholder="Optional" style="padding: 6px; width: 120px;">
+                </div>
+                <div>
+                    <label for="persistentRegionsFilterMinCoverage" style="display: block; margin-bottom: 5px; font-size: 12px;">Min. Coverage (0–1):</label>
+                    <input type="number" id="persistentRegionsFilterMinCoverage" placeholder="" min="0" max="1" step="0.01" style="padding: 6px; width: 100px;">
+                </div>
+                <div>
+                    <label for="persistentRegionsFilterMaxCoverage" style="display: block; margin-bottom: 5px; font-size: 12px;">Max. Coverage (0–1):</label>
+                    <input type="number" id="persistentRegionsFilterMaxCoverage" placeholder="" min="0" max="1" step="0.01" style="padding: 6px; width: 100px;">
+                </div>
+                <div>
+                    <label for="persistentRegionsFilterMinUncoveredPct" style="display: block; margin-bottom: 5px; font-size: 12px;">Min. Unbedeckte %:</label>
+                    <input type="number" id="persistentRegionsFilterMinUncoveredPct" placeholder="0" min="0" max="100" step="0.1" style="padding: 6px; width: 100px;">
+                </div>
+                <div>
+                    <label for="persistentRegionsFilterMaxUncoveredPct" style="display: block; margin-bottom: 5px; font-size: 12px;">Max. Unbedeckte %:</label>
+                    <input type="number" id="persistentRegionsFilterMaxUncoveredPct" placeholder="100" min="0" max="100" step="0.1" style="padding: 6px; width: 100px;">
+                </div>
+                <div>
+                    <label for="persistentRegionsFilterMinBlackPcSum" style="display: block; margin-bottom: 5px; font-size: 12px;">Min. Schwarze px/Zeichen (Summe Kinder):</label>
+                    <input type="number" id="persistentRegionsFilterMinBlackPcSum" placeholder="" min="0" step="0.1" style="padding: 6px; width: 100px;">
+                </div>
+                <div>
+                    <label for="persistentRegionsFilterMaxBlackPcSum" style="display: block; margin-bottom: 5px; font-size: 12px;">Max. Schwarze px/Zeichen (Summe Kinder):</label>
+                    <input type="number" id="persistentRegionsFilterMaxBlackPcSum" placeholder="" min="0" step="0.1" style="padding: 6px; width: 100px;">
+                </div>
+                <div>
+                    <button class="btn btn-primary" onclick="loadPersistentRegions()">Filtern</button>
+                    <button class="btn btn-secondary" onclick="resetPersistentRegionsFilters()" style="margin-left: 5px;">Zurücksetzen</button>
+                </div>
+            </div>
+        </div>
+        <div style="margin-bottom: 12px;">
+            <button class="btn btn-secondary" onclick="batchCreatePersistentRegionJobs()">Nachberechnen (Jobs für alle Seiten mit Regionen)</button>
+            <span id="persistentRegionsBatchStatus" style="margin-left: 10px;"></span>
+        </div>
+        <div id="persistentRegionsContainer">
+            <p style="color: #666;">Lade persistente Regionen...</p>
+        </div>
+    </div>
+
     <!-- BBox-Liste View -->
     <div id="bboxListView" class="container" style="display: none;">
         <h1>BBox-Liste</h1>
@@ -1059,6 +1111,7 @@
                     <div id="addBoxDropdown" class="inspect-add-box-dropdown" style="display: none;">
                         <button type="button" class="inspect-add-box-option" data-mode="single">Eine Box (+1)</button>
                         <button type="button" class="inspect-add-box-option" data-mode="multiple">Mehrere Boxen (+X)</button>
+                        <button type="button" class="inspect-add-box-option" data-mode="persistent_multibox">Persistente Multibox-Region (+X behalten)</button>
                         <button type="button" class="inspect-add-box-option" data-mode="ignore_region">Ignore-Bereich</button>
                         <button type="button" class="inspect-add-box-option" data-mode="note">Notiz</button>
                     </div>
@@ -1162,6 +1215,7 @@
         let inspectSelectedBBoxIndices = new Set();
         let isAddingIgnoreRegion = false;
         let isAddingNoteBox = false;
+        let isAddingPersistentMultibox = false;
         let pendingNoteBoxBounds = null;
 
         // Quality-Metriken Config
@@ -1169,6 +1223,9 @@
         let qualityPagesList = [];
         let qualityPagesSortBy = null;
         let qualityPagesSortDir = 'asc';
+        let persistentRegionsList = [];
+        let persistentRegionsSortBy = 'page_id';
+        let persistentRegionsSortDir = 'asc';
         let densityConfig = {
             green_min: 3.5,
             green_max: 6.0,
@@ -1525,6 +1582,8 @@
                 showDeskewView();
             } else if (hash === '#/bbox-list') {
                 showBboxListView();
+            } else if (hash === '#/persistent-regions') {
+                showPersistentRegionsView();
             } else {
                 showImportView(); // Diese Funktion startet das Polling automatisch
             }
@@ -1557,6 +1616,7 @@
             const qualityView = document.getElementById('qualityView');
             const deskewView = document.getElementById('deskewView');
             const bboxListView = document.getElementById('bboxListView');
+            const persistentRegionsView = document.getElementById('persistentRegionsView');
 
             if (importView) importView.style.display = 'block';
             if (reviewView) reviewView.style.display = 'none';
@@ -1567,17 +1627,20 @@
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'none';
+            if (persistentRegionsView) persistentRegionsView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
             const navQuality = document.getElementById('navQuality');
             const navDeskew = document.getElementById('navDeskew');
             const navBboxList = document.getElementById('navBboxList');
+            const navPersistentRegions = document.getElementById('navPersistentRegions');
             if (navImport) navImport.classList.add('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.remove('active');
             if (navDeskew) navDeskew.classList.remove('active');
             if (navBboxList) navBboxList.classList.remove('active');
+            if (navPersistentRegions) navPersistentRegions.classList.remove('active');
 
             // Starte Polling für Queue (falls noch nicht gestartet)
             if (!pollInterval) {
@@ -1595,6 +1658,7 @@
             const qualityView = document.getElementById('qualityView');
             const deskewView = document.getElementById('deskewView');
             const bboxListView = document.getElementById('bboxListView');
+            const persistentRegionsView = document.getElementById('persistentRegionsView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'block';
@@ -1605,17 +1669,20 @@
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'none';
+            if (persistentRegionsView) persistentRegionsView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
             const navQuality = document.getElementById('navQuality');
             const navDeskew = document.getElementById('navDeskew');
             const navBboxList = document.getElementById('navBboxList');
+            const navPersistentRegions = document.getElementById('navPersistentRegions');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.add('active');
             if (navQuality) navQuality.classList.remove('active');
             if (navDeskew) navDeskew.classList.remove('active');
             if (navBboxList) navBboxList.classList.remove('active');
+            if (navPersistentRegions) navPersistentRegions.classList.remove('active');
 
             // Stoppe Queue-Polling wenn Review-View angezeigt wird
             if (pollInterval) {
@@ -1634,6 +1701,7 @@
             const qualityView = document.getElementById('qualityView');
             const deskewView = document.getElementById('deskewView');
             const bboxListView = document.getElementById('bboxListView');
+            const persistentRegionsView = document.getElementById('persistentRegionsView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -1644,17 +1712,20 @@
             if (qualityView) qualityView.style.display = 'block';
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'none';
+            if (persistentRegionsView) persistentRegionsView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
             const navQuality = document.getElementById('navQuality');
             const navDeskew = document.getElementById('navDeskew');
             const navBboxList = document.getElementById('navBboxList');
+            const navPersistentRegions = document.getElementById('navPersistentRegions');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.add('active');
             if (navDeskew) navDeskew.classList.remove('active');
             if (navBboxList) navBboxList.classList.remove('active');
+            if (navPersistentRegions) navPersistentRegions.classList.remove('active');
 
             // Stoppe Queue-Polling wenn Quality-View angezeigt wird
             if (pollInterval) {
@@ -1681,6 +1752,7 @@
             const qualityView = document.getElementById('qualityView');
             const deskewView = document.getElementById('deskewView');
             const bboxListView = document.getElementById('bboxListView');
+            const persistentRegionsView = document.getElementById('persistentRegionsView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -1691,17 +1763,20 @@
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'block';
             if (bboxListView) bboxListView.style.display = 'none';
+            if (persistentRegionsView) persistentRegionsView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
             const navQuality = document.getElementById('navQuality');
             const navDeskew = document.getElementById('navDeskew');
             const navBboxList = document.getElementById('navBboxList');
+            const navPersistentRegions = document.getElementById('navPersistentRegions');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.remove('active');
             if (navDeskew) navDeskew.classList.add('active');
             if (navBboxList) navBboxList.classList.remove('active');
+            if (navPersistentRegions) navPersistentRegions.classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -1719,6 +1794,7 @@
             const qualityView = document.getElementById('qualityView');
             const deskewView = document.getElementById('deskewView');
             const bboxListView = document.getElementById('bboxListView');
+            const persistentRegionsView = document.getElementById('persistentRegionsView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -1729,17 +1805,20 @@
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'block';
+            if (persistentRegionsView) persistentRegionsView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
             const navQuality = document.getElementById('navQuality');
             const navDeskew = document.getElementById('navDeskew');
             const navBboxList = document.getElementById('navBboxList');
+            const navPersistentRegions = document.getElementById('navPersistentRegions');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.remove('active');
             if (navDeskew) navDeskew.classList.remove('active');
             if (navBboxList) navBboxList.classList.add('active');
+            if (navPersistentRegions) navPersistentRegions.classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -1752,6 +1831,48 @@
             setupBboxListFilterEnterHandlers();
 
             applyBboxListFilter();
+        }
+
+        function showPersistentRegionsView() {
+            const importView = document.getElementById('importView');
+            const reviewView = document.getElementById('reviewView');
+            const pageInspectView = document.getElementById('pageInspectView');
+            const qualityView = document.getElementById('qualityView');
+            const deskewView = document.getElementById('deskewView');
+            const bboxListView = document.getElementById('bboxListView');
+            const persistentRegionsView = document.getElementById('persistentRegionsView');
+
+            if (importView) importView.style.display = 'none';
+            if (reviewView) reviewView.style.display = 'none';
+            if (pageInspectView) {
+                pageInspectView.style.display = 'none';
+                pageInspectView.classList.remove('active');
+            }
+            if (qualityView) qualityView.style.display = 'none';
+            if (deskewView) deskewView.style.display = 'none';
+            if (bboxListView) bboxListView.style.display = 'none';
+            if (persistentRegionsView) persistentRegionsView.style.display = 'block';
+
+            const navImport = document.getElementById('navImport');
+            const navReview = document.getElementById('navReview');
+            const navQuality = document.getElementById('navQuality');
+            const navDeskew = document.getElementById('navDeskew');
+            const navBboxList = document.getElementById('navBboxList');
+            const navPersistentRegions = document.getElementById('navPersistentRegions');
+            if (navImport) navImport.classList.remove('active');
+            if (navReview) navReview.classList.remove('active');
+            if (navQuality) navQuality.classList.remove('active');
+            if (navDeskew) navDeskew.classList.remove('active');
+            if (navBboxList) navBboxList.classList.remove('active');
+            if (navPersistentRegions) navPersistentRegions.classList.add('active');
+
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+
+            window.location.hash = '#/persistent-regions';
+            loadPersistentRegions();
         }
 
         function setupBboxListFilterEnterHandlers() {
@@ -2870,6 +2991,7 @@
                 inspectMultiboxSelectMode = false;
                 isAddingIgnoreRegion = false;
                 isAddingNoteBox = false;
+                isAddingPersistentMultibox = false;
                 pendingNoteBoxBounds = null;
                 document.getElementById('inspectMultiboxActionsPanel').style.display = 'none';
                 const multiboxBtn = document.getElementById('multiboxSelectBtn');
@@ -3121,6 +3243,16 @@
                                     popupContent += `<button class="btn" style="padding: 6px 12px; font-size: 13px; background: #ff9800; color: white;" onclick="openNoteDialogForEditWithData(${data.page_id}, ${bboxIndex})">Bearbeiten</button>`;
                                     popupContent += `<button class="btn" style="padding: 6px 12px; font-size: 13px; background: #dc3545; color: white;" onclick="deleteBBox(${data.page_id}, ${bboxIndex})">Löschen</button>`;
                                     popupContent += '</div></div>';
+                                } else if (bboxItem.persistent_multibox_region === true) {
+                                    // Persistente Multibox-Region
+                                    rectColor = '#0d9488';
+                                    overlayTextContent = (bboxItem.text && bboxItem.text.length <= 50) ? bboxItem.text : '[Persist. Region]';
+                                    const rsLabel = getReviewStatusLabel(bboxItem.review_status);
+                                    popupContent = '<strong>Persistente Multibox-Region</strong><br><br>';
+                                    popupContent += `<strong>Status:</strong> <span style="color: ${rsLabel.color};">${escapeHtml(rsLabel.label)}</span><br>`;
+                                    popupContent += `<strong>Text:</strong> ${escapeHtml(bboxItem.text || '')}<br><br>`;
+                                    popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white; margin-right: 4px;" onclick="editBBox(${data.page_id}, ${bboxIndex})">Bearbeiten</button>`;
+                                    popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #dc3545; color: white;" onclick="deleteBBox(${data.page_id}, ${bboxIndex})">Löschen</button>`;
                                 } else {
                                     // OCR-Box
                                     if (reviewStatus === 'confirmed') {
@@ -3133,6 +3265,8 @@
                                         rectColor = '#6c757d';
                                     } else if (reviewStatus === 'new') {
                                         rectColor = '#ff9800';
+                                    } else if (reviewStatus === 'ocr_done') {
+                                        rectColor = '#0d9488';
                                     }
                                     popupContent = `<strong>Text:</strong> ${bboxItem.text || ''}<br><strong>Status:</strong> `;
                                     let statusBadge = '';
@@ -3142,6 +3276,7 @@
                                         case 'auto_confirmed': statusBadge = '<span style="color: #084298; font-weight: bold;">✓ Auto-bestätigt</span>'; break;
                                         case 'ignored': statusBadge = '<span style="color: #6c757d; font-weight: bold;">⊘ Ignoriert</span>'; break;
                                         case 'new': statusBadge = '<span style="color: #ff9800; font-weight: bold;">+ Neu</span>'; break;
+                                        case 'ocr_done': statusBadge = '<span style="color: #0d9488; font-weight: bold;">✓ OCR erledigt</span>'; break;
                                         default: statusBadge = '<span style="color: #856404;">⏳ Ausstehend</span>';
                                     }
                                     popupContent += statusBadge + '<br><br>';
@@ -3170,12 +3305,16 @@
                                 }
 
                                 // Erstelle Bounding Box Rectangle
-                                const rect = L.rectangle(rectBounds, {
+                                const rectOpts = {
                                     color: rectColor,
                                     fillOpacity: 0.1,
                                     weight: 2,
                                     interactive: true  // Ermöglicht Klicks
-                                });
+                                };
+                                if (bboxItem.persistent_multibox_region === true) {
+                                    rectOpts.dashArray = '5,5';
+                                }
+                                const rect = L.rectangle(rectBounds, rectOpts);
                                 const popupOpts = { autoPan: false };
                                 if (boxType === 'note') {
                                     popupOpts.maxWidth = 420;
@@ -3377,6 +3516,7 @@
                     e.stopPropagation();
                     if (isAddingBBox) toggleAddBBoxMode();
                     else if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
+                    else if (isAddingPersistentMultibox) toggleAddPersistentMultiboxMode();
                     else if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
                     else if (isAddingNoteBox) toggleAddNoteBoxMode();
                     else {
@@ -3393,6 +3533,8 @@
                             toggleAddBBoxMode();
                         } else if (mode === 'multiple') {
                             toggleAddMultipleBBoxMode();
+                        } else if (mode === 'persistent_multibox') {
+                            toggleAddPersistentMultiboxMode();
                         } else if (mode === 'ignore_region') {
                             toggleAddIgnoreRegionMode();
                         } else if (mode === 'note') {
@@ -3441,7 +3583,7 @@
                         prevBtn.style.display = 'inline-block';
                         prevBtn.onclick = () => {
                             const prevPage = pages[currentIndex - 1];
-                            loadPageInspect(prevPage.id);
+                            window.location.hash = `#/page/${prevPage.id}/inspect`;
                         };
                     } else {
                         prevBtn.style.display = 'none';
@@ -3453,7 +3595,7 @@
                         nextBtn.style.display = 'inline-block';
                         nextBtn.onclick = () => {
                             const nextPage = pages[currentIndex + 1];
-                            loadPageInspect(nextPage.id);
+                            window.location.hash = `#/page/${nextPage.id}/inspect`;
                         };
                     } else {
                         nextBtn.style.display = 'none';
@@ -4598,9 +4740,12 @@
         }
 
         function toggleAddBBoxMode() {
-            // Deaktiviere Multiple-Modus falls aktiv
+            // Deaktiviere Multiple- und Persistente-Multibox-Modi falls aktiv
             if (isAddingMultipleBBoxes) {
                 toggleAddMultipleBBoxMode();
+            }
+            if (isAddingPersistentMultibox) {
+                toggleAddPersistentMultiboxMode();
             }
             if (inspectMultiboxSelectMode) {
                 inspectMultiboxSelectMode = false;
@@ -4686,6 +4831,7 @@
             }
             if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
             if (isAddingNoteBox) toggleAddNoteBoxMode();
+            if (isAddingPersistentMultibox) toggleAddPersistentMultiboxMode();
 
             isAddingMultipleBBoxes = !isAddingMultipleBBoxes;
             const btn = document.getElementById('addBoxMainBtn');
@@ -4726,6 +4872,64 @@
             }
         }
 
+        function toggleAddPersistentMultiboxMode() {
+            if (isAddingBBox) toggleAddBBoxMode();
+            if (inspectMultiboxSelectMode) {
+                inspectMultiboxSelectMode = false;
+                clearMultiboxSelection();
+                const multiboxBtn = document.getElementById('multiboxSelectBtn');
+                if (multiboxBtn) {
+                    multiboxBtn.classList.remove('btn-warning');
+                    multiboxBtn.classList.add('btn-secondary');
+                    multiboxBtn.textContent = 'Mehrere auswählen';
+                }
+                if (map) {
+                    map.getContainer().classList.remove('drawing-mode');
+                    map.dragging.enable();
+                    map.boxZoom.enable();
+                    map.doubleClickZoom.enable();
+                }
+            }
+            if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
+            if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
+            if (isAddingNoteBox) toggleAddNoteBoxMode();
+
+            isAddingPersistentMultibox = !isAddingPersistentMultibox;
+            const btn = document.getElementById('addBoxMainBtn');
+            const drop = document.getElementById('addBoxDropdown');
+
+            if (isAddingPersistentMultibox) {
+                if (drop) drop.style.display = 'none';
+                btn.classList.add('btn-warning');
+                btn.classList.remove('btn-success');
+                btn.textContent = '✕ Abbrechen';
+                if (map) {
+                    map.getContainer().classList.add('drawing-mode');
+                    map.dragging.disable();
+                    map.boxZoom.disable();
+                    map.doubleClickZoom.disable();
+                    map.scrollWheelZoom.enable();
+                }
+            } else {
+                if (drop) drop.style.display = 'none';
+                btn.classList.remove('btn-warning');
+                btn.classList.add('btn-success');
+                btn.textContent = '+';
+                if (map) {
+                    map.getContainer().classList.remove('drawing-mode');
+                    map.dragging.enable();
+                    map.boxZoom.enable();
+                    map.doubleClickZoom.enable();
+                    map.scrollWheelZoom.enable();
+                }
+                if (drawingRectangle) {
+                    if (map) map.removeLayer(drawingRectangle);
+                    drawingRectangle = null;
+                }
+                drawingStartPoint = null;
+            }
+        }
+
         function toggleAddIgnoreRegionMode() {
             if (inspectMultiboxSelectMode) {
                 inspectMultiboxSelectMode = false;
@@ -4737,6 +4941,7 @@
             if (inspectEditBoxMode) setEditBoxMode(false);
             if (isAddingBBox) toggleAddBBoxMode();
             if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
+            if (isAddingPersistentMultibox) toggleAddPersistentMultiboxMode();
             if (isAddingNoteBox) toggleAddNoteBoxMode();
 
             isAddingIgnoreRegion = !isAddingIgnoreRegion;
@@ -4781,6 +4986,7 @@
             if (inspectEditBoxMode) setEditBoxMode(false);
             if (isAddingBBox) toggleAddBBoxMode();
             if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
+            if (isAddingPersistentMultibox) toggleAddPersistentMultiboxMode();
             if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
 
             isAddingNoteBox = !isAddingNoteBox;
@@ -4839,6 +5045,7 @@
             }
             if (isAddingBBox) toggleAddBBoxMode();
             if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
+            if (isAddingPersistentMultibox) toggleAddPersistentMultiboxMode();
             if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
             if (isAddingNoteBox) toggleAddNoteBoxMode();
 
@@ -5009,7 +5216,7 @@
         }
 
         function handleMapMouseDown(e) {
-            if (!isAddingBBox && !isAddingMultipleBBoxes && !isAddingIgnoreRegion && !isAddingNoteBox && !inspectMultiboxSelectMode) return;
+            if (!isAddingBBox && !isAddingMultipleBBoxes && !isAddingPersistentMultibox && !isAddingIgnoreRegion && !isAddingNoteBox && !inspectMultiboxSelectMode) return;
 
             // Verhindere Standard-Verhalten (wichtig: vor allem anderen)
             L.DomEvent.stopPropagation(e);
@@ -5037,7 +5244,7 @@
         }
 
         function handleMapMouseMove(e) {
-            if ((!isAddingBBox && !isAddingMultipleBBoxes && !isAddingIgnoreRegion && !isAddingNoteBox && !inspectMultiboxSelectMode) || !drawingStartPoint) return;
+            if ((!isAddingBBox && !isAddingMultipleBBoxes && !isAddingPersistentMultibox && !isAddingIgnoreRegion && !isAddingNoteBox && !inspectMultiboxSelectMode) || !drawingStartPoint) return;
 
             // Verhindere Drag während des Zeichnens
             L.DomEvent.stopPropagation(e);
@@ -5049,7 +5256,7 @@
         }
 
         async function handleMapMouseUp(e) {
-            if ((!isAddingBBox && !isAddingMultipleBBoxes && !isAddingIgnoreRegion && !isAddingNoteBox && !inspectMultiboxSelectMode) || !drawingStartPoint) return;
+            if ((!isAddingBBox && !isAddingMultipleBBoxes && !isAddingPersistentMultibox && !isAddingIgnoreRegion && !isAddingNoteBox && !inspectMultiboxSelectMode) || !drawingStartPoint) return;
 
             // Verhindere Standard-Verhalten
             L.DomEvent.stopPropagation(e);
@@ -5122,6 +5329,8 @@
                 await addBBoxFromDrawing(mapBounds);
             } else if (isAddingMultipleBBoxes) {
                 await addMultipleBBoxesFromDrawing(mapBounds);
+            } else if (isAddingPersistentMultibox) {
+                await addPersistentMultiboxFromDrawing(mapBounds);
             }
         }
 
@@ -5232,6 +5441,7 @@
                 }
                 if (isAddingBBox) toggleAddBBoxMode();
                 if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
+                if (isAddingPersistentMultibox) toggleAddPersistentMultiboxMode();
                 refreshInspectBoxPositionsPanel();
             }
         }
@@ -5793,6 +6003,110 @@
             }
         }
 
+        async function addPersistentMultiboxFromDrawing(mapBounds) {
+            if (!currentPageData) {
+                showMessage('Keine Seiten-Daten verfügbar', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/pages/${currentPageData.page_id}/inspect`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+
+                let ocrImageWidth = data.image_width;
+                let ocrImageHeight = data.image_height;
+                for (const ocrResult of data.ocr_results || []) {
+                    if (ocrResult.image_width && ocrResult.image_height) {
+                        ocrImageWidth = ocrResult.image_width;
+                        ocrImageHeight = ocrResult.image_height;
+                        break;
+                    }
+                }
+
+                const mapImageWidth = data.image_width;
+                const mapImageHeight = data.image_height;
+
+                const bbox_pixel = convertMapCoordsToBBoxPixel(
+                    mapBounds,
+                    ocrImageWidth,
+                    ocrImageHeight,
+                    mapImageWidth,
+                    mapImageHeight
+                );
+
+                showMessage('Persistente Multibox-Region wird erstellt...', 'info');
+
+                const addResponse = await fetch(`${API_BASE}/api/review/pages/${currentPageData.page_id}/bboxes/add-multiple`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bbox_pixel: bbox_pixel, persistent: true })
+                });
+
+                if (!addResponse.ok) {
+                    const errorData = await addResponse.json().catch(() => ({ detail: 'Unbekannter Fehler' }));
+                    const msg = typeof errorData.detail === 'string'
+                        ? errorData.detail
+                        : Array.isArray(errorData.detail)
+                            ? errorData.detail.map(e => e.msg || JSON.stringify(e)).join('; ')
+                            : JSON.stringify(errorData.detail || 'Fehler beim Erstellen der persistente Multibox-Region');
+                    throw new Error(msg);
+                }
+
+                const result = await addResponse.json();
+                const message = result.message || '';
+
+                if (message.includes('vorläufige') || message.includes('Hintergrund')) {
+                    showMessage(message, 'info');
+                } else {
+                    showMessage('Persistente Multibox-Region erstellt - OCR wird im Hintergrund durchgeführt', 'success');
+                }
+
+                if (map) {
+                    savedMapView = { center: map.getCenter(), zoom: map.getZoom() };
+                }
+
+                if (isAddingPersistentMultibox) {
+                    isAddingPersistentMultibox = false;
+                    const btn = document.getElementById('addBoxMainBtn');
+                    const drop = document.getElementById('addBoxDropdown');
+                    if (btn) {
+                        btn.classList.remove('btn-warning');
+                        btn.classList.add('btn-success');
+                        btn.textContent = '+';
+                    }
+                    if (drop) drop.style.display = 'none';
+                    if (map) {
+                        map.getContainer().classList.remove('drawing-mode');
+                        map.dragging.enable();
+                        map.boxZoom.enable();
+                        map.doubleClickZoom.enable();
+                        map.scrollWheelZoom.enable();
+                        if (drawingRectangle) {
+                            map.removeLayer(drawingRectangle);
+                            drawingRectangle = null;
+                        }
+                    }
+                    drawingStartPoint = null;
+                }
+
+                await loadPageInspect(currentPageData.page_id);
+
+                if (map && savedMapView) {
+                    map.setView(savedMapView.center, savedMapView.zoom);
+                    savedMapView = null;
+                }
+            } catch (error) {
+                console.error('Fehler beim Erstellen der persistente Multibox-Region:', error);
+                showMessage('Fehler: ' + (error.message || String(error)), 'error');
+                if (isAddingPersistentMultibox) {
+                    toggleAddPersistentMultiboxMode();
+                }
+            }
+        }
+
         // Quality-Metriken Funktionen
         async function loadDensityConfig() {
             try {
@@ -5826,6 +6140,7 @@
             if (s === 'rejected') return { label: 'Abgelehnt', color: '#842029' };
             if (s === 'auto_confirmed') return { label: 'Auto', color: '#0d6efd' };
             if (s === 'ignored') return { label: 'Ignoriert', color: '#6c757d' };
+            if (s === 'ocr_done') return { label: 'OCR erledigt', color: '#0d9488' };
             return { label: 'Ausstehend', color: '#856404' };
         }
 
@@ -6245,6 +6560,175 @@
                 batchStatus.textContent = 'Fehler: ' + error.message;
                 batchStatus.style.color = '#842029';
                 showMessage('Fehler beim Erstellen der Batch-Jobs: ' + error.message, 'error');
+            }
+        }
+
+        function persistentRegionsSortItems(items) {
+            if (!persistentRegionsSortBy) return items;
+            const sorted = items.slice();
+            const key = persistentRegionsSortBy;
+            const dir = persistentRegionsSortDir === 'asc' ? 1 : -1;
+            sorted.sort((a, b) => {
+                let valA = a[key];
+                let valB = b[key];
+                if (valA == null) valA = (key === 'coverage_ratio' || key === 'children_black_pixels_per_char') ? -1 : '';
+                if (valB == null) valB = (key === 'coverage_ratio' || key === 'children_black_pixels_per_char') ? -1 : '';
+                if (valA < valB) return dir;
+                if (valA > valB) return -dir;
+                return 0;
+            });
+            return sorted;
+        }
+
+        function persistentRegionsSortColumn(columnKey) {
+            if (persistentRegionsSortBy === columnKey) {
+                persistentRegionsSortDir = persistentRegionsSortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                persistentRegionsSortBy = columnKey;
+                persistentRegionsSortDir = 'asc';
+            }
+            persistentRegionsList = persistentRegionsSortItems(persistentRegionsList);
+            renderPersistentRegionsTable();
+        }
+
+        function persistentRegionsGetSortIcon(columnKey) {
+            if (persistentRegionsSortBy !== columnKey) return '↕';
+            return persistentRegionsSortDir === 'asc' ? '▲' : '▼';
+        }
+
+        function renderPersistentRegionsTable() {
+            const container = document.getElementById('persistentRegionsContainer');
+            if (!container) return;
+            const items = persistentRegionsList;
+            const sortIcon = (key) => '<span class="sort-icon">' + persistentRegionsGetSortIcon(key) + '</span>';
+            let html = '<table class="review-table quality-pages-table" style="width: 100%; border-collapse: collapse;"><thead><tr>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); persistentRegionsSortColumn(\'document_id\'); return false;">Dokument ' + sortIcon('document_id') + '</th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); persistentRegionsSortColumn(\'page_id\'); return false;">Seite ' + sortIcon('page_id') + '</th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc;">Region</th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); persistentRegionsSortColumn(\'coverage_ratio\'); return false;">Coverage ' + sortIcon('coverage_ratio') + '</th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc;">Unbedeckte %</th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); persistentRegionsSortColumn(\'child_count\'); return false;">Kinder ' + sortIcon('child_count') + '</th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc;">Schwarze px</th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); persistentRegionsSortColumn(\'children_black_pixels_per_char\'); return false;">Schwarze px/Zeichen (Summe) ' + sortIcon('children_black_pixels_per_char') + '</th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc;">Aktionen</th>' +
+                '</tr></thead><tbody>';
+            items.forEach((item, rowIdx) => {
+                const cov = item.coverage_ratio != null ? (item.coverage_ratio * 100).toFixed(1) + '%' : '–';
+                const unc = item.uncovered_ratio != null ? (item.uncovered_ratio * 100).toFixed(1) + '%' : '–';
+                const darkPx = item.total_dark_pixels_region != null ? item.total_dark_pixels_region : '–';
+                const bpcSum = item.children_black_pixels_per_char != null ? item.children_black_pixels_per_char.toFixed(1) : '–';
+                const detailId = 'persistentRegionDetail_' + rowIdx;
+                html += '<tr data-row-idx="' + rowIdx + '"><td>' + escapeHtml(item.document_title || '') + '</td><td>Seite ' + (item.page_number || '') + '</td><td>#' + (item.region_bbox_index ?? '') + '</td><td>' + cov + '</td><td>' + unc + '</td><td>' + (item.child_count || 0) + '</td><td>' + darkPx + '</td><td>' + bpcSum + '</td><td><a href="#" onclick="showPageInspectInNewTab(' + item.page_id + '); return false;">Inspect</a></td></tr>';
+                html += '<tr id="' + detailId + '" style="display: none;"><td colspan="9" style="padding: 12px; background: #f9f9f9; border-top: none;">';
+                html += '<strong>Kind-Boxen:</strong><table style="width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 12px;"><thead><tr style="background: #e9ecef;"><th style="padding: 6px; border: 1px solid #ddd;">Box</th><th style="padding: 6px; border: 1px solid #ddd;">Text (Vorschau)</th><th style="padding: 6px; border: 1px solid #ddd;">Zeichen</th><th style="padding: 6px; border: 1px solid #ddd;">Schwarze px</th><th style="padding: 6px; border: 1px solid #ddd;">Schwarze px/Zeichen</th><th style="padding: 6px; border: 1px solid #ddd;">Status</th></tr></thead><tbody>';
+                (item.children || []).forEach(ch => {
+                    const rs = getReviewStatusLabel(ch.review_status);
+                    const bp = ch.black_pixels != null ? ch.black_pixels : '–';
+                    const bpc = ch.black_pixels_per_char != null ? ch.black_pixels_per_char.toFixed(1) : '–';
+                    html += '<tr><td style="padding: 6px; border: 1px solid #ddd;">' + (ch.bbox_index ?? '') + '</td><td style="padding: 6px; border: 1px solid #ddd; max-width: 250px; overflow: hidden; text-overflow: ellipsis;">' + escapeHtml(ch.text_preview || '') + '</td><td style="padding: 6px; border: 1px solid #ddd;">' + (ch.char_count ?? 0) + '</td><td style="padding: 6px; border: 1px solid #ddd;">' + bp + '</td><td style="padding: 6px; border: 1px solid #ddd;">' + bpc + '</td><td style="padding: 6px; border: 1px solid #ddd; color: ' + rs.color + ';">' + rs.label + '</td></tr>';
+                });
+                html += '</tbody></table></td></tr>';
+            });
+            html += '</tbody></table>';
+            if (items.length === 0) {
+                html = '<p style="color: #666;">Keine persistente Regionen gefunden. Erstellen Sie in der Inspect-Ansicht eine "Persistente Multibox-Region (+X behalten)" und starten Sie "Nachberechnen".</p>';
+            }
+            container.innerHTML = html;
+            items.forEach((item, rowIdx) => {
+                const mainRow = container.querySelector('tr[data-row-idx="' + rowIdx + '"]');
+                const detailRow = document.getElementById('persistentRegionDetail_' + rowIdx);
+                if (mainRow && detailRow) {
+                    mainRow.style.cursor = 'pointer';
+                    mainRow.onclick = () => {
+                        detailRow.style.display = detailRow.style.display === 'none' ? '' : 'none';
+                    };
+                }
+            });
+        }
+
+        async function loadPersistentRegions() {
+            const container = document.getElementById('persistentRegionsContainer');
+            const msgEl = document.getElementById('persistentRegionsMessages');
+            if (container) container.innerHTML = '<p style="color: #666;">Lade persistente Regionen...</p>';
+            if (msgEl) msgEl.textContent = '';
+
+            const params = new URLSearchParams();
+            const docId = document.getElementById('persistentRegionsFilterDocumentId');
+            if (docId && docId.value) params.append('document_id', docId.value);
+            const minCov = document.getElementById('persistentRegionsFilterMinCoverage');
+            if (minCov && minCov.value !== '') params.append('min_coverage', minCov.value);
+            const maxCov = document.getElementById('persistentRegionsFilterMaxCoverage');
+            if (maxCov && maxCov.value !== '') params.append('max_coverage', maxCov.value);
+            const minUnc = document.getElementById('persistentRegionsFilterMinUncoveredPct');
+            if (minUnc && minUnc.value !== '') params.append('min_uncovered_ratio', String(Number(minUnc.value) / 100));
+            const maxUnc = document.getElementById('persistentRegionsFilterMaxUncoveredPct');
+            if (maxUnc && maxUnc.value !== '') params.append('max_uncovered_ratio', String(Number(maxUnc.value) / 100));
+            const minBpcSum = document.getElementById('persistentRegionsFilterMinBlackPcSum');
+            if (minBpcSum && minBpcSum.value !== '') params.append('min_children_black_pixels_per_char', minBpcSum.value);
+            const maxBpcSum = document.getElementById('persistentRegionsFilterMaxBlackPcSum');
+            if (maxBpcSum && maxBpcSum.value !== '') params.append('max_children_black_pixels_per_char', maxBpcSum.value);
+            params.append('sort', persistentRegionsSortBy || 'page_id');
+            params.append('order', persistentRegionsSortDir || 'asc');
+            params.append('limit', '500');
+            params.append('offset', '0');
+
+            try {
+                const response = await fetch(`${API_BASE}/api/quality/persistent-regions?${params.toString()}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                const data = await response.json();
+                persistentRegionsList = data.items || [];
+                persistentRegionsList = persistentRegionsSortItems(persistentRegionsList);
+                renderPersistentRegionsTable();
+            } catch (error) {
+                if (container) container.innerHTML = '<p style="color: red;">Fehler: ' + escapeHtml(error.message) + '</p>';
+                console.error('Error loading persistent regions:', error);
+            }
+        }
+
+        function resetPersistentRegionsFilters() {
+            const docId = document.getElementById('persistentRegionsFilterDocumentId');
+            const minCov = document.getElementById('persistentRegionsFilterMinCoverage');
+            const maxCov = document.getElementById('persistentRegionsFilterMaxCoverage');
+            const minUnc = document.getElementById('persistentRegionsFilterMinUncoveredPct');
+            const maxUnc = document.getElementById('persistentRegionsFilterMaxUncoveredPct');
+            const minBpcSum = document.getElementById('persistentRegionsFilterMinBlackPcSum');
+            const maxBpcSum = document.getElementById('persistentRegionsFilterMaxBlackPcSum');
+            if (docId) docId.value = '';
+            if (minCov) minCov.value = '';
+            if (maxCov) maxCov.value = '';
+            if (minUnc) minUnc.value = '';
+            if (maxUnc) maxUnc.value = '';
+            if (minBpcSum) minBpcSum.value = '';
+            if (maxBpcSum) maxBpcSum.value = '';
+            loadPersistentRegions();
+        }
+
+        async function batchCreatePersistentRegionJobs() {
+            const statusEl = document.getElementById('persistentRegionsBatchStatus');
+            if (statusEl) statusEl.textContent = 'Erstelle Jobs...';
+            try {
+                const response = await fetch(`${API_BASE}/api/quality/batch-create-persistent-region-jobs`, { method: 'POST' });
+                const data = await response.json();
+                if (response.ok) {
+                    if (statusEl) {
+                        statusEl.textContent = '✓ ' + data.created + ' Jobs erstellt. Sie erscheinen in der Job-Queue.';
+                        statusEl.style.color = '#0f5132';
+                    }
+                    showMessage(data.created + ' Persistent-Region-Quality-Jobs erstellt.', 'success');
+                    setTimeout(() => loadPersistentRegions(), 2000);
+                } else {
+                    if (statusEl) {
+                        statusEl.textContent = 'Fehler: ' + (data.detail || 'Unbekannter Fehler');
+                        statusEl.style.color = '#842029';
+                    }
+                    showMessage('Fehler: ' + (data.detail || 'Unbekannter Fehler'), 'error');
+                }
+            } catch (error) {
+                if (statusEl) {
+                    statusEl.textContent = 'Fehler: ' + error.message;
+                    statusEl.style.color = '#842029';
+                }
+                showMessage('Fehler: ' + error.message, 'error');
             }
         }
 

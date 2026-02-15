@@ -6,7 +6,7 @@ aus der Datenbank. Er kann unabhängig gestartet/gestoppt werden.
 """
 
 import asyncio
-from contextlib import suppress
+import contextlib
 import logging
 import signal
 import sys
@@ -23,6 +23,7 @@ from src.rotary_archiv.core.models import OCRJob, OCRJobStatus  # noqa: E402
 from src.rotary_archiv.ocr.job_processor import (  # noqa: E402
     process_bbox_review_job,
     process_ocr_job,
+    process_persistent_region_quality_job,
     process_quality_job,
 )
 
@@ -100,10 +101,13 @@ async def worker_loop(poll_interval: int = 5):
 
                 current_job_id = job.id
                 job_type = job.job_type or "ocr"  # Fallback zu "ocr" für alte Jobs
-                
-                # Abhängigkeitsprüfung: Quality-Jobs sollten nicht ausgeführt werden,
-                # wenn für dieselbe Seite noch ein PENDING BBox-Review-Job existiert
-                if job_type == "quality" and job.document_page_id:
+
+                # Abhängigkeitsprüfung: Quality- und Persistent-Region-Quality-Jobs
+                # warten, bis kein PENDING BBox-Review-Job für dieselbe Seite existiert
+                if (
+                    job_type in ("quality", "persistent_region_quality")
+                    and job.document_page_id
+                ):
                     pending_review_job = (
                         db.query(OCRJob)
                         .filter(
@@ -116,14 +120,14 @@ async def worker_loop(poll_interval: int = 5):
                     )
                     if pending_review_job:
                         logger.debug(
-                            f"[QUALITY] Überspringe Job {job.id} für Seite {job.document_page_id}: "
+                            f"[{job_type.upper()}] Überspringe Job {job.id} für Seite {job.document_page_id}: "
                             f"BBox-Review-Job {pending_review_job.id} ist noch PENDING"
                         )
                         # Job bleibt PENDING und wird beim nächsten Durchlauf erneut geprüft
                         # (Session wird im finally-Block geschlossen)
                         await asyncio.sleep(1)  # Kurze Pause vor erneutem Polling
                         continue
-                
+
                 logger.info(
                     f"[{job_type.upper()}] Starte Job {job.id} (Dokument {job.document_id}, Seite {job.document_page_id or 'N/A'})"
                 )
@@ -133,6 +137,10 @@ async def worker_loop(poll_interval: int = 5):
                         task = asyncio.create_task(process_bbox_review_job(job.id))  # noqa: RUF006
                     elif job_type == "quality":
                         task = asyncio.create_task(process_quality_job(job.id))  # noqa: RUF006
+                    elif job_type == "persistent_region_quality":
+                        task = asyncio.create_task(  # noqa: RUF006
+                            process_persistent_region_quality_job(job.id)
+                        )
                     else:
                         task = asyncio.create_task(process_ocr_job(job.id))
 
@@ -144,11 +152,10 @@ async def worker_loop(poll_interval: int = 5):
                             )
                             task.cancel()
                             # Warte auf Task-Abbruch mit Timeout
-                            try:
+                            with contextlib.suppress(
+                                asyncio.CancelledError, asyncio.TimeoutError
+                            ):
                                 await asyncio.wait_for(task, timeout=3.0)
-                            except (asyncio.CancelledError, asyncio.TimeoutError):
-                                # Task wurde abgebrochen oder Timeout - das ist OK
-                                pass
                             # Setze Job zurück auf PENDING für erneute Verarbeitung
                             try:
                                 db.refresh(job)
@@ -158,7 +165,9 @@ async def worker_loop(poll_interval: int = 5):
                                 )
                                 db.commit()
                             except Exception as e:
-                                logger.warning(f"Fehler beim Zurücksetzen des Jobs: {e}")
+                                logger.warning(
+                                    f"Fehler beim Zurücksetzen des Jobs: {e}"
+                                )
                             raise asyncio.CancelledError(
                                 f"Job {job.id} wurde abgebrochen"
                             )
@@ -206,23 +215,24 @@ async def worker_loop(poll_interval: int = 5):
             db.close()
 
     logger.info("Worker-Loop beendet")
-    
+
     # Stelle sicher, dass alle Tasks abgebrochen werden
     try:
         loop = asyncio.get_running_loop()
-        tasks = [task for task in asyncio.all_tasks(loop) if not task.done() and task != asyncio.current_task(loop)]
+        tasks = [
+            task
+            for task in asyncio.all_tasks(loop)
+            if not task.done() and task != asyncio.current_task(loop)
+        ]
         if tasks:
             logger.debug(f"Breche {len(tasks)} laufende Tasks ab...")
             for task in tasks:
                 task.cancel()
             # Warte kurz auf Abbruch (mit Timeout)
-            try:
+            with contextlib.suppress(asyncio.TimeoutError, Exception):
                 await asyncio.wait_for(
-                    asyncio.gather(*tasks, return_exceptions=True),
-                    timeout=2.0
+                    asyncio.gather(*tasks, return_exceptions=True), timeout=2.0
                 )
-            except (asyncio.TimeoutError, Exception):
-                pass  # Ignoriere Fehler beim Abbruch
     except RuntimeError:
         # Keine laufende Loop mehr - das ist OK
         pass

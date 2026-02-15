@@ -106,6 +106,9 @@ class AddMultipleBBoxesRequest(BaseModel):
     """Request-Schema für automatische Erkennung mehrerer BBoxen in einem Bereich"""
 
     bbox_pixel: list[int]  # [x1, y1, x2, y2] Pixel-Koordinaten der gezeichneten Box
+    persistent: bool = (
+        False  # True = persistente Multibox-Region (Box bleibt, Status ocr_done)
+    )
 
 
 class UpdateBBoxRequest(BaseModel):
@@ -1963,6 +1966,27 @@ async def add_multiple_bboxes(
         ocr_image_width = ocr_result.image_width
         ocr_image_height = ocr_result.image_height
 
+        # Fallback: Dimensionen aus Seitenbild/PDF ermitteln, wenn OCRResult keine hat
+        if not ocr_image_width or not ocr_image_height:
+            try:
+                if page.file_path and page.file_type in ("png", "jpg", "jpeg"):
+                    file_path = get_file_path(page.file_path)
+                    if file_path.exists() and PIL_AVAILABLE and Image is not None:
+                        img = Image.open(file_path)
+                        ocr_image_width, ocr_image_height = img.size
+                if (not ocr_image_width or not ocr_image_height) and document.file_path:
+                    pdf_path = get_file_path(document.file_path)
+                    if pdf_path.exists():
+                        img = extract_page_as_image(str(pdf_path), page.page_number)
+                        if img:
+                            ocr_image_width, ocr_image_height = img.size
+                if ocr_image_width and ocr_image_height:
+                    logger.info(
+                        f"Add-Multiple-BBox: Dimensionen aus Seitenbild/PDF: {ocr_image_width}x{ocr_image_height}"
+                    )
+            except Exception as e:
+                logger.warning(f"Fallback Bild-Dimensionen: {e}")
+
         if not ocr_image_width or not ocr_image_height:
             raise HTTPException(
                 status_code=400, detail="OCR-Bild-Dimensionen nicht verfügbar"
@@ -2215,6 +2239,8 @@ async def add_multiple_bboxes(
             "multibox_region": True,  # Marker: Dies ist eine Multibox-Region
             "multibox_crop_path": temp_crop_path,  # Pfad zum gecroppten Bild für den Worker
         }
+        if request.persistent:
+            temp_bbox["persistent_multibox_region"] = True
 
         bbox_list.append(temp_bbox)
 

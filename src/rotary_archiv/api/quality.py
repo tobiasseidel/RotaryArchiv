@@ -920,3 +920,385 @@ def batch_create_quality_jobs(
     )
 
     return BatchCreateJobsResponse(created=len(created_jobs), job_ids=created_jobs)
+
+
+def _bbox_inside_region(child_pixel: list, region_pixel: list) -> bool:
+    """Prüft ob child_pixel [x1,y1,x2,y2] vollständig innerhalb region_pixel liegt."""
+    if (
+        not child_pixel
+        or len(child_pixel) != 4
+        or not region_pixel
+        or len(region_pixel) != 4
+    ):
+        return False
+    cx1, cy1, cx2, cy2 = child_pixel
+    rx1, ry1, rx2, ry2 = region_pixel
+    return cx1 >= rx1 and cy1 >= ry1 and cx2 <= rx2 and cy2 <= ry2
+
+
+def _iter_persistent_regions(rows):
+    """Iteriert über alle persistente Regionen aus (OCRResult, DocumentPage, Document) rows."""
+    for ocr_result, page, document in rows:
+        bbox_data_list = ocr_result.bbox_data
+        if isinstance(bbox_data_list, str):
+            try:
+                bbox_data_list = json.loads(bbox_data_list) if bbox_data_list else []
+            except json.JSONDecodeError:
+                bbox_data_list = []
+        if not isinstance(bbox_data_list, list):
+            continue
+
+        pr_metrics_list = []
+        qm = ocr_result.quality_metrics
+        if qm and isinstance(qm, dict):
+            pr_metrics_list = qm.get("persistent_region_metrics") or []
+        elif qm and isinstance(qm, str):
+            try:
+                qm = json.loads(qm)
+                pr_metrics_list = qm.get("persistent_region_metrics") or []
+            except json.JSONDecodeError:
+                pass
+
+        metrics_by_index = {
+            m["region_bbox_index"]: m
+            for m in pr_metrics_list
+            if "region_bbox_index" in m
+        }
+
+        document_title = (
+            document.title or document.filename or f"Dokument #{document.id}"
+        )
+
+        for idx, b in enumerate(bbox_data_list):
+            if b.get("persistent_multibox_region") is not True:
+                continue
+            rp = b.get("bbox_pixel")
+            if not rp or len(rp) != 4:
+                continue
+
+            children = []
+            for cidx, c in enumerate(bbox_data_list):
+                if cidx == idx:
+                    continue
+                if c.get("box_type") in ("ignore_region", "note"):
+                    continue
+                if c.get("persistent_multibox_region") is True:
+                    continue
+                cp = c.get("bbox_pixel")
+                if not cp or len(cp) != 4:
+                    continue
+                if not _bbox_inside_region(cp, rp):
+                    continue
+                text = c.get("reviewed_text") or c.get("text") or ""
+                children.append(
+                    {
+                        "bbox_index": cidx,
+                        "text_preview": text[:50] + ("..." if len(text) > 50 else ""),
+                        "char_count": len(text),
+                        "review_status": c.get("review_status", "pending"),
+                    }
+                )
+
+            metrics = metrics_by_index.get(idx, {})
+            for ch in metrics.get("children", []):
+                bi = ch.get("bbox_index")
+                for c in children:
+                    if c.get("bbox_index") == bi:
+                        c["black_pixels"] = ch.get("black_pixels")
+                        c["black_pixels_per_char"] = ch.get("black_pixels_per_char")
+                        break
+
+            sum_black = sum((c.get("black_pixels") or 0) for c in children)
+            sum_chars = sum((c.get("char_count") or 0) for c in children)
+            children_black_pixels_per_char = (
+                sum_black / sum_chars if sum_chars > 0 else None
+            )
+
+            coverage_ratio = metrics.get("coverage_ratio")
+            uncovered_ratio = metrics.get("uncovered_ratio")
+            total_dark = metrics.get("total_dark_pixels_region")
+
+            yield {
+                "document_id": page.document_id,
+                "document_title": document_title,
+                "page_id": page.id,
+                "page_number": page.page_number,
+                "region_bbox_index": idx,
+                "region_bbox_pixel": rp,
+                "coverage_ratio": coverage_ratio,
+                "uncovered_ratio": uncovered_ratio,
+                "total_dark_pixels_region": total_dark,
+                "child_count": len(children),
+                "children_black_pixels_sum": sum_black if children else None,
+                "children_char_count_sum": sum_chars if children else None,
+                "children_black_pixels_per_char": children_black_pixels_per_char,
+                "children": children,
+            }
+
+
+@router.get("/persistent-regions")
+def get_persistent_regions(
+    document_id: int | None = Query(
+        None, description="Optional: Filter nach Dokument-ID"
+    ),
+    page_id: int | None = Query(None, description="Optional: Filter nach Seiten-ID"),
+    min_coverage: float | None = Query(None, description="Min. Coverage (0.0-1.0)"),
+    max_coverage: float | None = Query(None, description="Max. Coverage (0.0-1.0)"),
+    min_uncovered_ratio: float | None = Query(
+        None, description="Min. Unbedeckte Ratio (0.0-1.0)"
+    ),
+    max_uncovered_ratio: float | None = Query(
+        None, description="Max. Unbedeckte Ratio (0.0-1.0)"
+    ),
+    min_children_black_pixels_per_char: float | None = Query(
+        None, description="Min. Schwarze px/Zeichen (Summe aller Kind-Boxen)"
+    ),
+    max_children_black_pixels_per_char: float | None = Query(
+        None, description="Max. Schwarze px/Zeichen (Summe aller Kind-Boxen)"
+    ),
+    sort: str = Query(
+        "page_id",
+        description="Sortierung: page_id, document_id, coverage_ratio, child_count, children_black_pixels_per_char",
+    ),
+    order: str = Query("asc", description="asc oder desc"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """
+    Liste aller persistenter Multibox-Regionen mit optionalen Metriken und Kind-Boxen.
+    """
+    try:
+        latest_ocr_subq = (
+            db.query(
+                OCRResult.document_page_id,
+                sqlfunc.max(OCRResult.created_at).label("max_created_at"),
+            )
+            .filter(OCRResult.bbox_data.isnot(None))
+            .group_by(OCRResult.document_page_id)
+        ).subquery("latest_ocr")
+
+        query = (
+            db.query(OCRResult, DocumentPage, Document)
+            .join(
+                latest_ocr_subq,
+                (OCRResult.document_page_id == latest_ocr_subq.c.document_page_id)
+                & (OCRResult.created_at == latest_ocr_subq.c.max_created_at),
+            )
+            .join(DocumentPage, DocumentPage.id == OCRResult.document_page_id)
+            .join(Document, Document.id == DocumentPage.document_id)
+            .filter(OCRResult.bbox_data.isnot(None))
+        )
+        if document_id is not None:
+            query = query.filter(DocumentPage.document_id == document_id)
+        if page_id is not None:
+            query = query.filter(DocumentPage.id == page_id)
+        rows = query.order_by(DocumentPage.document_id, DocumentPage.page_number).all()
+
+        all_items = list(_iter_persistent_regions(rows))
+
+        if min_coverage is not None:
+            all_items = [
+                i
+                for i in all_items
+                if i.get("coverage_ratio") is not None
+                and i["coverage_ratio"] >= min_coverage
+            ]
+        if max_coverage is not None:
+            all_items = [
+                i
+                for i in all_items
+                if i.get("coverage_ratio") is not None
+                and i["coverage_ratio"] <= max_coverage
+            ]
+        if min_uncovered_ratio is not None:
+            all_items = [
+                i
+                for i in all_items
+                if i.get("uncovered_ratio") is not None
+                and i["uncovered_ratio"] >= min_uncovered_ratio
+            ]
+        if max_uncovered_ratio is not None:
+            all_items = [
+                i
+                for i in all_items
+                if i.get("uncovered_ratio") is not None
+                and i["uncovered_ratio"] <= max_uncovered_ratio
+            ]
+
+        if min_children_black_pixels_per_char is not None:
+            all_items = [
+                i
+                for i in all_items
+                if i.get("children_black_pixels_per_char") is not None
+                and i["children_black_pixels_per_char"]
+                >= min_children_black_pixels_per_char
+            ]
+        if max_children_black_pixels_per_char is not None:
+            all_items = [
+                i
+                for i in all_items
+                if i.get("children_black_pixels_per_char") is not None
+                and i["children_black_pixels_per_char"]
+                <= max_children_black_pixels_per_char
+            ]
+
+        key_map = {
+            "page_id": lambda i: (i.get("page_id") or 0),
+            "document_id": lambda i: (i.get("document_id") or 0),
+            "coverage_ratio": lambda i: (
+                i.get("coverage_ratio") if i.get("coverage_ratio") is not None else -1.0
+            ),
+            "child_count": lambda i: (i.get("child_count") or 0),
+            "children_black_pixels_per_char": lambda i: (
+                i.get("children_black_pixels_per_char")
+                if i.get("children_black_pixels_per_char") is not None
+                else -1.0
+            ),
+        }
+        sort_key = key_map.get(sort, key_map["page_id"])
+        reverse = order.lower() == "desc"
+        all_items.sort(key=sort_key, reverse=reverse)
+
+        total = len(all_items)
+        items = all_items[offset : offset + limit]
+        return {"total": total, "items": items}
+    except Exception as e:
+        logger.error(f"Fehler GET /persistent-regions: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der persistente Regionen: {e!s}",
+        ) from None
+
+
+@router.post(
+    "/pages/{page_id}/persistent-region-compute",
+    response_model=QualityJobCreateResponse,
+)
+def create_persistent_region_quality_job(page_id: int, db: Session = Depends(get_db)):
+    """Erstellt einen Persistent-Region-Quality-Job für eine einzelne Seite."""
+    page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+    if not page:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Seite nicht gefunden"
+        )
+
+    existing = (
+        db.query(OCRJob)
+        .filter(
+            OCRJob.document_page_id == page_id,
+            OCRJob.job_type == "persistent_region_quality",
+            OCRJob.status.in_([OCRJobStatus.PENDING, OCRJobStatus.RUNNING]),
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Persistent-Region-Quality-Job für diese Seite bereits vorhanden (Job-ID: {existing.id})",
+        )
+
+    job = OCRJob(
+        document_id=page.document_id,
+        document_page_id=page_id,
+        job_type="persistent_region_quality",
+        status=OCRJobStatus.PENDING,
+        language="deu+eng",
+        use_correction=False,
+        priority=0,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return QualityJobCreateResponse(
+        job_id=job.id, message="Persistent-Region-Quality-Job erstellt"
+    )
+
+
+@router.post(
+    "/batch-create-persistent-region-jobs", response_model=BatchCreateJobsResponse
+)
+def batch_create_persistent_region_jobs(
+    document_id: int | None = Query(None, description="Optional: nur dieses Dokument"),
+    db: Session = Depends(get_db),
+):
+    """Erstellt Persistent-Region-Quality-Jobs für alle Seiten mit mindestens einer persistente Region."""
+    pages_with_bbox = (
+        db.query(DocumentPage.id)
+        .join(OCRResult, OCRResult.document_page_id == DocumentPage.id)
+        .filter(OCRResult.bbox_data.isnot(None))
+        .distinct()
+    )
+    if document_id is not None:
+        pages_with_bbox = pages_with_bbox.filter(
+            DocumentPage.document_id == document_id
+        )
+    page_ids = {r[0] for r in pages_with_bbox.all()}
+
+    if not page_ids:
+        return BatchCreateJobsResponse(created=0, job_ids=[])
+
+    pages = (
+        db.query(DocumentPage)
+        .filter(DocumentPage.id.in_(page_ids))
+        .order_by(DocumentPage.id)
+        .all()
+    )
+
+    created_jobs: list[int] = []
+    for page in pages:
+        ocr_result = (
+            db.query(OCRResult)
+            .filter(
+                OCRResult.document_page_id == page.id,
+                OCRResult.bbox_data.isnot(None),
+            )
+            .order_by(OCRResult.created_at.desc())
+            .first()
+        )
+        if not ocr_result or not ocr_result.bbox_data:
+            continue
+        bbox_list = ocr_result.bbox_data
+        if isinstance(bbox_list, str):
+            try:
+                bbox_list = json.loads(bbox_list)
+            except json.JSONDecodeError:
+                continue
+        if not isinstance(bbox_list, list):
+            continue
+        has_region = any(
+            b.get("persistent_multibox_region") is True
+            and b.get("bbox_pixel")
+            and len(b.get("bbox_pixel", [])) == 4
+            for b in bbox_list
+        )
+        if not has_region:
+            continue
+
+        existing = (
+            db.query(OCRJob)
+            .filter(
+                OCRJob.document_page_id == page.id,
+                OCRJob.job_type == "persistent_region_quality",
+                OCRJob.status.in_([OCRJobStatus.PENDING, OCRJobStatus.RUNNING]),
+            )
+            .first()
+        )
+        if existing:
+            continue
+
+        job = OCRJob(
+            document_id=page.document_id,
+            document_page_id=page.id,
+            job_type="persistent_region_quality",
+            status=OCRJobStatus.PENDING,
+            language="deu+eng",
+            use_correction=False,
+            priority=0,
+        )
+        db.add(job)
+        db.flush()
+        created_jobs.append(job.id)
+
+    db.commit()
+    return BatchCreateJobsResponse(created=len(created_jobs), job_ids=created_jobs)

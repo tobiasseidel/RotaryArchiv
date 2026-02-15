@@ -29,7 +29,7 @@ class BBoxItem(BaseModel):
     # Review-Felder (optional)
     review_status: str | None = Field(
         default="pending",
-        description="Review-Status: pending, auto_confirmed, confirmed, rejected, ignored",
+        description="Review-Status: pending, auto_confirmed, confirmed, rejected, ignored, ocr_done",
     )
     reviewed_at: datetime | None = Field(
         default=None, description="Zeitpunkt der Review"

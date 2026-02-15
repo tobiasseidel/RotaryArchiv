@@ -326,3 +326,125 @@ def compute_black_pixels_per_char(
         }
 
     return result_bboxes, summary
+
+
+def compute_region_coverage_and_black_pixels(
+    page_image: "Image.Image",
+    region_bbox_pixel: list[int],
+    child_bboxes: list[dict[str, Any]],
+    dark_threshold: int = 200,
+) -> dict[str, Any]:
+    """
+    Berechnet für eine persistente Multibox-Region: Coverage (Anteil dunkler Pixel,
+    die von Kind-Boxen abgedeckt sind) und pro Kind-Box die schwarzen Pixel.
+
+    Das Seitenbild wird auf die Region rechteckig gecroppt; Kind-BBoxen werden
+    in Crop-Koordinaten umgerechnet. Keine X-Skalierung 0.7 - Koordinaten
+    entsprechen der Bildauflösung (wie im Quality-Job).
+
+    Args:
+        page_image: PIL-Bild der ganzen Seite (bereits auf ocr_result.image_width/height)
+        region_bbox_pixel: [x1, y1, x2, y2] der Region in Seitenkoordinaten
+        child_bboxes: Liste von Dicts mit 'bbox_pixel' (Seitenkoordinaten),
+            'index' (bbox_index), optional 'text'/'reviewed_text' für char_count
+        dark_threshold: Schwellwert für dunkel (0-255)
+
+    Returns:
+        Dict mit:
+        - coverage: Ergebnis von compute_coverage (coverage_ratio, uncovered_ratio, ...)
+        - total_dark_pixels_region: Anzahl dunkler Pixel im Crop
+        - children: Liste {bbox_index, black_pixels, char_count, black_pixels_per_char, text_preview}
+    """
+    if not PIL_AVAILABLE:
+        raise ImportError("PIL/Pillow ist nicht installiert")
+    if not NUMPY_AVAILABLE:
+        raise ImportError("NumPy ist nicht installiert")
+
+    if not region_bbox_pixel or len(region_bbox_pixel) != 4:
+        raise ValueError(f"region_bbox_pixel muss 4 Werte haben: {region_bbox_pixel!r}")
+
+    x1, y1, x2, y2 = region_bbox_pixel
+    w, h = page_image.size
+    x1 = max(0, min(x1, w))
+    y1 = max(0, min(y1, h))
+    x2 = max(0, min(x2, w))
+    y2 = max(0, min(y2, h))
+    if x1 >= x2 or y1 >= y2:
+        return {
+            "coverage": {
+                "coverage_ratio": 0.0,
+                "uncovered_ratio": 1.0,
+                "total_dark_pixels": 0,
+                "uncovered_dark_pixels": 0,
+            },
+            "total_dark_pixels_region": 0,
+            "children": [],
+        }
+
+    crop_img = page_image.crop((x1, y1, x2, y2))
+    crop_w = x2 - x1
+    crop_h = y2 - y1
+
+    child_bboxes_crop: list[dict[str, Any]] = []
+    for ch in child_bboxes:
+        bp = ch.get("bbox_pixel")
+        if not bp or len(bp) != 4:
+            continue
+        cx1, cy1, cx2, cy2 = bp
+        cc1 = max(0, min(cx1 - x1, crop_w))
+        cc2 = max(0, min(cx2 - x1, crop_w))
+        cr1 = max(0, min(cy1 - y1, crop_h))
+        cr2 = max(0, min(cy2 - y1, crop_h))
+        if cc1 >= cc2 or cr1 >= cr2:
+            continue
+        child_bboxes_crop.append({"bbox_pixel": [cc1, cr1, cc2, cr2]})
+
+    coverage_result = compute_coverage(
+        crop_img,
+        child_bboxes_crop,
+        image_width=crop_w,
+        image_height=crop_h,
+        dark_threshold=dark_threshold,
+    )
+
+    gray_crop = crop_img.convert("L") if crop_img.mode != "L" else crop_img
+    crop_array = np.array(gray_crop, dtype=np.uint8)
+    dark_mask = crop_array < dark_threshold
+
+    children_result: list[dict[str, Any]] = []
+    for ch in child_bboxes:
+        bp = ch.get("bbox_pixel")
+        if not bp or len(bp) != 4:
+            continue
+        cx1, cy1, cx2, cy2 = bp
+        cc1 = max(0, min(cx1 - x1, crop_w))
+        cc2 = max(0, min(cx2 - x1, crop_w))
+        cr1 = max(0, min(cy1 - y1, crop_h))
+        cr2 = max(0, min(cy2 - y1, crop_h))
+        if cc1 >= cc2 or cr1 >= cr2:
+            continue
+        slice_ = dark_mask[cr1:cr2, cc1:cc2]
+        black_pixels = int(np.sum(slice_))
+
+        text = ch.get("reviewed_text") or ch.get("text") or ""
+        char_count = len(text)
+        text_preview = text[:50] + ("..." if len(text) > 50 else "")
+        black_pixels_per_char = black_pixels / char_count if char_count > 0 else None
+
+        children_result.append(
+            {
+                "bbox_index": ch.get("index"),
+                "black_pixels": black_pixels,
+                "char_count": char_count,
+                "black_pixels_per_char": float(black_pixels_per_char)
+                if black_pixels_per_char is not None
+                else None,
+                "text_preview": text_preview,
+            }
+        )
+
+    return {
+        "coverage": coverage_result,
+        "total_dark_pixels_region": coverage_result.get("total_dark_pixels", 0),
+        "children": children_result,
+    }
