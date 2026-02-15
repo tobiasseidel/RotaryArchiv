@@ -52,6 +52,10 @@ class BBoxItem(BaseModel):
     note_created_at: str | None = Field(
         default=None, description="Erstellungszeitpunkt der Notiz (ISO)"
     )
+    persistent_multibox_region: bool | None = Field(
+        default=None,
+        description="True wenn diese Box eine persistente Multibox-Region (äußere +X-Box) ist",
+    )
 
 
 class OCRResultResponse(BaseModel):

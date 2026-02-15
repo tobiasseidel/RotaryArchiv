@@ -972,6 +972,9 @@ def get_page_inspect(page_id: int, db: Session = Depends(get_db)):
                         note_author=item.get("note_author"),
                         note_text=item.get("note_text"),
                         note_created_at=item.get("note_created_at"),
+                        persistent_multibox_region=item.get(
+                            "persistent_multibox_region"
+                        ),
                     )
                     for item in ocr_result.bbox_data
                 ]

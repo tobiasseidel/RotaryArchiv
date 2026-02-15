@@ -3167,8 +3167,9 @@
                             ocrResult.bbox_data.forEach((bboxItem, bboxIndex) => {
                                 let x_min, x_max, y_min, y_max;
 
-                                // Review-Status
+                                // Review-Status und persistente Multibox-Region (für Styling/Overlay)
                                 const reviewStatus = bboxItem.review_status || 'pending';
+                                const isPersistentMultibox = bboxItem.persistent_multibox_region === true || bboxItem.persistent_multibox_region === 'true';
                                 const ocrResults = bboxItem.ocr_results || {};
                                 const differences = bboxItem.differences || [];
 
@@ -3243,18 +3244,19 @@
                                     popupContent += `<button class="btn" style="padding: 6px 12px; font-size: 13px; background: #ff9800; color: white;" onclick="openNoteDialogForEditWithData(${data.page_id}, ${bboxIndex})">Bearbeiten</button>`;
                                     popupContent += `<button class="btn" style="padding: 6px 12px; font-size: 13px; background: #dc3545; color: white;" onclick="deleteBBox(${data.page_id}, ${bboxIndex})">Löschen</button>`;
                                     popupContent += '</div></div>';
-                                } else if (bboxItem.persistent_multibox_region === true) {
-                                    // Persistente Multibox-Region
+                                } else if (isPersistentMultibox) {
+                                    // Persistente Multibox-Region: gleiche Buttons wie OCR-Box
                                     rectColor = '#0d9488';
                                     overlayTextContent = (bboxItem.text && bboxItem.text.length <= 50) ? bboxItem.text : '[Persist. Region]';
                                     const rsLabel = getReviewStatusLabel(bboxItem.review_status);
                                     popupContent = '<strong>Persistente Multibox-Region</strong><br><br>';
                                     popupContent += `<strong>Status:</strong> <span style="color: ${rsLabel.color};">${escapeHtml(rsLabel.label)}</span><br>`;
-                                    popupContent += `<strong>Text:</strong> ${escapeHtml(bboxItem.text || '')}<br><br>`;
-                                    popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white; margin-right: 4px;" onclick="editBBox(${data.page_id}, ${bboxIndex})">Bearbeiten</button>`;
-                                    popupContent += `<button class="btn" style="padding: 4px 8px; font-size: 12px; background: #dc3545; color: white;" onclick="deleteBBox(${data.page_id}, ${bboxIndex})">Löschen</button>`;
+                                    popupContent += `<strong>Text:</strong> ${escapeHtml((bboxItem.text || '').slice(0, 80))}${(bboxItem.text || '').length > 80 ? '…' : ''}<br><br>`;
+                                    popupContent += `<button class="btn" style="padding: 6px 12px; font-size: 13px; background: #ff9800; color: white; margin-right: 6px;" onclick="testBBoxReview(${data.page_id}, ${bboxIndex})">Neu berechnen</button>`;
+                                    popupContent += `<button class="btn btn-primary" style="padding: 6px 12px; font-size: 13px; margin-right: 6px;" onclick="confirmBBox(${data.page_id}, ${bboxIndex})">Bestätigen</button>`;
+                                    popupContent += `<button class="btn" style="padding: 6px 12px; font-size: 13px; background: #dc3545; color: white;" onclick="deleteBBox(${data.page_id}, ${bboxIndex})">Löschen</button>`;
                                 } else {
-                                    // OCR-Box
+                                    // OCR-Box (individuelle Boxen – unverändert)
                                     if (reviewStatus === 'confirmed') {
                                         rectColor = '#000000';
                                     } else if (reviewStatus === 'rejected') {
@@ -3307,13 +3309,11 @@
                                 // Erstelle Bounding Box Rectangle
                                 const rectOpts = {
                                     color: rectColor,
-                                    fillOpacity: 0.1,
+                                    fillOpacity: isPersistentMultibox ? 0 : 0.1,
                                     weight: 2,
                                     interactive: true  // Ermöglicht Klicks
                                 };
-                                if (bboxItem.persistent_multibox_region === true) {
-                                    rectOpts.dashArray = '5,5';
-                                }
+                                if (isPersistentMultibox) rectOpts.dashArray = '5,5';
                                 const rect = L.rectangle(rectBounds, rectOpts);
                                 const popupOpts = { autoPan: false };
                                 if (boxType === 'note') {
@@ -3327,6 +3327,9 @@
                                 const centerY = (y_min + y_max) / 2;
                                 const centerX = (x_min + x_max) / 2;
 
+                                // Text-Overlay: bei persistenter Multibox-Region nie (Boxen darunter sichtbar lassen), sonst immer
+                                const showTextOverlay = !isPersistentMultibox;
+
                                 const overlayItem = {
                                     marker: null,
                                     rect: rect,
@@ -3334,8 +3337,9 @@
                                     bboxIndex: bboxIndex,
                                     pageId: data.page_id,
                                     textContent: overlayTextContent,
-                                    defaultStyle: { color: rectColor, fillOpacity: 0.1, weight: 2 },
-                                    boxType: boxType
+                                    defaultStyle: { color: rectColor, fillOpacity: isPersistentMultibox ? 0 : 0.1, weight: 2 },
+                                    boxType: boxType,
+                                    showTextOverlay: showTextOverlay
                                 };
                                 overlayItem.updateIcon = function() {
                                     const bounds = overlayItem.rect.getBounds();
@@ -3360,7 +3364,8 @@
                                     icon: overlayItem.updateIcon(),
                                     interactive: false,
                                     zIndexOffset: 1000
-                                }).addTo(map);
+                                });
+                                if (showTextOverlay) textMarker.addTo(map);
                                 overlayItem.marker = textMarker;
 
                                 const updateOnZoom = () => {
@@ -3369,8 +3374,8 @@
                                 map.on('zoom', updateOnZoom);
                                 map.on('zoomend', updateOnZoom);
 
-                                // Click-Handler: Im Bearbeiten-Modus Auswahl + Anfasser, sonst Text ein/aus + Popup
-                                let textVisible = true;
+                                // Click-Handler: Im Bearbeiten-Modus Auswahl + Anfasser, sonst (wenn Overlay aktiv) Text ein/aus + Popup
+                                let textVisible = showTextOverlay;
                                 rect.on('click', (e) => {
                                     if (inspectEditBoxMode) {
                                         if (e && e.originalEvent) {
@@ -3387,11 +3392,13 @@
                                         if (rect.closePopup) rect.closePopup();
                                         return;
                                     }
-                                    textVisible = !textVisible;
-                                    if (textVisible) {
-                                        textMarker.addTo(map);
-                                    } else {
-                                        map.removeLayer(textMarker);
+                                    if (overlayItem.showTextOverlay) {
+                                        textVisible = !textVisible;
+                                        if (textVisible) {
+                                            textMarker.addTo(map);
+                                        } else {
+                                            map.removeLayer(textMarker);
+                                        }
                                     }
                                 });
 
