@@ -195,6 +195,19 @@ class BatchDeleteRequest(BaseModel):
     max_width_pct: float | None = None
 
 
+class LlmSightJobItem(BaseModel):
+    """Ein Eintrag für einen LLM-Sicht-Job (eine Seite mit ausgewählten BBox-Indizes)."""
+
+    page_id: int
+    bbox_indices: list[int]
+
+
+class LlmSightJobsRequest(BaseModel):
+    """Request-Schema für Erstellung von LLM-Sicht-Jobs."""
+
+    items: list[LlmSightJobItem]
+
+
 def _get_filtered_bboxes_from_request(
     request: BatchChangeStatusRequest
     | BatchDiscardAndRecalcRequest
@@ -1014,6 +1027,48 @@ async def batch_discard_and_recalc(
         "jobs_created": jobs_created,
         "jobs_existing": jobs_existing,
         "errors": errors,
+    }
+
+
+@router.post("/llm-sight-jobs")
+async def create_llm_sight_jobs(
+    request: LlmSightJobsRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Erstellt LLM-Sicht-Jobs für die angegebenen Seiten/BBoxen.
+    Pro Eintrag in items wird ein OCRJob mit job_type="llm_sight" angelegt.
+    """
+    if not request.items:
+        return {"success": True, "job_ids": [], "message": "Keine Einträge"}
+
+    job_ids = []
+    for item in request.items:
+        page = db.query(DocumentPage).filter(DocumentPage.id == item.page_id).first()
+        if not page:
+            logger.warning(
+                "llm-sight-jobs: Seite %s nicht gefunden, überspringe", item.page_id
+            )
+            continue
+        if not item.bbox_indices:
+            continue
+        job = OCRJob(
+            document_id=page.document_id,
+            document_page_id=item.page_id,
+            job_type="llm_sight",
+            status=OCRJobStatus.PENDING,
+            language="deu+eng",
+            use_correction=False,
+            priority=-1,
+            job_params={"bbox_indices": item.bbox_indices},
+        )
+        db.add(job)
+        db.commit()
+        job_ids.append(job.id)
+    return {
+        "success": True,
+        "job_ids": job_ids,
+        "message": f"{len(job_ids)} Job(s) in die Queue gestellt",
     }
 
 

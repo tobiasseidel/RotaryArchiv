@@ -10,19 +10,30 @@ from pathlib import Path
 
 from sqlalchemy.orm.attributes import flag_modified
 
+from src.rotary_archiv.api.settings import get_ocr_sight_settings_for_job
 from src.rotary_archiv.core.database import SessionLocal
 from src.rotary_archiv.core.models import (
     Document,
     DocumentPage,
     DocumentStatus,
+    DocumentUnit,
     OCRJob,
     OCRJobStatus,
     OCRResult,
     OCRSource,
 )
 from src.rotary_archiv.ocr.bbox_ocr import process_bbox_ocr
+from src.rotary_archiv.ocr.content_analysis_llm import call_ollama_content_analysis
+from src.rotary_archiv.ocr.llm_sight import (
+    call_ollama_sight,
+    should_auto_confirm,
+)
 from src.rotary_archiv.ocr.ollama_vision import OllamaVisionOCR
 from src.rotary_archiv.ocr.pipeline import OCRPipeline
+from src.rotary_archiv.utils.bbox_reading_order import (
+    get_reading_order_indices,
+    get_text_in_reading_order,
+)
 from src.rotary_archiv.utils.file_handler import get_file_path
 from src.rotary_archiv.utils.quality_metrics import (
     compute_black_pixels_per_char,
@@ -600,6 +611,509 @@ async def process_bbox_review_job(job_id: int) -> None:
             exc_info=True,
         )
 
+    finally:
+        db.close()
+
+
+async def process_llm_sight_job(job_id: int) -> None:
+    """
+    Verarbeite einen LLM-Sicht-Job: Für ausgewählte BBoxen einer Seite
+    Metrik- und Text-Score berechnen, LLM aufrufen, bei ausreichendem Score
+    auto_confirmed setzen und korrigierten Text speichern.
+    """
+    db = SessionLocal()
+    job = None
+
+    try:
+        job = db.query(OCRJob).filter(OCRJob.id == job_id).first()
+        if not job:
+            return
+        if job.job_type != "llm_sight":
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Ungültiger Job-Typ (erwartet: llm_sight)"
+            db.commit()
+            return
+        if not job.document_page_id:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "llm_sight-Job benötigt document_page_id"
+            db.commit()
+            return
+
+        params = job.job_params or {}
+        bbox_indices = params.get("bbox_indices")
+        if not bbox_indices:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "llm_sight-Job benötigt job_params.bbox_indices"
+            db.commit()
+            return
+
+        page = (
+            db.query(DocumentPage)
+            .filter(DocumentPage.id == job.document_page_id)
+            .first()
+        )
+        if not page:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Seite nicht gefunden"
+            db.commit()
+            return
+
+        ocr_result = (
+            db.query(OCRResult)
+            .filter(
+                OCRResult.document_page_id == job.document_page_id,
+                OCRResult.source == OCRSource.OLLAMA_VISION,
+            )
+            .order_by(OCRResult.created_at.desc())
+            .first()
+        )
+        if not ocr_result or not ocr_result.bbox_data:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Keine BBox-Daten für diese Seite"
+            db.commit()
+            return
+
+        if isinstance(ocr_result.bbox_data, str):
+            bbox_list = json.loads(ocr_result.bbox_data)
+        else:
+            bbox_list = list(ocr_result.bbox_data)
+
+        quality_metrics = ocr_result.quality_metrics or {}
+        if isinstance(quality_metrics, str):
+            quality_metrics = json.loads(quality_metrics)
+        black_pc_bboxes = {
+            b["index"]: b
+            for b in (quality_metrics.get("black_pixels_per_char") or {}).get(
+                "bboxes", []
+            )
+        }
+
+        sight_settings = get_ocr_sight_settings_for_job(db)
+        time_period = sight_settings.get("time_period") or ""
+        language_style = sight_settings.get("language_style") or ""
+        expected_names = sight_settings.get("expected_names") or ""
+        typical_phrases = sight_settings.get("typical_phrases") or ""
+        review_notes = sight_settings.get("review_notes") or ""
+        sight_context = (
+            sight_settings.get("sight_context") or "none"
+        ).strip() or "none"
+        black_pc_min = sight_settings.get("black_pc_min")
+        black_pc_max = sight_settings.get("black_pc_max")
+        score_threshold = sight_settings.get("score_threshold", 0.85)
+        auto_sight_enabled = sight_settings.get("auto_sight_enabled", True)
+
+        if black_pc_min is None:
+            black_pc_min = 18.0
+        if black_pc_max is None:
+            black_pc_max = 35.0
+
+        reading_order_indices = get_reading_order_indices(bbox_list)
+
+        job.status = OCRJobStatus.RUNNING
+        job.current_step = "LLM-Sichtung"
+        db.commit()
+
+        processed = 0
+        auto_confirmed_count = 0
+        for idx in bbox_indices:
+            if idx < 0 or idx >= len(bbox_list):
+                continue
+            bbox = bbox_list[idx]
+            text = (bbox.get("reviewed_text") or bbox.get("text") or "").strip()
+
+            # OCR-Varianten aus ocr_results sammeln (Tesseract, Ollama Vision); Duplikate entfernen
+            variants = None
+            ocr_results = bbox.get("ocr_results") or {}
+            for source in ("ollama_vision", "tesseract"):
+                r = ocr_results.get(source)
+                if r and isinstance(r, dict):
+                    t = (r.get("text") or "").strip()
+                    if t and (variants is None or t not in variants):
+                        if variants is None:
+                            variants = []
+                        variants.append(t)
+            if variants and len(variants) < 2:
+                variants = None
+            if not text and variants:
+                text = variants[0]
+
+            if not text:
+                continue
+
+            # Kontext (Nachbarboxen oder ganze Seite) in Lesereihenfolge
+            context_before = ""
+            context_after = ""
+            if (
+                sight_context in ("neighbours", "full_page")
+                and idx in reading_order_indices
+            ):
+                pos = reading_order_indices.index(idx)
+                # Nachbarboxen: zuerst 2 vorher/nachher; wenn Kontext < 100 Zeichen, auf 4 erweitern
+                n_before = 2 if sight_context == "neighbours" else pos
+                n_after = (
+                    2
+                    if sight_context == "neighbours"
+                    else len(reading_order_indices) - pos - 1
+                )
+                before_indices = reading_order_indices[max(0, pos - n_before) : pos]
+                after_indices = reading_order_indices[pos + 1 : pos + 1 + n_after]
+                context_before = "\n".join(
+                    (
+                        bbox_list[i].get("reviewed_text")
+                        or bbox_list[i].get("text")
+                        or ""
+                    ).strip()
+                    for i in before_indices
+                    if (
+                        bbox_list[i].get("reviewed_text")
+                        or bbox_list[i].get("text")
+                        or ""
+                    ).strip()
+                )
+                context_after = "\n".join(
+                    (
+                        bbox_list[i].get("reviewed_text")
+                        or bbox_list[i].get("text")
+                        or ""
+                    ).strip()
+                    for i in after_indices
+                    if (
+                        bbox_list[i].get("reviewed_text")
+                        or bbox_list[i].get("text")
+                        or ""
+                    ).strip()
+                )
+                if (
+                    sight_context == "neighbours"
+                    and len(context_before + context_after) < 100
+                ):
+                    n_before = 4
+                    n_after = 4
+                    before_indices = reading_order_indices[max(0, pos - n_before) : pos]
+                    after_indices = reading_order_indices[pos + 1 : pos + 1 + n_after]
+                    context_before = "\n".join(
+                        (
+                            bbox_list[i].get("reviewed_text")
+                            or bbox_list[i].get("text")
+                            or ""
+                        ).strip()
+                        for i in before_indices
+                        if (
+                            bbox_list[i].get("reviewed_text")
+                            or bbox_list[i].get("text")
+                            or ""
+                        ).strip()
+                    )
+                    context_after = "\n".join(
+                        (
+                            bbox_list[i].get("reviewed_text")
+                            or bbox_list[i].get("text")
+                            or ""
+                        ).strip()
+                        for i in after_indices
+                        if (
+                            bbox_list[i].get("reviewed_text")
+                            or bbox_list[i].get("text")
+                            or ""
+                        ).strip()
+                    )
+
+            bp_entry = black_pc_bboxes.get(idx)
+            black_pc = (
+                float(bp_entry["black_pixels_per_char"])
+                if bp_entry and bp_entry.get("black_pixels_per_char") is not None
+                else None
+            )
+
+            llm_result = call_ollama_sight(
+                text,
+                time_period=time_period,
+                language_style=language_style,
+                black_pixels_per_char=black_pc,
+                expected_names=expected_names,
+                typical_phrases=typical_phrases,
+                review_notes=review_notes,
+                variants=variants,
+                context_before=context_before,
+                context_after=context_after,
+            )
+
+            llm_confidence = llm_result.get("confidence", 0.0)
+            do_confirm = auto_sight_enabled and should_auto_confirm(
+                llm_confidence,
+                score_threshold,
+                llm_result.get("auto_confirm", False),
+                black_pixels_per_char=black_pc,
+                black_pc_min=black_pc_min,
+                black_pc_max=black_pc_max,
+            )
+
+            corrected = (llm_result.get("corrected_text") or text).strip()
+            reason = (llm_result.get("reason") or "").strip()
+            # Dokumentation der KI-Änderung: Jede Prüfung schreibt einen Eintrag (nachvollziehbar im Bearbeiten-Dialog)
+            changes_summary = reason or (
+                "Text bereinigt/korrigiert durch KI-Review."
+                if corrected != text
+                else "Keine Änderung (KI bestätigt Original)."
+            )
+            if ocr_results_llm := bbox.get("ocr_results"):
+                ocr_results_llm = dict(ocr_results_llm)
+            else:
+                ocr_results_llm = {}
+            # Eintrag für diese Prüfung (immer setzen, damit im Bearbeiten-Fenster sichtbar)
+            llm_sight_entry = {
+                "at": datetime.now().isoformat(),
+                "original_text": text,
+                "corrected_text": corrected,
+                "changes_summary": changes_summary,
+                "confidence": llm_result.get("confidence"),
+                "auto_confirm": llm_result.get("auto_confirm"),
+                "reason": reason,
+                "outcome": "auto_confirmed" if do_confirm else "reviewed",
+            }
+            ocr_results_llm["llm_sight"] = llm_sight_entry
+            # Historie: Liste aller KI-Prüfungen (jede Prüfung = ein Eintrag)
+            reviews_list = list(bbox.get("llm_sight_reviews") or [])
+            reviews_list.append(llm_sight_entry)
+            bbox["llm_sight_reviews"] = reviews_list
+            bbox["ocr_results"] = ocr_results_llm
+            bbox["text"] = corrected
+            bbox["reviewed_text"] = corrected
+            if do_confirm:
+                bbox["review_status"] = "auto_confirmed"
+                bbox["reviewed_at"] = datetime.now().isoformat()
+                bbox["reviewed_by"] = None
+                auto_confirmed_count += 1
+            processed += 1
+
+            job.progress = min(
+                99.0, 70.0 + (processed / max(1, len(bbox_indices))) * 25.0
+            )
+            db.commit()
+
+        ocr_result.bbox_data = bbox_list
+        flag_modified(ocr_result, "bbox_data")
+        job.progress = 100.0
+        job.current_step = (
+            f"Abgeschlossen - {processed} BBoxen, {auto_confirmed_count} auto-bestätigt"
+        )
+        job.status = OCRJobStatus.COMPLETED
+        job.completed_at = datetime.now()
+        db.commit()
+
+        # Quality-Job für diese Seite anlegen
+        existing_quality = (
+            db.query(OCRJob)
+            .filter(
+                OCRJob.document_page_id == job.document_page_id,
+                OCRJob.job_type == "quality",
+                OCRJob.status.in_([OCRJobStatus.PENDING, OCRJobStatus.RUNNING]),
+            )
+            .first()
+        )
+        if not existing_quality:
+            quality_job = OCRJob(
+                document_id=job.document_id,
+                document_page_id=job.document_page_id,
+                job_type="quality",
+                status=OCRJobStatus.PENDING,
+                language="deu+eng",
+                use_correction=False,
+                priority=0,
+            )
+            db.add(quality_job)
+            db.commit()
+            logger.info(
+                f"Quality-Job für Seite {job.document_page_id} nach LLM-Sicht erstellt"
+            )
+
+    except Exception as e:
+        if job:
+            db.refresh(job)
+            if job.status in [OCRJobStatus.CANCELLED, OCRJobStatus.ARCHIVED]:
+                return
+            job.status = OCRJobStatus.FAILED
+            job.error_message = str(e)
+            job.completed_at = datetime.now()
+            db.commit()
+        logger.exception("LLM-Sight Job %s fehlgeschlagen", job_id)
+    finally:
+        db.close()
+
+
+def _get_pages_with_all_boxes_confirmed(db, document_id: int) -> list[DocumentPage]:
+    """
+    Liefert alle Seiten des Dokuments, sortiert nach page_number, bei denen
+    jede BBox review_status in ('confirmed', 'auto_confirmed') hat.
+    """
+    pages = (
+        db.query(DocumentPage)
+        .filter(DocumentPage.document_id == document_id)
+        .order_by(DocumentPage.page_number)
+        .all()
+    )
+    result = []
+    for page in pages:
+        ocr_result = (
+            db.query(OCRResult)
+            .filter(
+                OCRResult.document_page_id == page.id,
+                OCRResult.bbox_data.isnot(None),
+            )
+            .order_by(OCRResult.created_at.desc())
+            .first()
+        )
+        if not ocr_result or not ocr_result.bbox_data:
+            continue
+        bbox_list = (
+            json.loads(ocr_result.bbox_data)
+            if isinstance(ocr_result.bbox_data, str)
+            else list(ocr_result.bbox_data)
+        )
+        if not bbox_list:
+            continue
+        allowed = {"confirmed", "auto_confirmed"}
+        if all((b.get("review_status") or "").strip() in allowed for b in bbox_list):
+            result.append(page)
+    return result
+
+
+def _get_page_text_in_reading_order(db, page_id: int) -> str:
+    """Holt BBox-Text der Seite in Lesereihenfolge (reviewed_text or text)."""
+    ocr_result = (
+        db.query(OCRResult)
+        .filter(
+            OCRResult.document_page_id == page_id,
+            OCRResult.bbox_data.isnot(None),
+        )
+        .order_by(OCRResult.created_at.desc())
+        .first()
+    )
+    if not ocr_result or not ocr_result.bbox_data:
+        return ""
+    bbox_list = (
+        json.loads(ocr_result.bbox_data)
+        if isinstance(ocr_result.bbox_data, str)
+        else list(ocr_result.bbox_data)
+    )
+    return get_text_in_reading_order(bbox_list, separator="\n")
+
+
+async def process_content_analysis_job(job_id: int) -> None:
+    """
+    Content-Analyse pro Dokument: Seiten mit voll bestätigten Boxen durchgehen,
+    jeweils aktuell + nächste Seite an LLM (Zusammengehörigkeit, Zusammenfassung,
+    Personen, Thema, Ort/Datum, Floskeln/Namen), Ergebnis in document_units speichern.
+    """
+    db = SessionLocal()
+    job = None
+
+    try:
+        job = db.query(OCRJob).filter(OCRJob.id == job_id).first()
+        if not job:
+            return
+        if job.job_type != "content_analysis":
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Ungültiger Job-Typ (erwartet: content_analysis)"
+            db.commit()
+            return
+        if not job.document_id:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "content_analysis-Job benötigt document_id"
+            db.commit()
+            return
+        if job.document_page_id:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "content_analysis-Job darf kein document_page_id haben"
+            db.commit()
+            return
+
+        document = db.query(Document).filter(Document.id == job.document_id).first()
+        if not document:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Dokument nicht gefunden"
+            db.commit()
+            return
+
+        pages_confirmed = _get_pages_with_all_boxes_confirmed(db, job.document_id)
+        if not pages_confirmed:
+            job.status = OCRJobStatus.COMPLETED
+            job.current_step = "Keine Seiten mit vollständig bestätigten Boxen"
+            job.completed_at = datetime.now()
+            db.commit()
+            return
+
+        job.status = OCRJobStatus.RUNNING
+        job.current_step = "Content-Analyse"
+        db.commit()
+
+        i = 0
+        units_created = 0
+        while i < len(pages_confirmed):
+            page_a = pages_confirmed[i]
+            page_b = pages_confirmed[i + 1] if i + 1 < len(pages_confirmed) else None
+
+            job.current_step = f"Analysiere Seite {page_a.page_number}"
+            db.commit()
+
+            text_a = _get_page_text_in_reading_order(db, page_a.id)
+            text_b = _get_page_text_in_reading_order(db, page_b.id) if page_b else None
+
+            llm_result = call_ollama_content_analysis(text_a, text_b)
+
+            if not llm_result.get("success"):
+                job.status = OCRJobStatus.FAILED
+                job.error_message = (
+                    llm_result.get("error") or "LLM-Aufruf fehlgeschlagen"
+                )
+                job.completed_at = datetime.now()
+                db.commit()
+                return
+
+            belongs_with_next = llm_result.get("belongs_with_next", False)
+            page_ids = [page_a.id]
+            if belongs_with_next and page_b:
+                page_ids.append(page_b.id)
+                i += 2
+            else:
+                i += 1
+
+            unit = DocumentUnit(
+                document_id=job.document_id,
+                page_ids=page_ids,
+                belongs_with_next=belongs_with_next,
+                summary=llm_result.get("summary"),
+                persons=llm_result.get("persons") or [],
+                topic=llm_result.get("topic"),
+                place=llm_result.get("place"),
+                event_date=llm_result.get("event_date"),
+                extracted_phrases=llm_result.get("extracted_phrases") or [],
+                extracted_names=llm_result.get("extracted_names") or [],
+            )
+            db.add(unit)
+            units_created += 1
+
+        job.status = OCRJobStatus.COMPLETED
+        job.current_step = f"Abgeschlossen - {units_created} Einheit(en)"
+        job.completed_at = datetime.now()
+        db.commit()
+        logger.info(
+            "Content-Analyse Job %s: %s Einheiten für Dokument %s",
+            job_id,
+            units_created,
+            job.document_id,
+        )
+
+    except Exception as e:
+        if job:
+            db.refresh(job)
+            if job.status in [OCRJobStatus.CANCELLED, OCRJobStatus.ARCHIVED]:
+                return
+            job.status = OCRJobStatus.FAILED
+            job.error_message = str(e)
+            job.completed_at = datetime.now()
+            db.commit()
+        logger.exception("Content-Analyse Job %s fehlgeschlagen", job_id)
     finally:
         db.close()
 

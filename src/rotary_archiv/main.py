@@ -2,9 +2,8 @@
 FastAPI Hauptanwendung
 """
 
-from pathlib import Path
-
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,16 +11,10 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.rotary_archiv.api import documents, ocr, pages, quality, review
+from src.rotary_archiv.api import settings as settings_api
+from src.rotary_archiv.config import settings
 
 logger = logging.getLogger(__name__)
-
-# NOTE: Folgende APIs sind vorerst nicht verwendet:
-# - entities (gelöscht)
-# - search (gelöscht)
-# - triples (markiert als ungenutzt)
-# - wikidata (markiert als ungenutzt)
-# - sparql (markiert als ungenutzt)
-from src.rotary_archiv.config import settings
 
 app = FastAPI(
     title="RotaryArchiv API",
@@ -29,13 +22,17 @@ app = FastAPI(
     version="0.1.0",
 )
 
+
 # Request Logging Middleware
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         logger.info(f"Request: {request.method} {request.url.path}")
         response = await call_next(request)
-        logger.info(f"Response: {request.method} {request.url.path} -> {response.status_code}")
+        logger.info(
+            f"Response: {request.method} {request.url.path} -> {response.status_code}"
+        )
         return response
+
 
 app.add_middleware(RequestLoggingMiddleware)
 
@@ -64,6 +61,7 @@ app.include_router(ocr.router)
 app.include_router(pages.router)
 app.include_router(review.router)
 app.include_router(quality.router)
+app.include_router(settings_api.router)
 
 # NOTE: Folgende Router sind vorerst nicht aktiviert:
 # - triples.router (markiert als ungenutzt)

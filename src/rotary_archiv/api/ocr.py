@@ -182,9 +182,17 @@ def create_ocr_job(
             detail=f"Bereits ein aktiver Job vorhanden (ID: {existing_job.id})",
         )
 
+    job_type = (job_data.job_type or "ocr").strip() or "ocr"
+    document_page_id = None
+    if job_type == "content_analysis":
+        document_page_id = None  # Dokument-Level-Job
+    # Andere Job-Typen (ocr, bbox_review, ...) werden typischerweise mit document_page_id erstellt
+
     # Erstelle neuen Job (Status: PENDING - wird vom Worker verarbeitet)
     ocr_job = OCRJob(
         document_id=document_id,
+        document_page_id=document_page_id,
+        job_type=job_type,
         status=OCRJobStatus.PENDING,
         language=job_data.language,
         use_correction=job_data.use_correction,
@@ -334,7 +342,12 @@ def get_queue_status(
         .order_by(OCRJob.created_at.desc())
     )
     if job_type and job_type != "all":
-        jobs_query = jobs_query.filter(OCRJob.job_type == job_type)
+        if job_type == "review":
+            jobs_query = jobs_query.filter(
+                OCRJob.job_type.in_(["bbox_review", "llm_sight"])
+            )
+        else:
+            jobs_query = jobs_query.filter(OCRJob.job_type == job_type)
 
     jobs = jobs_query.all()
     doc_ids_with_jobs = {j.document_id for j in jobs}
@@ -401,7 +414,7 @@ def batch_update_jobs(
     job_dict = {job.id: job for job in jobs}
 
     # Validiere Aktion
-    valid_actions = {"cancel", "restart", "pause", "resume", "archive"}
+    valid_actions = {"cancel", "restart", "pause", "resume", "archive", "delete"}
     if request.action not in valid_actions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -497,6 +510,21 @@ def batch_update_jobs(
                             reason=f"Job hat Status {current_status.value}, kann nicht archiviert werden",
                         )
                     )
+
+            elif request.action == "delete":
+                # delete: Job aus DB entfernen (jeder Status außer RUNNING)
+                if current_status == OCRJobStatus.RUNNING:
+                    errors.append(
+                        JobBatchError(
+                            job_id=job_id,
+                            reason="Laufenden Job kann man nicht löschen (erst pausieren/abbrechen)",
+                        )
+                    )
+                else:
+                    db.delete(job)
+                    updated_count += 1
+                    # Aus dict entfernen, damit spätere Iteration nicht auf gelöschten Job zugreift
+                    del job_dict[job_id]
 
         except Exception as e:
             errors.append(

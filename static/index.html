@@ -695,6 +695,7 @@
             <li><a href="#" id="navDeskew" onclick="showDeskewView(); return false;">Winkel</a></li>
             <li><a href="#" id="navBboxList" onclick="showBboxListView(); return false;">BBox-Liste</a></li>
             <li><a href="#" id="navPersistentRegions" onclick="showPersistentRegionsView(); return false;">Persistente Regionen</a></li>
+            <li><a href="#" id="navOcrSight" onclick="showOcrSightSettingsView(); return false;">OCR-Sichtung</a></li>
         </ul>
     </nav>
 
@@ -791,9 +792,28 @@
             </div>
         </div>
 
+        <!-- Toolbar: Content-Analyse Massenaktion -->
+        <div id="qualityContentAnalysisToolbar" style="display: none; margin-bottom: 12px;">
+            <button type="button" class="btn btn-primary" onclick="startContentAnalysisForSelectedQualityPages()">Content-Analyse starten (Auswahl)</button>
+        </div>
+
         <!-- Liste der Seiten -->
         <div id="qualityPagesContainer">
             <p style="color: #666;">Lade Seiten...</p>
+        </div>
+
+        <!-- Modal: Content-Analyse Ergebnis (document_units) -->
+        <div id="contentAnalysisResultDialog" style="display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 10000; overflow: auto;" onclick="if (event.target === this) closeContentAnalysisResultDialog();">
+            <div style="max-width: 700px; margin: 40px auto; background: white; border-radius: 8px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);" onclick="event.stopPropagation();">
+                <h2 style="margin: 0 0 16px 0;" id="contentAnalysisResultDialogTitle">Content-Analyse – Dokument</h2>
+                <div id="contentAnalysisResultDialogBody" style="max-height: 60vh; overflow-y: auto; margin-bottom: 16px;">
+                    <p style="color: #666;">Lade...</p>
+                </div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-primary" id="contentAnalysisMergeBtn" onclick="mergeContentAnalysisIntoOcrSightFromDialog()" style="display: none;">Floskeln/Namen in OCR-Sicht übernehmen</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeContentAnalysisResultDialog()">Schließen</button>
+                </div>
+            </div>
         </div>
 
         <!-- Detailansicht für einzelne Seite (Modal oder ausklappbar) -->
@@ -955,6 +975,70 @@
         </div>
     </div>
 
+    <!-- OCR-Sichtung Einstellungen -->
+    <div id="ocrSightSettingsView" class="container" style="display: none;">
+        <h1>OCR-Sichtung (KI-Review)</h1>
+        <p class="subtitle">Einstellungen für die LLM-gestützte Sichtung und Auto-Bestätigung von BBoxen</p>
+        <div id="ocrSightSettingsMessages" style="margin-bottom: 12px;"></div>
+        <div style="max-width: 600px; padding: 20px; background: #f9f9f9; border-radius: 8px;">
+            <div style="margin-bottom: 16px;">
+                <label for="ocrSightTimePeriod" style="display: block; font-weight: 600; margin-bottom: 4px;">Zeitraum</label>
+                <input type="text" id="ocrSightTimePeriod" placeholder="z. B. 1900–1945, 1920er" style="width: 100%; padding: 8px; box-sizing: border-box;">
+                <span style="font-size: 12px; color: #666;">Wird dem LLM als Kontext mitgegeben (z. B. für 1531 vs. 1931).</span>
+            </div>
+            <div style="margin-bottom: 16px;">
+                <label for="ocrSightLanguageStyle" style="display: block; font-weight: 600; margin-bottom: 4px;">Sprache / Sprachstil</label>
+                <input type="text" id="ocrSightLanguageStyle" placeholder="z. B. Deutsch, Amtssprache 1920er" style="width: 100%; padding: 8px; box-sizing: border-box;">
+            </div>
+            <div style="margin-bottom: 16px;">
+                <label for="ocrSightExpectedNames" style="display: block; font-weight: 600; margin-bottom: 4px;">Erwartete Namen</label>
+                <textarea id="ocrSightExpectedNames" rows="3" placeholder="z. B. Warnekros, Müller, Schmidt (komma- oder zeilengetrennt)" style="width: 100%; padding: 8px; box-sizing: border-box; resize: vertical;"></textarea>
+                <span style="font-size: 12px; color: #666;">Namen, die im Bestand vorkommen – hilft der KI, gute Erkennung zu erkennen und Confidence höher zu bewerten.</span>
+            </div>
+            <div style="margin-bottom: 16px;">
+                <label for="ocrSightTypicalPhrases" style="display: block; font-weight: 600; margin-bottom: 4px;">Typische Formulierungen / Floskeln</label>
+                <textarea id="ocrSightTypicalPhrases" rows="4" placeholder="z. B. Zusammenkunft in Anwesenheit von … Mitgliedern&#10;Es fehlten … Mitglieder, davon … unentschuldigt" style="width: 100%; padding: 8px; box-sizing: border-box; resize: vertical;"></textarea>
+                <span style="font-size: 12px; color: #666;">Eine pro Zeile. Wenn der Text solche Formulierungen enthält und sinnvoll wirkt, soll die Confidence hoch (0,95–1,0) ausfallen.</span>
+            </div>
+            <div style="margin-bottom: 16px;">
+                <label for="ocrSightReviewNotes" style="display: block; font-weight: 600; margin-bottom: 4px;">Sonstige Anmerkungen / Wünsche zur Review</label>
+                <textarea id="ocrSightReviewNotes" rows="3" placeholder="z. B. Besonders auf Jahreszahlen achten; Abkürzungen nicht auflösen" style="width: 100%; padding: 8px; box-sizing: border-box; resize: vertical;"></textarea>
+                <span style="font-size: 12px; color: #666;">Freier Text – die Review berücksichtigt deine Wünsche.</span>
+            </div>
+            <div style="margin-bottom: 16px;">
+                <label for="ocrSightContext" style="display: block; font-weight: 600; margin-bottom: 4px;">Kontext für KI-Review</label>
+                <select id="ocrSightContext" style="padding: 8px; min-width: 220px;">
+                    <option value="none">Keiner (nur Box-Text)</option>
+                    <option value="neighbours">Umgebung (Nachbarboxen)</option>
+                    <option value="full_page">Ganze Seite</option>
+                </select>
+                <span style="font-size: 12px; color: #666;">Bei kurzen Boxen hilft Kontext (Nachbarn oder ganze Seite), damit die KI den Inhalt besser einordnen kann. corrected_text enthält weiterhin nur die eine Box.</span>
+            </div>
+            <div style="margin-bottom: 16px;">
+                <label for="ocrSightBlackPcMin" style="display: block; font-weight: 600; margin-bottom: 4px;">Schwarze Pixel pro Zeichen (min)</label>
+                <input type="number" id="ocrSightBlackPcMin" min="0" step="0.1" placeholder="20" style="width: 120px; padding: 8px;">
+                <span style="font-size: 12px; color: #666;">Untergrenze des „guten“ Bereichs.</span>
+            </div>
+            <div style="margin-bottom: 16px;">
+                <label for="ocrSightBlackPcMax" style="display: block; font-weight: 600; margin-bottom: 4px;">Schwarze Pixel pro Zeichen (max)</label>
+                <input type="number" id="ocrSightBlackPcMax" min="0" step="0.1" placeholder="30" style="width: 120px; padding: 8px;">
+                <span style="font-size: 12px; color: #666;">Obergrenze des „guten“ Bereichs.</span>
+            </div>
+            <div style="margin-bottom: 16px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="ocrSightAutoSightEnabled" checked>
+                    <span style="font-weight: 600;">Auto-Sichtung aktiv</span>
+                </label>
+                <span style="font-size: 12px; color: #666;">LLM-Sichtung und automatische Bestätigung bei ausreichendem Score.</span>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label for="ocrSightScoreThreshold" style="display: block; font-weight: 600; margin-bottom: 4px;">Score-Threshold für Auto-Sichtung (0–1)</label>
+                <input type="number" id="ocrSightScoreThreshold" min="0" max="1" step="0.05" placeholder="0.85" style="width: 120px; padding: 8px;">
+            </div>
+            <button type="button" class="btn btn-primary" onclick="saveOcrSightSettings()">Speichern</button>
+        </div>
+    </div>
+
     <!-- BBox-Liste View -->
     <div id="bboxListView" class="container" style="display: none;">
         <h1>BBox-Liste</h1>
@@ -1081,6 +1165,7 @@
                     </select>
                     <button type="button" class="btn btn-primary" onclick="bboxListBatchChangeStatus()" style="padding: 4px 12px;">Status ändern</button>
                 </div>
+                <button type="button" class="btn btn-primary" id="bboxListKiReviewBtn" onclick="bboxListBatchKiReview()" style="padding: 4px 12px;">KI-Review</button>
                 <button type="button" class="btn btn-secondary" onclick="bboxListBatchDiscardAndRecalc()">OCR verwerfen und neu berechnen</button>
                 <button type="button" class="btn btn-danger" onclick="bboxListBatchDelete(event)">Ausgewählte löschen</button>
             </div>
@@ -1345,7 +1430,7 @@
             const status = job.status;
             const progress = job.progress || 0;
             const jobType = job.job_type || 'ocr';
-            const jobTypeLabel = jobType === 'bbox_review' ? 'Review' : 'OCR';
+            const jobTypeLabel = jobType === 'bbox_review' ? 'Review' : (jobType === 'llm_sight' ? 'KI-Review' : 'OCR');
 
             let statusBadge = '';
             switch (status) {
@@ -1584,6 +1669,8 @@
                 showBboxListView();
             } else if (hash === '#/persistent-regions') {
                 showPersistentRegionsView();
+            } else if (hash === '#/settings/ocr-sight') {
+                showOcrSightSettingsView();
             } else {
                 showImportView(); // Diese Funktion startet das Polling automatisch
             }
@@ -1617,6 +1704,7 @@
             const deskewView = document.getElementById('deskewView');
             const bboxListView = document.getElementById('bboxListView');
             const persistentRegionsView = document.getElementById('persistentRegionsView');
+            const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
 
             if (importView) importView.style.display = 'block';
             if (reviewView) reviewView.style.display = 'none';
@@ -1628,6 +1716,7 @@
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'none';
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
+            if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -1635,12 +1724,14 @@
             const navDeskew = document.getElementById('navDeskew');
             const navBboxList = document.getElementById('navBboxList');
             const navPersistentRegions = document.getElementById('navPersistentRegions');
+            const navOcrSight = document.getElementById('navOcrSight');
             if (navImport) navImport.classList.add('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.remove('active');
             if (navDeskew) navDeskew.classList.remove('active');
             if (navBboxList) navBboxList.classList.remove('active');
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
+            if (navOcrSight) navOcrSight.classList.remove('active');
 
             // Starte Polling für Queue (falls noch nicht gestartet)
             if (!pollInterval) {
@@ -1659,6 +1750,7 @@
             const deskewView = document.getElementById('deskewView');
             const bboxListView = document.getElementById('bboxListView');
             const persistentRegionsView = document.getElementById('persistentRegionsView');
+            const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'block';
@@ -1670,6 +1762,7 @@
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'none';
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
+            if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -1677,12 +1770,14 @@
             const navDeskew = document.getElementById('navDeskew');
             const navBboxList = document.getElementById('navBboxList');
             const navPersistentRegions = document.getElementById('navPersistentRegions');
+            const navOcrSight = document.getElementById('navOcrSight');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.add('active');
             if (navQuality) navQuality.classList.remove('active');
             if (navDeskew) navDeskew.classList.remove('active');
             if (navBboxList) navBboxList.classList.remove('active');
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
+            if (navOcrSight) navOcrSight.classList.remove('active');
 
             // Stoppe Queue-Polling wenn Review-View angezeigt wird
             if (pollInterval) {
@@ -1702,6 +1797,7 @@
             const deskewView = document.getElementById('deskewView');
             const bboxListView = document.getElementById('bboxListView');
             const persistentRegionsView = document.getElementById('persistentRegionsView');
+            const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -1713,6 +1809,7 @@
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'none';
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
+            if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -1720,12 +1817,14 @@
             const navDeskew = document.getElementById('navDeskew');
             const navBboxList = document.getElementById('navBboxList');
             const navPersistentRegions = document.getElementById('navPersistentRegions');
+            const navOcrSight = document.getElementById('navOcrSight');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.add('active');
             if (navDeskew) navDeskew.classList.remove('active');
             if (navBboxList) navBboxList.classList.remove('active');
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
+            if (navOcrSight) navOcrSight.classList.remove('active');
 
             // Stoppe Queue-Polling wenn Quality-View angezeigt wird
             if (pollInterval) {
@@ -1753,6 +1852,7 @@
             const deskewView = document.getElementById('deskewView');
             const bboxListView = document.getElementById('bboxListView');
             const persistentRegionsView = document.getElementById('persistentRegionsView');
+            const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -1764,6 +1864,7 @@
             if (deskewView) deskewView.style.display = 'block';
             if (bboxListView) bboxListView.style.display = 'none';
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
+            if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -1771,12 +1872,14 @@
             const navDeskew = document.getElementById('navDeskew');
             const navBboxList = document.getElementById('navBboxList');
             const navPersistentRegions = document.getElementById('navPersistentRegions');
+            const navOcrSight = document.getElementById('navOcrSight');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.remove('active');
             if (navDeskew) navDeskew.classList.add('active');
             if (navBboxList) navBboxList.classList.remove('active');
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
+            if (navOcrSight) navOcrSight.classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -1795,6 +1898,7 @@
             const deskewView = document.getElementById('deskewView');
             const bboxListView = document.getElementById('bboxListView');
             const persistentRegionsView = document.getElementById('persistentRegionsView');
+            const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -1806,6 +1910,7 @@
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'block';
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
+            if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -1813,12 +1918,14 @@
             const navDeskew = document.getElementById('navDeskew');
             const navBboxList = document.getElementById('navBboxList');
             const navPersistentRegions = document.getElementById('navPersistentRegions');
+            const navOcrSight = document.getElementById('navOcrSight');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.remove('active');
             if (navDeskew) navDeskew.classList.remove('active');
             if (navBboxList) navBboxList.classList.add('active');
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
+            if (navOcrSight) navOcrSight.classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -1841,6 +1948,7 @@
             const deskewView = document.getElementById('deskewView');
             const bboxListView = document.getElementById('bboxListView');
             const persistentRegionsView = document.getElementById('persistentRegionsView');
+            const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -1852,6 +1960,7 @@
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'none';
             if (persistentRegionsView) persistentRegionsView.style.display = 'block';
+            if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -1859,12 +1968,14 @@
             const navDeskew = document.getElementById('navDeskew');
             const navBboxList = document.getElementById('navBboxList');
             const navPersistentRegions = document.getElementById('navPersistentRegions');
+            const navOcrSight = document.getElementById('navOcrSight');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.remove('active');
             if (navDeskew) navDeskew.classList.remove('active');
             if (navBboxList) navBboxList.classList.remove('active');
             if (navPersistentRegions) navPersistentRegions.classList.add('active');
+            if (navOcrSight) navOcrSight.classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -1873,6 +1984,124 @@
 
             window.location.hash = '#/persistent-regions';
             loadPersistentRegions();
+        }
+
+        function showOcrSightSettingsView() {
+            const importView = document.getElementById('importView');
+            const reviewView = document.getElementById('reviewView');
+            const pageInspectView = document.getElementById('pageInspectView');
+            const qualityView = document.getElementById('qualityView');
+            const deskewView = document.getElementById('deskewView');
+            const bboxListView = document.getElementById('bboxListView');
+            const persistentRegionsView = document.getElementById('persistentRegionsView');
+            const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
+
+            if (importView) importView.style.display = 'none';
+            if (reviewView) reviewView.style.display = 'none';
+            if (pageInspectView) {
+                pageInspectView.style.display = 'none';
+                pageInspectView.classList.remove('active');
+            }
+            if (qualityView) qualityView.style.display = 'none';
+            if (deskewView) deskewView.style.display = 'none';
+            if (bboxListView) bboxListView.style.display = 'none';
+            if (persistentRegionsView) persistentRegionsView.style.display = 'none';
+            if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'block';
+
+            const navImport = document.getElementById('navImport');
+            const navReview = document.getElementById('navReview');
+            const navQuality = document.getElementById('navQuality');
+            const navDeskew = document.getElementById('navDeskew');
+            const navBboxList = document.getElementById('navBboxList');
+            const navPersistentRegions = document.getElementById('navPersistentRegions');
+            const navOcrSight = document.getElementById('navOcrSight');
+            if (navImport) navImport.classList.remove('active');
+            if (navReview) navReview.classList.remove('active');
+            if (navQuality) navQuality.classList.remove('active');
+            if (navDeskew) navDeskew.classList.remove('active');
+            if (navBboxList) navBboxList.classList.remove('active');
+            if (navPersistentRegions) navPersistentRegions.classList.remove('active');
+            if (navOcrSight) navOcrSight.classList.add('active');
+
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+
+            window.location.hash = '#/settings/ocr-sight';
+            loadOcrSightSettings();
+        }
+
+        async function loadOcrSightSettings() {
+            const msg = document.getElementById('ocrSightSettingsMessages');
+            if (msg) msg.textContent = '';
+            try {
+                const response = await fetch(API_BASE + '/api/settings/ocr-sight');
+                if (!response.ok) throw new Error('Einstellungen konnten nicht geladen werden');
+                const data = await response.json();
+                const timePeriod = document.getElementById('ocrSightTimePeriod');
+                const languageStyle = document.getElementById('ocrSightLanguageStyle');
+                const expectedNames = document.getElementById('ocrSightExpectedNames');
+                const typicalPhrases = document.getElementById('ocrSightTypicalPhrases');
+                const blackPcMin = document.getElementById('ocrSightBlackPcMin');
+                const blackPcMax = document.getElementById('ocrSightBlackPcMax');
+                const autoSightEnabled = document.getElementById('ocrSightAutoSightEnabled');
+                const scoreThreshold = document.getElementById('ocrSightScoreThreshold');
+                if (timePeriod) timePeriod.value = data.time_period || '';
+                if (languageStyle) languageStyle.value = data.language_style || '';
+                if (expectedNames) expectedNames.value = data.expected_names || '';
+                if (typicalPhrases) typicalPhrases.value = data.typical_phrases || '';
+                const reviewNotes = document.getElementById('ocrSightReviewNotes');
+                if (reviewNotes) reviewNotes.value = data.review_notes || '';
+                const sightContext = document.getElementById('ocrSightContext');
+                if (sightContext) sightContext.value = data.sight_context || 'none';
+                if (blackPcMin) blackPcMin.value = data.black_pc_min != null ? data.black_pc_min : '';
+                if (blackPcMax) blackPcMax.value = data.black_pc_max != null ? data.black_pc_max : '';
+                if (autoSightEnabled) autoSightEnabled.checked = data.auto_sight_enabled !== false;
+                if (scoreThreshold) scoreThreshold.value = data.score_threshold != null ? data.score_threshold : '0.85';
+            } catch (e) {
+                if (msg) msg.textContent = 'Fehler: ' + (e.message || e);
+                msg.style.color = '#c00';
+            }
+        }
+
+        async function saveOcrSightSettings() {
+            const msg = document.getElementById('ocrSightSettingsMessages');
+            if (msg) msg.textContent = 'Speichern...';
+            msg.style.color = '';
+            try {
+                const timePeriod = document.getElementById('ocrSightTimePeriod');
+                const languageStyle = document.getElementById('ocrSightLanguageStyle');
+                const expectedNames = document.getElementById('ocrSightExpectedNames');
+                const typicalPhrases = document.getElementById('ocrSightTypicalPhrases');
+                const blackPcMin = document.getElementById('ocrSightBlackPcMin');
+                const blackPcMax = document.getElementById('ocrSightBlackPcMax');
+                const autoSightEnabled = document.getElementById('ocrSightAutoSightEnabled');
+                const scoreThreshold = document.getElementById('ocrSightScoreThreshold');
+                const body = {
+                    time_period: timePeriod ? timePeriod.value.trim() : '',
+                    language_style: languageStyle ? languageStyle.value.trim() : '',
+                    expected_names: expectedNames ? expectedNames.value.trim() : '',
+                    typical_phrases: typicalPhrases ? typicalPhrases.value.trim() : '',
+                    review_notes: (document.getElementById('ocrSightReviewNotes') || {}).value?.trim() || '',
+                    sight_context: (document.getElementById('ocrSightContext') || {}).value || 'none',
+                    black_pc_min: blackPcMin && blackPcMin.value !== '' ? parseFloat(blackPcMin.value) : 18,
+                    black_pc_max: blackPcMax && blackPcMax.value !== '' ? parseFloat(blackPcMax.value) : 35,
+                    auto_sight_enabled: autoSightEnabled ? autoSightEnabled.checked : true,
+                    score_threshold: scoreThreshold && scoreThreshold.value !== '' ? parseFloat(scoreThreshold.value) : 0.85
+                };
+                const response = await fetch(API_BASE + '/api/settings/ocr-sight', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!response.ok) throw new Error('Speichern fehlgeschlagen');
+                if (msg) msg.textContent = 'Gespeichert.';
+                msg.style.color = '#080';
+            } catch (e) {
+                if (msg) msg.textContent = 'Fehler: ' + (e.message || e);
+                msg.style.color = '#c00';
+            }
         }
 
         function setupBboxListFilterEnterHandlers() {
@@ -2451,6 +2680,54 @@
                     return { page_id: pageId, bbox_index: bboxIndex };
                 }).filter(ref => !isNaN(ref.page_id) && !isNaN(ref.bbox_index));
             }
+        }
+
+        async function bboxListBatchKiReview() {
+            let bboxes;
+            try {
+                bboxes = await bboxListGetSelectedBBoxes();
+            } catch (err) {
+                bboxListUpdateStatusMessage('', false);
+                alert('Fehler beim Sammeln der ausgewählten BBoxen: ' + err.message);
+                return;
+            }
+            if (bboxes.length === 0) {
+                alert('Keine BBoxen ausgewählt.');
+                return;
+            }
+            const byPage = {};
+            bboxes.forEach(function(ref) {
+                if (!byPage[ref.page_id]) byPage[ref.page_id] = [];
+                byPage[ref.page_id].push(ref.bbox_index);
+            });
+            const items = Object.keys(byPage).map(function(pageId) {
+                return { page_id: parseInt(pageId), bbox_indices: byPage[pageId] };
+            });
+            const btn = document.getElementById('bboxListKiReviewBtn');
+            if (btn) btn.disabled = true;
+            bboxListUpdateStatusMessage('Stelle KI-Review-Jobs in die Queue...', true);
+            try {
+                const response = await fetch(API_BASE + '/api/review/llm-sight-jobs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ items: items })
+                });
+                const data = await response.json().catch(function() { return {}; });
+                bboxListUpdateStatusMessage('', false);
+                if (!response.ok) {
+                    throw new Error(data.detail || response.statusText || 'Fehler beim Erstellen der Jobs');
+                }
+                const jobIds = data.job_ids || [];
+                const msg = data.message || (jobIds.length + ' Job(s) in die Queue gestellt.');
+                alert(msg + ' Sie erscheinen unter Import & Jobs in der Job-Queue.');
+                bboxListSelectedIds.clear();
+                bboxListSelectedAllMatching = false;
+                updateBboxListSelectionCount();
+            } catch (err) {
+                bboxListUpdateStatusMessage('', false);
+                alert('Fehler: ' + (err.message || err));
+            }
+            if (btn) btn.disabled = false;
         }
 
         async function bboxListBatchChangeStatus() {
@@ -3239,7 +3516,8 @@
                                     if (noteAuthor && noteCreated) popupContent += ' · ';
                                     if (noteCreated) popupContent += 'Erstellt: ' + noteCreated;
                                     popupContent += '</div>';
-                                    popupContent += '<div class="inspect-popup-note-text">' + escapeHtml(noteText) + '</div>';
+                                    const noteTextShort = noteText.length > 250 ? noteText.slice(0, 250) + '...' : noteText;
+                                    popupContent += '<div class="inspect-popup-note-text">' + escapeHtml(noteTextShort) + '</div>';
                                     popupContent += '<div class="inspect-popup-note-actions">';
                                     popupContent += `<button class="btn" style="padding: 6px 12px; font-size: 13px; background: #ff9800; color: white;" onclick="openNoteDialogForEditWithData(${data.page_id}, ${bboxIndex})">Bearbeiten</button>`;
                                     popupContent += `<button class="btn" style="padding: 6px 12px; font-size: 13px; background: #dc3545; color: white;" onclick="deleteBBox(${data.page_id}, ${bboxIndex})">Löschen</button>`;
@@ -3251,7 +3529,8 @@
                                     const rsLabel = getReviewStatusLabel(bboxItem.review_status);
                                     popupContent = '<strong>Persistente Multibox-Region</strong><br><br>';
                                     popupContent += `<strong>Status:</strong> <span style="color: ${rsLabel.color};">${escapeHtml(rsLabel.label)}</span><br>`;
-                                    popupContent += `<strong>Text:</strong> ${escapeHtml((bboxItem.text || '').slice(0, 80))}${(bboxItem.text || '').length > 80 ? '…' : ''}<br><br>`;
+                                    const persistText = bboxItem.text || '';
+                                    popupContent += `<strong>Text:</strong> ${escapeHtml(persistText.length > 250 ? persistText.slice(0, 250) + '...' : persistText)}<br><br>`;
                                     popupContent += `<button class="btn" style="padding: 6px 12px; font-size: 13px; background: #ff9800; color: white; margin-right: 6px;" onclick="testBBoxReview(${data.page_id}, ${bboxIndex})">Neu berechnen</button>`;
                                     popupContent += `<button class="btn btn-primary" style="padding: 6px 12px; font-size: 13px; margin-right: 6px;" onclick="confirmBBox(${data.page_id}, ${bboxIndex})">Bestätigen</button>`;
                                     popupContent += `<button class="btn" style="padding: 6px 12px; font-size: 13px; background: #dc3545; color: white;" onclick="deleteBBox(${data.page_id}, ${bboxIndex})">Löschen</button>`;
@@ -3270,7 +3549,9 @@
                                     } else if (reviewStatus === 'ocr_done') {
                                         rectColor = '#0d9488';
                                     }
-                                    popupContent = `<strong>Text:</strong> ${bboxItem.text || ''}<br><strong>Status:</strong> `;
+                                    const ocrText = bboxItem.text || '';
+                                    const ocrTextShort = ocrText.length > 250 ? ocrText.slice(0, 250) + '...' : ocrText;
+                                    popupContent = `<strong>Text:</strong> ${escapeHtml(ocrTextShort)}<br><strong>Status:</strong> `;
                                     let statusBadge = '';
                                     switch (reviewStatus) {
                                         case 'confirmed': statusBadge = '<span style="color: #000000; font-weight: bold;">✓ Geprüft</span>'; break;
@@ -3284,8 +3565,14 @@
                                     popupContent += statusBadge + '<br><br>';
                                     if (ocrResults.tesseract || ocrResults.ollama_vision) {
                                         popupContent += '<strong>OCR-Ergebnisse:</strong><br>';
-                                        if (ocrResults.tesseract) popupContent += `Tesseract: ${ocrResults.tesseract.text || ''}<br>`;
-                                        if (ocrResults.ollama_vision) popupContent += `Ollama: ${ocrResults.ollama_vision.text || ''}<br>`;
+                                        if (ocrResults.tesseract) {
+                                            const t = (ocrResults.tesseract.text || '');
+                                            popupContent += `Tesseract: ${escapeHtml(t.length > 250 ? t.slice(0, 250) + '...' : t)}<br>`;
+                                        }
+                                        if (ocrResults.ollama_vision) {
+                                            const o = (ocrResults.ollama_vision.text || '');
+                                            popupContent += `Ollama: ${escapeHtml(o.length > 250 ? o.slice(0, 250) + '...' : o)}<br>`;
+                                        }
                                         popupContent += '<br>';
                                     }
                                     if (differences.length > 0) {
@@ -3327,8 +3614,8 @@
                                 const centerY = (y_min + y_max) / 2;
                                 const centerX = (x_min + x_max) / 2;
 
-                                // Text-Overlay: bei persistenter Multibox-Region nie (Boxen darunter sichtbar lassen), sonst immer
-                                const showTextOverlay = !isPersistentMultibox;
+                                // Text-Overlay: bei persistenter Multibox nie; bei Notiz-Boxen nie (nur leichte Transparenz), sonst immer
+                                const showTextOverlay = !isPersistentMultibox && boxType !== 'note';
 
                                 const overlayItem = {
                                     marker: null,
@@ -3660,8 +3947,10 @@
                 // Aktualisiere Rectangle-Farbe
                 overlay.rect.setStyle({ color: rectColor });
 
-                // Aktualisiere Popup-Inhalt
-                let popupContent = `<strong>Text:</strong> ${updatedBBox.text || ''}<br>`;
+                // Aktualisiere Popup-Inhalt (Text in Bubble max. 250 Zeichen)
+                const updText = updatedBBox.text || '';
+                const updTextShort = updText.length > 250 ? updText.slice(0, 250) + '...' : updText;
+                let popupContent = `<strong>Text:</strong> ${escapeHtml(updTextShort)}<br>`;
                 popupContent += `<strong>Status:</strong> `;
 
                 let statusBadge = '';
@@ -3690,10 +3979,12 @@
                 if (ocrResults.tesseract || ocrResults.ollama_vision) {
                     popupContent += '<strong>OCR-Ergebnisse:</strong><br>';
                     if (ocrResults.tesseract) {
-                        popupContent += `Tesseract: ${ocrResults.tesseract.text || ''}<br>`;
+                        const t = (ocrResults.tesseract.text || '');
+                        popupContent += `Tesseract: ${escapeHtml(t.length > 250 ? t.slice(0, 250) + '...' : t)}<br>`;
                     }
                     if (ocrResults.ollama_vision) {
-                        popupContent += `Ollama: ${ocrResults.ollama_vision.text || ''}<br>`;
+                        const o = (ocrResults.ollama_vision.text || '');
+                        popupContent += `Ollama: ${escapeHtml(o.length > 250 ? o.slice(0, 250) + '...' : o)}<br>`;
                     }
                     popupContent += '<br>';
                 }
@@ -4264,6 +4555,8 @@
                     <span><strong>0 ausgewählt</strong></span>
                     <button class="btn btn-secondary" onclick="selectAllJobs()">Alle auswählen</button>
                     <button class="btn btn-secondary" onclick="clearSelection()">Auswahl aufheben</button>
+                    <button class="btn btn-secondary" onclick="batchJobAction(Array.from(selectedJobIds), 'pause')" title="Ausgewählte Jobs pausieren (nur PENDING)">Pausieren</button>
+                    <button class="btn btn-danger" onclick="deleteSelectedJobs()" title="Ausgewählte Jobs endgültig löschen">Löschen</button>
                     <button class="btn btn-secondary" onclick="archiveSelectedJobs()" title="Ausgewählte Jobs archivieren" style="margin-left: auto;">
                         <span style="font-size: 16px;">📦</span> Archivieren
                     </button>
@@ -4299,6 +4592,17 @@
             }
 
             await batchJobAction(Array.from(selectedJobIds), 'archive');
+        }
+
+        async function deleteSelectedJobs() {
+            if (selectedJobIds.size === 0) {
+                showMessage('Bitte wählen Sie mindestens einen Job aus', 'error');
+                return;
+            }
+            if (!confirm(`Möchten Sie ${selectedJobIds.size} ausgewählte Job(s) wirklich endgültig löschen? Laufende Jobs müssen zuerst pausiert oder abgebrochen werden.`)) {
+                return;
+            }
+            await batchJobAction(Array.from(selectedJobIds), 'delete');
         }
 
         async function applyBatchAction() {
@@ -4340,7 +4644,9 @@
 
                 const result = await response.json();
 
-                let message = `${result.updated} Job(s) erfolgreich aktualisiert`;
+                let message = action === 'delete'
+                    ? `${result.updated} Job(s) gelöscht`
+                    : `${result.updated} Job(s) erfolgreich aktualisiert`;
                 if (result.errors && result.errors.length > 0) {
                     message += `. ${result.errors.length} Fehler: ` + result.errors.map(e => `Job ${e.job_id}: ${e.reason}`).join(', ');
                     showMessage(message, 'warning');
@@ -4480,6 +4786,90 @@
                     altDiv.appendChild(textDiv);
                     altDiv.appendChild(copyBtn);
                     alternativesContainer.appendChild(altDiv);
+                }
+
+                // KI-Review: Eintrag aus ocr_results.llm_sight oder letzter aus llm_sight_reviews
+                const llmSight = ocrResults.llm_sight || (bboxItem.llm_sight_reviews && bboxItem.llm_sight_reviews.length > 0 ? bboxItem.llm_sight_reviews[bboxItem.llm_sight_reviews.length - 1] : null);
+                if (llmSight) {
+                    const ls = llmSight;
+                    const altDiv = document.createElement('div');
+                    altDiv.className = 'alternative-item';
+                    altDiv.style.borderLeft = '4px solid #2196f3';
+                    altDiv.style.background = '#f0f7ff';
+                    altDiv.style.padding = '10px';
+                    altDiv.style.marginTop = '10px';
+                    const heading = document.createElement('strong');
+                    heading.textContent = 'Letzte KI-Prüfung';
+                    heading.style.fontSize = '14px';
+                    altDiv.appendChild(heading);
+                    if (ls.at) {
+                        const atDiv = document.createElement('div');
+                        atDiv.style.fontSize = '12px';
+                        atDiv.style.color = '#555';
+                        atDiv.style.marginTop = '4px';
+                        try {
+                            const d = new Date(ls.at);
+                            atDiv.textContent = 'Am ' + (isNaN(d.getTime()) ? ls.at : d.toLocaleString('de-DE'));
+                        } catch (e) {
+                            atDiv.textContent = 'Am ' + ls.at;
+                        }
+                        altDiv.appendChild(atDiv);
+                    }
+                    if (ls.outcome) {
+                        const outDiv = document.createElement('div');
+                        outDiv.style.fontSize = '12px';
+                        outDiv.style.fontWeight = '600';
+                        outDiv.style.marginTop = '4px';
+                        outDiv.textContent = ls.outcome === 'auto_confirmed' ? 'Ergebnis: Auto-bestätigt' : 'Ergebnis: Geprüft (nicht auto-bestätigt)';
+                        outDiv.style.color = ls.outcome === 'auto_confirmed' ? '#2e7d32' : '#666';
+                        altDiv.appendChild(outDiv);
+                    }
+                    if (ls.confidence != null) {
+                        const confDiv = document.createElement('div');
+                        confDiv.style.fontSize = '12px';
+                        confDiv.style.color = '#555';
+                        confDiv.textContent = 'Einschätzung: ' + (typeof ls.confidence === 'number' ? (ls.confidence * 100).toFixed(0) + '%' : ls.confidence);
+                        altDiv.appendChild(confDiv);
+                    }
+                    if (ls.changes_summary) {
+                        const sumDiv = document.createElement('div');
+                        sumDiv.style.margin = '6px 0';
+                        sumDiv.style.fontSize = '12px';
+                        sumDiv.style.color = '#333';
+                        sumDiv.textContent = 'Änderungen: ' + ls.changes_summary;
+                        altDiv.appendChild(sumDiv);
+                    }
+                    const origLabel = document.createElement('div');
+                    origLabel.style.fontSize = '11px';
+                    origLabel.style.color = '#666';
+                    origLabel.style.marginTop = '6px';
+                    origLabel.textContent = 'Original vor Korrektur:';
+                    altDiv.appendChild(origLabel);
+                    if (ls.original_text !== undefined && ls.original_text !== '') {
+                        const origDiv = document.createElement('div');
+                        origDiv.style.margin = '4px 0';
+                        origDiv.style.fontFamily = 'monospace';
+                        origDiv.style.whiteSpace = 'pre-wrap';
+                        origDiv.style.fontSize = '12px';
+                        origDiv.textContent = ls.original_text;
+                        altDiv.appendChild(origDiv);
+                    }
+                    const copyBtn = document.createElement('button');
+                    copyBtn.className = 'copy-btn';
+                    copyBtn.textContent = 'Original kopieren';
+                    copyBtn.onclick = () => copyToClipboard(ls.original_text || '');
+                    altDiv.appendChild(copyBtn);
+                    alternativesContainer.appendChild(altDiv);
+                    // Weitere Prüfungen (Historie), falls vorhanden
+                    if (bboxItem.llm_sight_reviews && bboxItem.llm_sight_reviews.length > 1) {
+                        const histDiv = document.createElement('div');
+                        histDiv.className = 'alternative-item';
+                        histDiv.style.marginTop = '8px';
+                        histDiv.style.fontSize = '12px';
+                        histDiv.style.color = '#666';
+                        histDiv.textContent = 'Anzahl KI-Prüfungen: ' + bboxItem.llm_sight_reviews.length;
+                        alternativesContainer.appendChild(histDiv);
+                    }
                 }
 
                 if (alternativesContainer.children.length === 0) {
@@ -6189,7 +6579,10 @@
             if (!container) return;
             const pages = qualityPagesList;
             const sortIcon = function (key) { return '<span class="sort-icon">' + qualityGetSortIcon(key) + '</span>'; };
+            const toolbar = document.getElementById('qualityContentAnalysisToolbar');
+            if (toolbar) toolbar.style.display = 'block';
             let html = '<table class="queue-table quality-pages-table" style="margin-top: 20px;"><thead><tr>' +
+                '<th style="width: 36px;"><input type="checkbox" id="qualitySelectAllContentAnalysis" title="Alle auswählen" onchange="toggleQualityPagesSelectAll()"></th>' +
                 '<th onclick="event.stopPropagation(); qualitySortColumn(\'document_title\'); return false;">Dokument ' + sortIcon('document_title') + '</th>' +
                 '<th onclick="event.stopPropagation(); qualitySortColumn(\'page_number\'); return false;">Seite ' + sortIcon('page_number') + '</th>' +
                 '<th onclick="event.stopPropagation(); qualitySortColumn(\'coverage_ratio\'); return false;">Coverage ' + sortIcon('coverage_ratio') + '</th>' +
@@ -6215,8 +6608,14 @@
                 const documentTitle = page.document_title || (page.document_id ? `Dokument #${page.document_id}` : 'Unbekannt');
                 const bboxDensities = page.bbox_densities || [];
                 const uncoveredPct = ((page.uncovered_ratio != null ? page.uncovered_ratio : (page.total_dark_pixels > 0 ? page.uncovered_dark_pixels / page.total_dark_pixels : 0)) * 100).toFixed(1);
-                html += '<tr data-page-id="' + page.page_id + '"><td><span style="cursor: pointer; font-weight: bold; margin-right: 5px; font-size: 16px; user-select: none;" onclick="toggleQualityBBoxList(' + page.page_id + ')" id="toggleIcon_' + page.page_id + '">+</span>' + escapeHtml(documentTitle) + '</td><td>Seite ' + page.page_number + '</td><td><strong style="color: ' + coverageColor + ';">' + coveragePercent + '%</strong></td><td>' + uncoveredPct + '%</td><td>' + page.bbox_count + '</td><td><strong>' + (page.reviewed_pct != null ? page.reviewed_pct + '%' : '–') + '</strong></td><td><strong style="color: ' + minDensityColor + ';">' + minDensity + '</strong></td><td><strong style="color: ' + maxDensityColor + ';">' + maxDensity + '</strong></td><td>' + minBlackChar + '</td><td>' + maxBlackChar + '</td><td>' + escapeHtml(computedDate) + '</td><td><button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px;" onclick="showQualityDetail(' + page.page_id + ')">Details</button> <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-left: 5px;" onclick="showPageInspectInNewTab(' + page.page_id + ')">Inspect</button></td></tr>';
-                html += '<tr id="bboxListRow_' + page.page_id + '" style="display: none;"><td colspan="12" style="padding: 15px; background: #f9f9f9;"><div style="max-height: 400px; overflow-y: auto;"><table style="width: 100%; border-collapse: collapse;"><thead><tr style="background: #e9ecef;"><th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Index</th><th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Text (Vorschau)</th><th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Zeichen</th><th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Fläche (px)</th><th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Dichte (Zeichen/1000px)</th><th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Schwarze px/Zeichen</th><th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Review-Status</th><th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Aktionen</th></tr></thead><tbody id="bboxListBody_' + page.page_id + '">';
+                const canAnalyze = Number(page.reviewed_pct) === 100;
+                const docId = page.document_id || 0;
+                const analyzeBtn = canAnalyze
+                    ? '<button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px;" onclick="event.stopPropagation(); startContentAnalysisForDocument(' + docId + ')">Inhaltsanalyse</button>'
+                    : '<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" disabled title="Nur bei 100% Review möglich">Inhaltsanalyse</button>';
+                const resultBtn = '<button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-left: 4px;" onclick="event.stopPropagation(); openContentAnalysisResultDialog(' + docId + ')">Ergebnis</button>';
+                html += '<tr data-page-id="' + page.page_id + '" data-document-id="' + docId + '"><td onclick="event.stopPropagation()"><input type="checkbox" class="quality-page-cb" data-page-id="' + page.page_id + '" data-document-id="' + docId + '"></td><td><span style="cursor: pointer; font-weight: bold; margin-right: 5px; font-size: 16px; user-select: none;" onclick="toggleQualityBBoxList(' + page.page_id + ')" id="toggleIcon_' + page.page_id + '">+</span>' + escapeHtml(documentTitle) + '</td><td>Seite ' + page.page_number + '</td><td><strong style="color: ' + coverageColor + ';">' + coveragePercent + '%</strong></td><td>' + uncoveredPct + '%</td><td>' + page.bbox_count + '</td><td><strong>' + (page.reviewed_pct != null ? page.reviewed_pct + '%' : '–') + '</strong></td><td><strong style="color: ' + minDensityColor + ';">' + minDensity + '</strong></td><td><strong style="color: ' + maxDensityColor + ';">' + maxDensity + '</strong></td><td>' + minBlackChar + '</td><td>' + maxBlackChar + '</td><td>' + escapeHtml(computedDate) + '</td><td>' + analyzeBtn + ' ' + resultBtn + ' <button class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-left: 4px;" onclick="showQualityDetail(' + page.page_id + ')">Details</button> <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-left: 5px;" onclick="showPageInspectInNewTab(' + page.page_id + ')">Inspect</button></td></tr>';
+                html += '<tr id="bboxListRow_' + page.page_id + '" style="display: none;"><td colspan="13" style="padding: 15px; background: #f9f9f9;"><div style="max-height: 400px; overflow-y: auto;"><table style="width: 100%; border-collapse: collapse;"><thead><tr style="background: #e9ecef;"><th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Index</th><th style="padding: 8px; border: 1px solid #ddd; text-align: left;">Text (Vorschau)</th><th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Zeichen</th><th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Fläche (px)</th><th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Dichte (Zeichen/1000px)</th><th style="padding: 8px; border: 1px solid #ddd; text-align: right;">Schwarze px/Zeichen</th><th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Review-Status</th><th style="padding: 8px; border: 1px solid #ddd; text-align: center;">Aktionen</th></tr></thead><tbody id="bboxListBody_' + page.page_id + '">';
                 bboxDensities.forEach(bbox => {
                     const rs = getReviewStatusLabel(bbox.review_status);
                     html += '<tr><td style="padding: 6px; border: 1px solid #ddd;">' + bbox.index + '</td><td style="padding: 6px; border: 1px solid #ddd; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="' + escapeHtml((bbox.text_preview || '').replace(/"/g, '&quot;')) + '">' + escapeHtml(bbox.text_preview || '-') + '</td><td style="padding: 6px; border: 1px solid #ddd; text-align: right;">' + (bbox.char_count || 0) + '</td><td style="padding: 6px; border: 1px solid #ddd; text-align: right;">' + (bbox.area_px || 0) + '</td><td style="padding: 6px; border: 1px solid #ddd; text-align: right;"><strong style="color: ' + getDensityColor(bbox.chars_per_1k_px || 0) + ';">' + (bbox.chars_per_1k_px ? bbox.chars_per_1k_px.toFixed(2) : '0.00') + '</strong></td><td style="padding: 6px; border: 1px solid #ddd; text-align: right;">' + (bbox.black_pixels_per_char != null ? bbox.black_pixels_per_char.toFixed(1) : '–') + '</td><td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><span style="color: ' + rs.color + '; font-weight: bold;">' + rs.label + '</span></td><td style="padding: 6px; border: 1px solid #ddd; text-align: center;"><button class="btn" style="padding: 4px 8px; font-size: 12px; background: #9c27b0; color: white;" onclick="editBBox(' + page.page_id + ', ' + bbox.index + ')">Bearbeiten</button></td></tr>';
@@ -6225,6 +6624,164 @@
             });
             html += '</tbody></table>';
             container.innerHTML = html;
+        }
+
+        function toggleQualityPagesSelectAll() {
+            const all = document.getElementById('qualitySelectAllContentAnalysis');
+            const checkboxes = document.querySelectorAll('#qualityPagesContainer .quality-page-cb');
+            if (!all || !checkboxes.length) return;
+            checkboxes.forEach(cb => { cb.checked = all.checked; });
+        }
+
+        async function startContentAnalysisForDocument(documentId) {
+            if (!documentId) return;
+            try {
+                const response = await fetch(`${API_BASE}/api/ocr/documents/${documentId}/jobs`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ job_type: 'content_analysis', language: 'deu+eng', use_correction: false })
+                });
+                if (response.status === 409) {
+                    showMessage('Content-Analyse für dieses Dokument läuft bereits oder ist in der Queue.', 'info');
+                    return;
+                }
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || response.statusText);
+                }
+                showMessage('Content-Analyse gestartet. Ergebnis in der Queue; nach Abschluss hier „Ergebnis“ öffnen.', 'success');
+            } catch (e) {
+                showMessage('Fehler: ' + (e.message || e), 'error');
+            }
+        }
+
+        async function startContentAnalysisForSelectedQualityPages() {
+            const checkboxes = document.querySelectorAll('#qualityPagesContainer .quality-page-cb:checked');
+            const docIds = new Set();
+            checkboxes.forEach(cb => {
+                const id = parseInt(cb.getAttribute('data-document-id'), 10);
+                if (id) docIds.add(id);
+            });
+            if (docIds.size === 0) {
+                showMessage('Bitte mindestens eine Zeile auswählen.', 'info');
+                return;
+            }
+            let started = 0;
+            let skipped = 0;
+            for (const documentId of docIds) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/ocr/documents/${documentId}/jobs`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ job_type: 'content_analysis', language: 'deu+eng', use_correction: false })
+                    });
+                    if (response.status === 409) {
+                        skipped++;
+                        continue;
+                    }
+                    if (!response.ok) {
+                        const err = await response.json().catch(() => ({}));
+                        throw new Error(err.detail || response.statusText);
+                    }
+                    started++;
+                } catch (e) {
+                    showMessage('Fehler bei Dokument ' + documentId + ': ' + (e.message || e), 'error');
+                }
+            }
+            if (skipped > 0 && started > 0) {
+                showMessage(started + ' Content-Analyse(n) gestartet, ' + skipped + ' übersprungen (bereits in Queue).', 'success');
+            } else if (started > 0) {
+                showMessage(started + ' Content-Analyse(n) gestartet.', 'success');
+            } else if (skipped > 0) {
+                showMessage('Alle ausgewählten Dokumente haben bereits einen Job in der Queue.', 'info');
+            }
+        }
+
+        let contentAnalysisResultDialogDocumentId = null;
+
+        async function openContentAnalysisResultDialog(documentId) {
+            const dialog = document.getElementById('contentAnalysisResultDialog');
+            const titleEl = document.getElementById('contentAnalysisResultDialogTitle');
+            const bodyEl = document.getElementById('contentAnalysisResultDialogBody');
+            const mergeBtn = document.getElementById('contentAnalysisMergeBtn');
+            if (!dialog || !titleEl || !bodyEl) return;
+            contentAnalysisResultDialogDocumentId = documentId;
+            titleEl.textContent = 'Content-Analyse – Dokument #' + documentId;
+            bodyEl.innerHTML = '<p style="color: #666;">Lade...</p>';
+            if (mergeBtn) mergeBtn.style.display = 'none';
+            dialog.style.display = 'block';
+            try {
+                const response = await fetch(`${API_BASE}/api/documents/${documentId}/units`);
+                if (!response.ok) throw new Error(response.statusText);
+                const units = await response.json();
+                if (!units || units.length === 0) {
+                    bodyEl.innerHTML = '<p style="color: #666;">Noch keine Content-Analyse für dieses Dokument. Bitte zuerst „Inhaltsanalyse“ starten.</p>';
+                    return;
+                }
+                let html = '';
+                units.forEach((unit, idx) => {
+                    const pageLabel = (unit.page_ids && unit.page_ids.length) ? (unit.page_ids.length > 1 ? 'Seiten ' + unit.page_ids.join(', ') : 'Seite ' + unit.page_ids[0]) : '–';
+                    const nextLabel = unit.belongs_with_next ? 'Ja (Folgeseite gehört dazu)' : 'Nein (anderer Kontext)';
+                    html += '<div style="border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin-bottom: 12px; background: #fafafa;">';
+                    html += '<strong>Einheit ' + (idx + 1) + '</strong> (Seiten: ' + pageLabel + ') &middot; <strong>Folgeseite gehört dazu:</strong> ' + nextLabel + '<br>';
+                    if (unit.summary) html += '<p style="margin: 8px 0 0 0;"><strong>Zusammenfassung:</strong> ' + escapeHtml(unit.summary) + '</p>';
+                    if (unit.persons && unit.persons.length) {
+                        html += '<p style="margin: 8px 0 0 0;"><strong>Personen:</strong></p><ul style="margin: 4px 0 0 0;">';
+                        unit.persons.forEach(p => { html += '<li>' + escapeHtml(p.name || '') + ' – ' + escapeHtml(p.role || '') + '</li>'; });
+                        html += '</ul>';
+                    }
+                    if (unit.topic) html += '<p style="margin: 8px 0 0 0;"><strong>Thema:</strong> ' + escapeHtml(unit.topic) + '</p>';
+                    if (unit.place) html += '<p style="margin: 4px 0 0 0;"><strong>Ort:</strong> ' + escapeHtml(unit.place) + '</p>';
+                    if (unit.event_date) html += '<p style="margin: 4px 0 0 0;"><strong>Datum:</strong> ' + escapeHtml(unit.event_date) + '</p>';
+                    if (unit.extracted_phrases && unit.extracted_phrases.length) {
+                        html += '<p style="margin: 8px 0 0 0;"><strong>Floskeln:</strong></p><ul style="margin: 4px 0 0 0; font-size: 12px;">';
+                        unit.extracted_phrases.forEach(f => { html += '<li>' + escapeHtml(f) + '</li>'; });
+                        html += '</ul>';
+                    }
+                    if (unit.extracted_names && unit.extracted_names.length) {
+                        html += '<p style="margin: 8px 0 0 0;"><strong>Namen:</strong> ' + escapeHtml(unit.extracted_names.join(', ')) + '</p>';
+                    }
+                    html += '</div>';
+                });
+                bodyEl.innerHTML = html;
+                if (mergeBtn) mergeBtn.style.display = 'inline-block';
+            } catch (e) {
+                bodyEl.innerHTML = '<p style="color: #c00;">Fehler: ' + escapeHtml(e.message || e) + '</p>';
+            }
+        }
+
+        function closeContentAnalysisResultDialog() {
+            const dialog = document.getElementById('contentAnalysisResultDialog');
+            if (dialog) dialog.style.display = 'none';
+            contentAnalysisResultDialogDocumentId = null;
+        }
+
+        function mergeContentAnalysisIntoOcrSightFromDialog() {
+            const docId = contentAnalysisResultDialogDocumentId;
+            if (!docId) return;
+            mergeContentAnalysisIntoOcrSight(docId);
+        }
+
+        async function mergeContentAnalysisIntoOcrSight(documentId) {
+            if (!documentId) return;
+            try {
+                const response = await fetch(`${API_BASE}/api/settings/ocr-sight/merge-from-units`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ document_id: documentId })
+                });
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || response.statusText);
+                }
+                const data = await response.json();
+                showMessage('Floskeln und Namen übernommen. In Einstellungen → OCR-Sichtung sichtbar.', 'success');
+                if (contentAnalysisResultDialogDocumentId === documentId) {
+                    closeContentAnalysisResultDialog();
+                }
+            } catch (e) {
+                showMessage('Fehler: ' + (e.message || e), 'error');
+            }
         }
 
         async function loadQualityPages() {
@@ -6266,6 +6823,8 @@
                 if (pages.length === 0) {
                     container.innerHTML = '<p style="color: #666;">Keine Seiten gefunden. Verwenden Sie "Bestand nachberechnen" um Metriken zu berechnen.</p>';
                     qualityPagesList = [];
+                    const t = document.getElementById('qualityContentAnalysisToolbar');
+                    if (t) t.style.display = 'none';
                     return;
                 }
 

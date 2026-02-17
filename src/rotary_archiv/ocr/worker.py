@@ -22,6 +22,8 @@ from src.rotary_archiv.core.database import SessionLocal  # noqa: E402
 from src.rotary_archiv.core.models import OCRJob, OCRJobStatus  # noqa: E402
 from src.rotary_archiv.ocr.job_processor import (  # noqa: E402
     process_bbox_review_job,
+    process_content_analysis_job,
+    process_llm_sight_job,
     process_ocr_job,
     process_persistent_region_quality_job,
     process_quality_job,
@@ -135,11 +137,17 @@ async def worker_loop(poll_interval: int = 5):
                     # Erstelle Task für Job-Verarbeitung, damit wir ihn abbrechen können
                     if job_type == "bbox_review":
                         task = asyncio.create_task(process_bbox_review_job(job.id))  # noqa: RUF006
+                    elif job_type == "llm_sight":
+                        task = asyncio.create_task(process_llm_sight_job(job.id))  # noqa: RUF006
                     elif job_type == "quality":
                         task = asyncio.create_task(process_quality_job(job.id))  # noqa: RUF006
                     elif job_type == "persistent_region_quality":
                         task = asyncio.create_task(  # noqa: RUF006
                             process_persistent_region_quality_job(job.id)
+                        )
+                    elif job_type == "content_analysis":
+                        task = asyncio.create_task(  # noqa: RUF006
+                            process_content_analysis_job(job.id)
                         )
                     else:
                         task = asyncio.create_task(process_ocr_job(job.id))

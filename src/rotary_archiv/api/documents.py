@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from src.rotary_archiv.api.schemas import (
     DocumentResponse,
+    DocumentUnitResponse,
     DocumentUpdate,
 )
 from src.rotary_archiv.core.database import get_db
@@ -21,6 +22,7 @@ from src.rotary_archiv.core.models import (
     Document,
     DocumentPage,
     DocumentStatus,
+    DocumentUnit,
     OCRJob,
     OCRJobStatus,
 )
@@ -191,6 +193,25 @@ def get_document(document_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND, detail="Dokument nicht gefunden"
         )
     return document
+
+
+@router.get("/{document_id}/units", response_model=list[DocumentUnitResponse])
+def get_document_units(document_id: int, db: Session = Depends(get_db)):
+    """
+    Hole alle Content-Analyse-Einheiten (document_units) für ein Dokument.
+    """
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Dokument nicht gefunden"
+        )
+    units = (
+        db.query(DocumentUnit)
+        .filter(DocumentUnit.document_id == document_id)
+        .order_by(DocumentUnit.id)
+        .all()
+    )
+    return [DocumentUnitResponse.model_validate(u) for u in units]
 
 
 @router.put("/{document_id}", response_model=DocumentResponse)

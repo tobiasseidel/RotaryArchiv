@@ -139,6 +139,9 @@ class Document(Base):
     ocr_jobs = relationship(
         "OCRJob", back_populates="document", cascade="all, delete-orphan"
     )
+    document_units = relationship(
+        "DocumentUnit", back_populates="document", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Document(id={self.id}, filename='{self.filename}', status='{self.status}')>"
@@ -298,6 +301,9 @@ class OCRJob(Base):
         String(255), nullable=True
     )  # z.B. "Tesseract OCR", "Ollama Vision", "GPT Correction"
     error_message = Column(Text, nullable=True)
+    job_params = Column(
+        JSON, nullable=True
+    )  # z.B. {"bbox_indices": [0, 2, 5]} für llm_sight
 
     # Timestamps
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
@@ -310,3 +316,60 @@ class OCRJob(Base):
 
     def __repr__(self) -> str:
         return f"<OCRJob(id={self.id}, document_id={self.document_id}, document_page_id={self.document_page_id}, status={self.status})>"
+
+
+class DocumentUnit(Base):
+    """
+    Inhaltseinheit aus einer oder mehreren zusammenhängenden Seiten (z. B. Protokoll).
+    Ergebnis der Content-Analyse: Zusammenfassung, Personen, Thema, Ort/Datum,
+    sowie extrahierte Floskeln und Namen für OCR-Sicht.
+    """
+
+    __tablename__ = "document_units"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(
+        Integer, ForeignKey("documents.id"), nullable=False, index=True
+    )
+    page_ids = Column(JSON, nullable=False)  # Liste von document_page.id in Reihenfolge
+    belongs_with_next = Column(
+        Boolean, default=False, nullable=False, server_default="0"
+    )
+    summary = Column(Text, nullable=True)
+    persons = Column(
+        JSON, nullable=True
+    )  # [{"name": "...", "role": "Clubvorstand"|...}]
+    topic = Column(String(512), nullable=True)
+    place = Column(String(512), nullable=True)
+    event_date = Column(String(100), nullable=True)  # frei formatiert oder ISO
+    extracted_phrases = Column(JSON, nullable=True)  # Liste typischer Formulierungen
+    extracted_names = Column(JSON, nullable=True)  # Liste erwähnter Namen
+
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    document = relationship("Document", back_populates="document_units")
+
+    def __repr__(self) -> str:
+        return f"<DocumentUnit(id={self.id}, document_id={self.document_id}, page_ids={self.page_ids})>"
+
+
+class AppSetting(Base):
+    """Globale App-Einstellungen (Key-Value), z. B. für OCR-Sichtung."""
+
+    __tablename__ = "app_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(255), nullable=False, unique=True, index=True)
+    value = Column(Text, nullable=True)
+    value_json = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<AppSetting(id={self.id}, key='{self.key}')>"

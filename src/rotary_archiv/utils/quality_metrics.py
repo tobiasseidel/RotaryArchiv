@@ -328,6 +328,44 @@ def compute_black_pixels_per_char(
     return result_bboxes, summary
 
 
+def compute_metric_score_black_pc(
+    black_pixels_per_char: float | None,
+    black_pc_min: float,
+    black_pc_max: float,
+) -> float:
+    """
+    Liefert einen Score 0-1 für die Metrik "schwarze Pixel pro Zeichen".
+
+    Im Zielband [black_pc_min, black_pc_max] = 1.0.
+    Darunter: linear ansteigend (zu wenig Tinte = Zeichen fehlen).
+    Darüber: linear abfallend (zu viel Tinte = Schmutz/Doppelungen).
+
+    Args:
+        black_pixels_per_char: Wert der Box (oder None)
+        black_pc_min: Untergrenze des „guten“ Bereichs (z. B. 20)
+        black_pc_max: Obergrenze (z. B. 30)
+
+    Returns:
+        Score zwischen 0.0 und 1.0
+    """
+    if black_pixels_per_char is None:
+        return 0.0
+    if black_pc_min <= black_pixels_per_char <= black_pc_max:
+        return 1.0
+    if black_pixels_per_char < black_pc_min:
+        if black_pc_min <= 0:
+            return 1.0
+        return max(0.0, min(1.0, black_pixels_per_char / black_pc_min))
+    # Über black_pc_max: linear abfallend bis 0 bei black_pc_max * 1.5
+    falloff = black_pc_max * 1.5
+    if black_pixels_per_char >= falloff:
+        return 0.0
+    return max(
+        0.0,
+        1.0 - (black_pixels_per_char - black_pc_max) / (falloff - black_pc_max),
+    )
+
+
 def compute_region_coverage_and_black_pixels(
     page_image: "Image.Image",
     region_bbox_pixel: list[int],

@@ -2,6 +2,7 @@
 API Endpoints für Dokument-Seiten
 """
 
+import json
 import logging
 from pathlib import Path
 import tempfile
@@ -28,6 +29,7 @@ from src.rotary_archiv.core.models import (
     DocumentStatus,
     OCRResult,
 )
+from src.rotary_archiv.utils.bbox_reading_order import sort_bboxes_reading_order
 from src.rotary_archiv.utils.file_handler import get_file_path
 from src.rotary_archiv.utils.image_utils import deskew_image, detect_skew_angle
 from src.rotary_archiv.utils.pdf_splitter import PDF2IMAGE_AVAILABLE, PDFSplitter
@@ -878,7 +880,14 @@ def merge_pages(request: MergePagesRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/{page_id}/inspect", response_model=PageInspectResponse)
-def get_page_inspect(page_id: int, db: Session = Depends(get_db)):
+def get_page_inspect(
+    page_id: int,
+    db: Session = Depends(get_db),
+    sort: str | None = Query(
+        None,
+        description="Optional: 'reading_order' = BBoxen in Lesereihenfolge (oben→unten, links→rechts)",
+    ),
+):
     """
     Hole Page Inspect Daten mit Bounding Boxes für Leaflet-View
 
@@ -953,11 +962,19 @@ def get_page_inspect(page_id: int, db: Session = Depends(get_db)):
     from src.rotary_archiv.api.schemas import BBoxItem
 
     ocr_result_responses = []
+    use_reading_order = sort == "reading_order"
     for ocr_result in ocr_results:
-        # Konvertiere bbox_data JSON zu BBoxItem-Liste
+        # Konvertiere bbox_data JSON zu BBoxItem-Liste (optional in Lesereihenfolge)
         bbox_items = None
         if ocr_result.bbox_data:
             try:
+                data_list = (
+                    json.loads(ocr_result.bbox_data)
+                    if isinstance(ocr_result.bbox_data, str)
+                    else list(ocr_result.bbox_data)
+                )
+                if use_reading_order and data_list:
+                    data_list = sort_bboxes_reading_order(data_list)
                 bbox_items = [
                     BBoxItem(
                         text=item.get("text", ""),
@@ -967,6 +984,7 @@ def get_page_inspect(page_id: int, db: Session = Depends(get_db)):
                         reviewed_at=item.get("reviewed_at"),
                         reviewed_by=item.get("reviewed_by"),
                         ocr_results=item.get("ocr_results"),
+                        llm_sight_reviews=item.get("llm_sight_reviews"),
                         differences=item.get("differences", []),
                         box_type=item.get("box_type"),
                         note_author=item.get("note_author"),
@@ -976,7 +994,7 @@ def get_page_inspect(page_id: int, db: Session = Depends(get_db)):
                             "persistent_multibox_region"
                         ),
                     )
-                    for item in ocr_result.bbox_data
+                    for item in data_list
                 ]
             except Exception as e:
                 logging.warning(f"Fehler beim Konvertieren von bbox_data: {e}")

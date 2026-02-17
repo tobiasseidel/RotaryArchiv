@@ -37,7 +37,11 @@ class BBoxItem(BaseModel):
     reviewed_by: str | None = Field(default=None, description="User-ID des Reviewers")
     ocr_results: dict[str, Any] | None = Field(
         default=None,
-        description="OCR-Ergebnisse von verschiedenen Modellen: {'ollama': {...}, 'tesseract': {...}}",
+        description="OCR-Ergebnisse von verschiedenen Modellen: {'ollama': {...}, 'tesseract': {...}, 'llm_sight': {...}}",
+    )
+    llm_sight_reviews: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Liste aller KI-Review-Prüfungen (jede Prüfung ein Eintrag mit at, outcome, changes_summary, ...)",
     )
     differences: list[dict[str, Any]] | None = Field(
         default=None, description="Liste von Unterschieden zwischen OCR-Ergebnissen"
@@ -111,6 +115,10 @@ class OCRJobResponse(BaseModel):
 class OCRJobCreate(BaseModel):
     """Schema für OCRJob-Erstellung"""
 
+    job_type: str = Field(
+        default="ocr",
+        description="Job-Typ: ocr, bbox_review, llm_sight, quality, content_analysis, ...",
+    )
     language: str = Field(
         default="deu+eng",
         description="Sprache (wird ignoriert, Ollama erkennt automatisch)",
@@ -166,7 +174,7 @@ class JobBatchRequest(BaseModel):
 
     job_ids: list[int] = Field(description="Liste von Job-IDs")
     action: str = Field(
-        description="Aktion: 'cancel' | 'restart' | 'pause' | 'resume' | 'archive'"
+        description="Aktion: 'cancel' | 'restart' | 'pause' | 'resume' | 'archive' | 'delete'"
     )
 
 
@@ -227,6 +235,27 @@ class DocumentResponse(DocumentBase):
     updated_at: datetime
     # Relationships werden optional hinzugefügt wenn benötigt
     ocr_results: list[OCRResultResponse] | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentUnitResponse(BaseModel):
+    """Schema für Content-Analyse-Einheit (eine oder mehrere zusammenhängende Seiten)"""
+
+    id: int
+    document_id: int
+    page_ids: list[int]
+    belongs_with_next: bool
+    summary: str | None
+    persons: list[dict[str, Any]]  # [{"name": "...", "role": "..."}]
+    topic: str | None
+    place: str | None
+    event_date: str | None
+    extracted_phrases: list[str]
+    extracted_names: list[str]
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True

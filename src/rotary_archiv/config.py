@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     density_orange_max: float = 10.0  # Bis zu diesem Wert: orange (akzeptabel)
     # < density_orange_min oder > density_orange_max: rot (problematisch)
 
+    # OCR-Sichtung (LLM) - Fallback wenn keine DB-Settings
+    auto_sight_black_pc_min: float = 18
+    auto_sight_black_pc_max: float = 35
+    auto_sight_threshold: float = 0.85
+
     @property
     def database_url(self) -> str:
         """Database Connection URL (PostgreSQL oder SQLite)"""
