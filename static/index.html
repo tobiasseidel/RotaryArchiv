@@ -1217,6 +1217,7 @@
                 <button class="btn btn-secondary" id="measureSkewDebugBtn" title="Schrägwinkel mit Debug-Informationen messen">Schräge debuggen</button>
                 <button class="btn btn-secondary" id="showDeskewedBtn" title="Begradigte Seite mit erkannten Linien anzeigen">Begradigt anzeigen</button>
                 <button class="btn btn-secondary" id="qualityBtn" title="Qualitätsmetriken für diese Seite anzeigen">Qualität</button>
+                <button class="btn btn-primary" id="exportPdfBtn" title="Seite als PDF mit durchsuchbarem Text exportieren">Als PDF exportieren</button>
                 <button class="btn btn-primary" id="createReviewJobBtn" style="display: none;">Review-Job erstellen</button>
                 <button class="btn btn-primary" id="fullscreenBtn">Vollbild</button>
                 <button class="btn btn-secondary" id="backBtn">Zurück</button>
@@ -4007,6 +4008,46 @@
                 document.getElementById('inspectMultiboxIgnoreBtn').onclick = () => multiboxActionIgnore();
                 document.getElementById('inspectMultiboxRecalcBtn').onclick = () => multiboxActionRecalc();
                 document.getElementById('inspectMultiboxDeleteBtn').onclick = () => multiboxActionDelete();
+
+                // Als PDF exportieren
+                document.getElementById('exportPdfBtn').onclick = async () => {
+                    if (!currentPageData || !currentPageData.page_id) {
+                        alert('Keine Seite geladen.');
+                        return;
+                    }
+                    const pageId = currentPageData.page_id;
+                    const pageNumber = currentPageData.page_number || pageId;
+                    const btn = document.getElementById('exportPdfBtn');
+                    const origText = btn.textContent;
+                    try {
+                        btn.disabled = true;
+                        btn.textContent = 'PDF wird erstellt…';
+                        const url = `${API_BASE}/api/pages/${pageId}/export-pdf`;
+                        const res = await fetch(url);
+                        if (!res.ok) {
+                            const err = await res.text();
+                            throw new Error(err || res.statusText);
+                        }
+                        const blob = await res.blob();
+                        const disposition = res.headers.get('Content-Disposition');
+                        let filename = `page_${pageNumber}.pdf`;
+                        if (disposition) {
+                            const m = disposition.match(/filename="?([^";]+)"?/);
+                            if (m) filename = m[1].trim();
+                        }
+                        const a = document.createElement('a');
+                        a.href = URL.createObjectURL(blob);
+                        a.download = filename;
+                        a.click();
+                        URL.revokeObjectURL(a.href);
+                    } catch (e) {
+                        console.error('PDF-Export fehlgeschlagen:', e);
+                        alert('PDF-Export fehlgeschlagen: ' + (e.message || e));
+                    } finally {
+                        btn.disabled = false;
+                        btn.textContent = origText;
+                    }
+                };
 
                 // Vollbild-Button
                 document.getElementById('fullscreenBtn').onclick = () => {

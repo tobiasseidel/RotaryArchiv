@@ -9,7 +9,7 @@ import tempfile
 import traceback
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -32,6 +32,12 @@ from src.rotary_archiv.core.models import (
 from src.rotary_archiv.utils.bbox_reading_order import sort_bboxes_reading_order
 from src.rotary_archiv.utils.file_handler import get_file_path
 from src.rotary_archiv.utils.image_utils import deskew_image, detect_skew_angle
+from src.rotary_archiv.utils.pdf_export import (
+    DEFAULT_TEXT_OPACITY,
+    EXPORT_DPI,
+    REPORTLAB_AVAILABLE,
+    build_page_pdf,
+)
 from src.rotary_archiv.utils.pdf_splitter import PDF2IMAGE_AVAILABLE, PDFSplitter
 from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
 
@@ -1042,4 +1048,75 @@ def get_page_inspect(
         image_width=image_width,
         image_height=image_height,
         ocr_results=ocr_result_responses,
+    )
+
+
+@router.get("/{page_id}/export-pdf")
+def export_page_pdf(
+    page_id: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Exportiert eine Seite als PDF: Original-Hintergrund plus durchsuchbarer,
+    transparenter Text aus den OCR-Textboxen (50 % Deckkraft).
+    """
+    if not REPORTLAB_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ReportLab ist für PDF-Export nicht verfügbar",
+        )
+    page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+    if not page:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Seite nicht gefunden"
+        )
+    try:
+        img = _load_page_as_pil(page, db, dpi=EXPORT_DPI)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.warning(f"Seitenbild für Export nicht geladen: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Seitenbild konnte nicht geladen werden",
+        ) from e
+    export_w, export_h = img.size
+    ocr_width, ocr_height = export_w, export_h
+    bbox_items: list[dict] = []
+    ocr_results = (
+        db.query(OCRResult)
+        .filter(OCRResult.document_page_id == page_id)
+        .order_by(OCRResult.created_at.desc())
+        .limit(1)
+        .all()
+    )
+    if ocr_results and ocr_results[0].bbox_data:
+        ocr = ocr_results[0]
+        ocr_width = ocr.image_width or export_w
+        ocr_height = ocr.image_height or export_h
+        raw = ocr.bbox_data
+        if isinstance(raw, str):
+            raw = json.loads(raw)
+        if isinstance(raw, list):
+            bbox_items = raw
+    try:
+        pdf_buffer = build_page_pdf(
+            img,
+            bbox_items,
+            ocr_width,
+            ocr_height,
+            dpi=EXPORT_DPI,
+            text_opacity=DEFAULT_TEXT_OPACITY,
+        )
+    except Exception as e:
+        logging.exception("PDF-Export fehlgeschlagen")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"PDF konnte nicht erstellt werden: {e}",
+        ) from e
+    filename = f"page_{page.page_number}.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
