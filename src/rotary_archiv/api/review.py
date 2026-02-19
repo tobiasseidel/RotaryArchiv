@@ -93,6 +93,13 @@ class SaveReviewedBBoxRequest(BaseModel):
     reviewed_text: str
 
 
+class SetBBoxTextRequest(BaseModel):
+    """Request-Schema für Batch-Text füllen: Text setzen, optional als geprüft markieren"""
+
+    text: str
+    confirm: bool = False  # True = zusätzlich review_status auf "confirmed" setzen
+
+
 class AddBBoxRequest(BaseModel):
     """Request-Schema für neu hinzugefügte BBox"""
 
@@ -1235,6 +1242,8 @@ async def batch_delete(
 async def get_bbox_crop_preview(
     page_id: int,
     bbox_index: int,
+    padding: int = 20,
+    border: int = 3,
     db: Session = Depends(get_db),
 ):
     """
@@ -1245,6 +1254,8 @@ async def get_bbox_crop_preview(
     Args:
         page_id: ID der Seite
         bbox_index: Index der BBox in der Liste
+        padding: Rand um die Box in Pixeln (mehr = mehr Umgebung)
+        border: Linienstärke des roten Rahmens in Pixeln (z. B. 1 für dünn)
 
     Returns:
         FileResponse mit dem Crop-Bild
@@ -1361,8 +1372,8 @@ async def get_bbox_crop_preview(
             bbox_pixel[3],  # y2 (unverändert)
         ]
 
-        # Padding für Preview (20 Pixel)
-        padding = 20
+        # Padding für Preview (Query-Parameter, Standard 20)
+        padding = max(0, min(200, padding))
 
         # Berechne Crop-Bereich mit Padding (kann über Seitenrand hinausgehen)
         x1, y1, x2, y2 = bbox_pixel_adjusted
@@ -1430,11 +1441,12 @@ async def get_bbox_crop_preview(
         current_box_x2 = x2 - crop_x1
         current_box_y2 = y2 - crop_y1
 
-        # Zeichne Grenzen der aktuellen Box (dick, rot)
+        # Zeichne Grenzen der aktuellen Box (rot, Linienstärke per Query-Parameter)
+        border_width = max(1, min(20, border))
         draw.rectangle(
             [current_box_x1, current_box_y1, current_box_x2, current_box_y2],
             outline="red",
-            width=3,
+            width=border_width,
         )
 
         # Zeichne Grenzen der umliegenden Boxen (dünn, blau)
@@ -1555,6 +1567,67 @@ async def save_reviewed_bbox(
         "success": True,
         "message": f"BBox {bbox_index} als geprüft gespeichert",
         "bbox": bbox_list[bbox_index],
+    }
+
+
+@router.post("/pages/{page_id}/bboxes/{bbox_index}/set-text")
+async def set_bbox_text(
+    page_id: int,
+    bbox_index: int,
+    request: SetBBoxTextRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Setzt den Text einer BBox (z. B. für Batch „Text füllen“).
+    Bei confirm=True wird die Box zusätzlich als „geprüft“ markiert.
+    """
+    page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+    if not page:
+        raise HTTPException(status_code=404, detail="Seite nicht gefunden")
+
+    ocr_result = (
+        db.query(OCRResult)
+        .filter(
+            OCRResult.document_page_id == page_id,
+            OCRResult.source == OCRSource.OLLAMA_VISION,
+        )
+        .order_by(OCRResult.created_at.desc())
+        .first()
+    )
+    if not ocr_result or not ocr_result.bbox_data:
+        raise HTTPException(
+            status_code=404, detail="Keine BBox-Daten für diese Seite gefunden"
+        )
+
+    if isinstance(ocr_result.bbox_data, str):
+        bbox_list = json.loads(ocr_result.bbox_data)
+    else:
+        bbox_list = ocr_result.bbox_data.copy()
+
+    if bbox_index < 0 or bbox_index >= len(bbox_list):
+        raise HTTPException(status_code=404, detail="BBox-Index außerhalb des Bereichs")
+
+    item = bbox_list[bbox_index]
+    if not isinstance(item, dict):
+        item = dict(item)
+    item = dict(item)
+    item["text"] = request.text
+    if request.confirm:
+        item["review_status"] = "confirmed"
+        item["reviewed_at"] = datetime.now().isoformat()
+        item["reviewed_by"] = None
+    bbox_list[bbox_index] = item
+    ocr_result.bbox_data = bbox_list
+    flag_modified(ocr_result, "bbox_data")
+    db.commit()
+
+    if request.confirm:
+        _create_quality_job_if_needed(page_id, db)
+
+    return {
+        "success": True,
+        "message": "Text gesetzt"
+        + (" und als geprüft markiert" if request.confirm else ""),
     }
 
 
@@ -2002,7 +2075,7 @@ async def add_multiple_bboxes(
         if not document:
             raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
 
-        # Hole OCRResult für Bild-Dimensionen
+        # Hole OCRResult für Bild-Dimensionen (oder lege eines an, wenn noch keins existiert)
         ocr_result = (
             db.query(OCRResult)
             .filter(
@@ -2013,15 +2086,10 @@ async def add_multiple_bboxes(
             .first()
         )
 
-        if not ocr_result:
-            raise HTTPException(
-                status_code=404, detail="Keine OCR-Daten für diese Seite gefunden"
-            )
+        ocr_image_width = ocr_result.image_width if ocr_result else None
+        ocr_image_height = ocr_result.image_height if ocr_result else None
 
-        ocr_image_width = ocr_result.image_width
-        ocr_image_height = ocr_result.image_height
-
-        # Fallback: Dimensionen aus Seitenbild/PDF ermitteln, wenn OCRResult keine hat
+        # Fallback: Dimensionen aus Seitenbild/PDF ermitteln (wenn kein OCRResult oder keine Dimensionen)
         if not ocr_image_width or not ocr_image_height:
             try:
                 if page.file_path and page.file_type in ("png", "jpg", "jpeg"):
@@ -2044,7 +2112,26 @@ async def add_multiple_bboxes(
 
         if not ocr_image_width or not ocr_image_height:
             raise HTTPException(
-                status_code=400, detail="OCR-Bild-Dimensionen nicht verfügbar"
+                status_code=400,
+                detail="Bild-Dimensionen nicht verfügbar (Seitenbild/PDF konnte nicht gelesen werden)",
+            )
+
+        # Wenn noch kein OCRResult existiert: leeres anlegen, damit die persistente Multibox gespeichert werden kann
+        if not ocr_result:
+            ocr_result = OCRResult(
+                document_id=page.document_id,
+                document_page_id=page_id,
+                source=OCRSource.OLLAMA_VISION,
+                text="",
+                image_width=ocr_image_width,
+                image_height=ocr_image_height,
+                bbox_data=[],
+            )
+            db.add(ocr_result)
+            db.flush()
+            logger.info(
+                f"Add-Multiple-BBox: Neues OCRResult für Seite {page_id} angelegt (noch keine OCR-Daten); "
+                f"Dimensionen {ocr_image_width}x{ocr_image_height}"
             )
 
         logger.info(

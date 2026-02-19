@@ -525,6 +525,12 @@ def _iter_matching_bboxes(
             ):
                 continue
 
+            full_text = ""
+            if idx < len(bbox_data_list):
+                bd = bbox_data_list[idx]
+                full_text = bd.get("reviewed_text") or bd.get("text") or ""
+                if not isinstance(full_text, str):
+                    full_text = str(full_text) if full_text is not None else ""
             yield {
                 "page_id": page.id,
                 "document_id": page.document_id,
@@ -533,6 +539,7 @@ def _iter_matching_bboxes(
                 "bbox_index": idx,
                 "id": f"{page.id}_{idx}",
                 "text_preview": bbox.get("text_preview", ""),
+                "text": full_text,
                 "char_count": char_count,
                 "chars_per_1k_px": round(chars_per_1k, 2),
                 "black_pixels": black_px,

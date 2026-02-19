@@ -121,7 +121,10 @@ def build_sight_prompts(
         "nichts anderes."
         f"{variant_instruction}{context_instruction}\n\n"
         "Antworte ausschließlich mit einem JSON-Objekt in dieser Form (kein anderer Text):\n"
-        '{"corrected_text": "...", "confidence": 0.0-1.0, "auto_confirm": true oder false, "reason": "kurze Begründung"}'
+        '{"corrected_text": "...", "confidence": 0.0-1.0, "auto_confirm": true oder false, "reason": "kurze Begründung"}\n'
+        "Hinweis zu confidence (Zahl 0.0-1.0): Deine Sicherheit, dass der ausgegebene corrected_text inhaltlich "
+        "korrekt ist. Bei gutem Text mit nur kleinen Bereinigungen/Korrekturen: 0.85-1.0. Nur bei unsicheren oder "
+        "fragwürdigen Korrekturen niedriger setzen; nie 0, wenn der Text insgesamt gut und verständlich ist."
     )
 
     # User-Prompt
@@ -194,14 +197,43 @@ def parse_sight_response(response_text: str) -> dict[str, Any] | None:
     return None
 
 
+def _parse_confidence(value: Any) -> float:
+    """
+    Parst confidence aus LLM-Response (Zahl, String wie '0.9'/'85%'/'hoch').
+    Returns float 0.0-1.0; bei Fehlern 0.5 als sinnvollen Default (nicht 0).
+    """
+    if value is None:
+        return 0.5
+    if isinstance(value, (int, float)):
+        return max(0.0, min(1.0, float(value)))
+    s = str(value).strip().lower()
+    if not s:
+        return 0.5
+    # Prozent-String z.B. "85%" oder "85"
+    if "%" in s:
+        try:
+            return max(0.0, min(1.0, float(s.replace("%", "").strip()) / 100.0))
+        except ValueError:
+            pass
+    # Dezimal-String z.B. "0.85"
+    try:
+        return max(0.0, min(1.0, float(s)))
+    except ValueError:
+        pass
+    # Sprachliche Angaben
+    if s in ("hoch", "high", "gut", "good", "sehr gut", "sehr hoch"):
+        return 0.9
+    if s in ("mittel", "medium", "mäßig"):
+        return 0.6
+    if s in ("niedrig", "low", "unsicher"):
+        return 0.3
+    return 0.5
+
+
 def _normalize_sight_response(obj: dict[str, Any]) -> dict[str, Any]:
     """Setzt Typen und Defaults für die Response."""
     corrected = str(obj.get("corrected_text", "")).strip()
-    try:
-        conf = float(obj.get("confidence", 0.0))
-    except (TypeError, ValueError):
-        conf = 0.0
-    conf = max(0.0, min(1.0, conf))
+    conf = _parse_confidence(obj.get("confidence"))
     auto_confirm = bool(obj.get("auto_confirm", False))
     reason = str(obj.get("reason", "")).strip()
     return {
