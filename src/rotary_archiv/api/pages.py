@@ -36,6 +36,7 @@ from src.rotary_archiv.utils.pdf_export import (
     DEFAULT_TEXT_OPACITY,
     EXPORT_DPI,
     REPORTLAB_AVAILABLE,
+    build_multi_page_pdf,
     build_page_pdf,
 )
 from src.rotary_archiv.utils.pdf_splitter import PDF2IMAGE_AVAILABLE, PDFSplitter
@@ -49,6 +50,90 @@ class MergePagesRequest(BaseModel):
 
     page_ids: list[int]
     title: str | None = None
+
+
+class ExportPdfRequest(BaseModel):
+    """Request für mehrseitigen PDF-Export"""
+
+    page_ids: list[int]
+
+
+@router.post("/export-pdf")
+def export_pages_pdf(
+    request: ExportPdfRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Exportiert mehrere Seiten als ein mehrseitiges PDF (Hintergrund + durchsuchbarer Text).
+    """
+    if not REPORTLAB_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ReportLab ist für PDF-Export nicht verfügbar",
+        )
+    if not request.page_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="page_ids darf nicht leer sein",
+        )
+    pages_data: list[tuple] = []
+    for page_id in request.page_ids:
+        page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+        if not page:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Seite {page_id} nicht gefunden",
+            )
+        try:
+            img = _load_page_as_pil(page, db, dpi=EXPORT_DPI)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logging.warning(
+                "Seitenbild für Export nicht geladen (page_id=%s): %s", page_id, e
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Seitenbild für Seite {page_id} konnte nicht geladen werden",
+            ) from e
+        export_w, export_h = img.size
+        ocr_width, ocr_height = export_w, export_h
+        bbox_items: list[dict] = []
+        ocr_results = (
+            db.query(OCRResult)
+            .filter(OCRResult.document_page_id == page_id)
+            .order_by(OCRResult.created_at.desc())
+            .limit(1)
+            .all()
+        )
+        if ocr_results and ocr_results[0].bbox_data:
+            ocr = ocr_results[0]
+            ocr_width = ocr.image_width or export_w
+            ocr_height = ocr.image_height or export_h
+            raw = ocr.bbox_data
+            if isinstance(raw, str):
+                raw = json.loads(raw)
+            if isinstance(raw, list):
+                bbox_items = raw
+        pages_data.append((img, bbox_items, ocr_width, ocr_height))
+    try:
+        pdf_buffer = build_multi_page_pdf(
+            pages_data,
+            dpi=EXPORT_DPI,
+            text_opacity=DEFAULT_TEXT_OPACITY,
+        )
+    except Exception as e:
+        logging.exception("Mehrseitiger PDF-Export fehlgeschlagen")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"PDF konnte nicht erstellt werden: {e}",
+        ) from e
+    filename = f"export_{len(request.page_ids)}_seiten.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/document/{document_id}/extract")

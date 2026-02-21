@@ -800,9 +800,10 @@
             </div>
         </div>
 
-        <!-- Toolbar: Content-Analyse Massenaktion -->
+        <!-- Toolbar: Content-Analyse und PDF-Export Massenaktion -->
         <div id="qualityContentAnalysisToolbar" style="display: none; margin-bottom: 12px;">
             <button type="button" class="btn btn-primary" onclick="startContentAnalysisForSelectedQualityPages()">Content-Analyse starten (Auswahl)</button>
+            <button type="button" class="btn btn-primary" id="exportPdfMultiBtn" onclick="exportSelectedQualityPagesAsPdf()" style="margin-left: 8px;">Als PDF exportieren (Auswahl)</button>
         </div>
 
         <!-- Liste der Seiten -->
@@ -1873,6 +1874,10 @@
             }
 
             window.location.hash = pageId ? `#/quality?page_id=${pageId}` : '#/quality';
+
+            // Toolbar (PDF-Export / Content-Analyse) in Qualitäts-Ansicht immer anzeigen
+            const qualityToolbar = document.getElementById('qualityContentAnalysisToolbar');
+            if (qualityToolbar) qualityToolbar.style.display = 'block';
 
             // Lade Liste der Qualitäts-Seiten
             loadQualityPages();
@@ -7060,6 +7065,51 @@
             }
         }
 
+        async function exportSelectedQualityPagesAsPdf() {
+            const checkboxes = document.querySelectorAll('#qualityPagesContainer .quality-page-cb:checked');
+            const pageIds = [];
+            checkboxes.forEach(cb => {
+                const id = parseInt(cb.getAttribute('data-page-id'), 10);
+                if (id) pageIds.push(id);
+            });
+            if (pageIds.length === 0) {
+                showMessage('Bitte mindestens eine Seite auswählen.', 'info');
+                return;
+            }
+            const btn = document.getElementById('exportPdfMultiBtn');
+            const origText = btn ? btn.textContent : '';
+            if (btn) { btn.disabled = true; btn.textContent = 'PDF wird erstellt…'; }
+            try {
+                const res = await fetch(`${API_BASE}/api/pages/export-pdf`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ page_ids: pageIds })
+                });
+                if (!res.ok) {
+                    const err = await res.text();
+                    throw new Error(err || res.statusText);
+                }
+                const blob = await res.blob();
+                const disposition = res.headers.get('Content-Disposition');
+                let filename = 'export_' + pageIds.length + '_seiten.pdf';
+                if (disposition) {
+                    const m = disposition.match(/filename="?([^";]+)"?/);
+                    if (m) filename = m[1].trim();
+                }
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(a.href);
+                showMessage('PDF mit ' + pageIds.length + ' Seite(n) heruntergeladen.', 'success');
+            } catch (e) {
+                console.error('PDF-Export fehlgeschlagen:', e);
+                showMessage('PDF-Export fehlgeschlagen: ' + (e.message || e), 'error');
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = origText; }
+            }
+        }
+
         let contentAnalysisResultDialogDocumentId = null;
 
         async function openContentAnalysisResultDialog(documentId) {
@@ -7186,8 +7236,7 @@
                 if (pages.length === 0) {
                     container.innerHTML = '<p style="color: #666;">Keine Seiten gefunden. Verwenden Sie "Bestand nachberechnen" um Metriken zu berechnen.</p>';
                     qualityPagesList = [];
-                    const t = document.getElementById('qualityContentAnalysisToolbar');
-                    if (t) t.style.display = 'none';
+                    // Toolbar bleibt sichtbar (PDF-Export / Content-Analyse), Nutzer kann erneut filtern
                     return;
                 }
 

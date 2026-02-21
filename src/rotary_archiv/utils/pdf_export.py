@@ -68,52 +68,31 @@ def _wrap_text(
     return lines_out
 
 
-def build_page_pdf(
+def _draw_one_page(
+    c: "canvas.Canvas",
     page_image: "Image.Image",
     bbox_items: list[dict[str, Any]],
     ocr_width: int,
     ocr_height: int,
     dpi: int = EXPORT_DPI,
     text_opacity: float = DEFAULT_TEXT_OPACITY,
-) -> io.BytesIO:
+) -> None:
     """
-    Erstellt ein einseitiges PDF: Hintergrundbild + Text-Overlay (durchsuchbar, transparent).
-
-    Args:
-        page_image: PIL Image der Seite (Hintergrund).
-        bbox_items: Liste von BBox-Dicts mit 'text', 'bbox_pixel' [x1,y1,x2,y2], optional 'box_type'.
-        ocr_width: Breite des OCR-Bildes (für Skalierung von bbox_pixel).
-        ocr_height: Höhe des OCR-Bildes.
-        dpi: DPI für PDF-Seitengröße (Punkt = Pixel * 72 / dpi).
-        text_opacity: Deckkraft des Textes 0.0-1.0 (z. B. 0.5 = 50 %).
-
-    Returns:
-        BytesIO mit PDF-Inhalt.
+    Zeichnet eine Seite (Hintergrund + Text-Overlay) auf den bereits dimensionierten Canvas.
     """
-    if not REPORTLAB_AVAILABLE:
-        raise RuntimeError(
-            "ReportLab ist nicht installiert. Bitte installieren: pip install reportlab"
-        )
-
     export_w, export_h = page_image.size
     width_pt = export_w * 72 / dpi
     height_pt = export_h * 72 / dpi
+    c.setPageSize((width_pt, height_pt))
 
-    # Wie Leaflet: X mit 0.7-Faktor, Y 1:1
     scale_x = (export_w / ocr_width * SCALE_X_FACTOR) if ocr_width else SCALE_X_FACTOR
     scale_y = export_h / ocr_height if ocr_height else 1.0
 
-    buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=(width_pt, height_pt))
-    c.setPageSize((width_pt, height_pt))
-
-    # Hintergrundbild
     img_buffer = io.BytesIO()
     page_image.save(img_buffer, format="PNG")
     img_buffer.seek(0)
     c.drawImage(ImageReader(img_buffer), 0, 0, width=width_pt, height=height_pt)
 
-    # Text-Overlay: nur Boxen mit Text, keine ignore_region
     for item in bbox_items:
         box_type = (item.get("box_type") or "").strip().lower()
         if box_type == "ignore_region":
@@ -154,6 +133,71 @@ def build_page_pdf(
         for i, line in enumerate(lines):
             c.drawString(left_pt, top_baseline - i * line_height_pt, line)
 
+
+def build_page_pdf(
+    page_image: "Image.Image",
+    bbox_items: list[dict[str, Any]],
+    ocr_width: int,
+    ocr_height: int,
+    dpi: int = EXPORT_DPI,
+    text_opacity: float = DEFAULT_TEXT_OPACITY,
+) -> io.BytesIO:
+    """
+    Erstellt ein einseitiges PDF: Hintergrundbild + Text-Overlay (durchsuchbar, transparent).
+
+    Args:
+        page_image: PIL Image der Seite (Hintergrund).
+        bbox_items: Liste von BBox-Dicts mit 'text', 'bbox_pixel' [x1,y1,x2,y2], optional 'box_type'.
+        ocr_width: Breite des OCR-Bildes (für Skalierung von bbox_pixel).
+        ocr_height: Höhe des OCR-Bildes.
+        dpi: DPI für PDF-Seitengröße (Punkt = Pixel * 72 / dpi).
+        text_opacity: Deckkraft des Textes 0.0-1.0 (z. B. 0.5 = 50 %).
+
+    Returns:
+        BytesIO mit PDF-Inhalt.
+    """
+    if not REPORTLAB_AVAILABLE:
+        raise RuntimeError(
+            "ReportLab ist nicht installiert. Bitte installieren: pip install reportlab"
+        )
+    export_w, export_h = page_image.size
+    width_pt = export_w * 72 / dpi
+    height_pt = export_h * 72 / dpi
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=(width_pt, height_pt))
+    _draw_one_page(c, page_image, bbox_items, ocr_width, ocr_height, dpi, text_opacity)
+    c.save()
+    buf.seek(0)
+    return buf
+
+
+def build_multi_page_pdf(
+    pages: list[tuple["Image.Image", list[dict[str, Any]], int, int]],
+    dpi: int = EXPORT_DPI,
+    text_opacity: float = DEFAULT_TEXT_OPACITY,
+) -> io.BytesIO:
+    """
+    Erstellt ein mehrseitiges PDF. Jedes Element in pages ist
+    (page_image, bbox_items, ocr_width, ocr_height).
+    """
+    if not REPORTLAB_AVAILABLE:
+        raise RuntimeError(
+            "ReportLab ist nicht installiert. Bitte installieren: pip install reportlab"
+        )
+    if not pages:
+        raise ValueError("pages darf nicht leer sein")
+    first_img = pages[0][0]
+    w0, h0 = first_img.size
+    width_pt0 = w0 * 72 / dpi
+    height_pt0 = h0 * 72 / dpi
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=(width_pt0, height_pt0))
+    for i, (page_image, bbox_items, ocr_width, ocr_height) in enumerate(pages):
+        if i > 0:
+            c.showPage()
+        _draw_one_page(
+            c, page_image, bbox_items, ocr_width, ocr_height, dpi, text_opacity
+        )
     c.save()
     buf.seek(0)
     return buf
