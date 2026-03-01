@@ -806,6 +806,16 @@
             <button type="button" class="btn btn-primary" id="exportPdfMultiBtn" onclick="exportSelectedQualityPagesAsPdf()" style="margin-left: 8px;">Als PDF exportieren (Auswahl)</button>
         </div>
 
+        <!-- PDF-Exporte: Laufende und abgeschlossene Jobs -->
+        <div id="pdfExportJobsSection" style="margin-bottom: 24px; padding: 16px; background: #f0f4f8; border: 1px solid #cbd5e0; border-radius: 8px;">
+            <h3 style="margin-top: 0; margin-bottom: 8px;">PDF-Exporte</h3>
+            <p class="subtitle" style="margin-bottom: 12px;">Export-Jobs werden im Worker ausgeführt. Nach Abschluss hier herunterladen. Aktionen: <strong>Download</strong> (fertige Datei), <strong>Als nächstes</strong> (Job vorziehen), <strong>Abbrechen</strong>.</p>
+            <button type="button" class="btn btn-primary" onclick="loadPdfExportJobs()" style="margin-bottom: 12px;">Liste aktualisieren</button>
+            <div id="pdfExportJobsContainer">
+                <p style="color: #666;">Keine Export-Jobs oder Liste wird geladen...</p>
+            </div>
+        </div>
+
         <!-- Liste der Seiten -->
         <div id="qualityPagesContainer">
             <p style="color: #666;">Lade Seiten...</p>
@@ -1878,6 +1888,9 @@
             // Toolbar (PDF-Export / Content-Analyse) in Qualitäts-Ansicht immer anzeigen
             const qualityToolbar = document.getElementById('qualityContentAnalysisToolbar');
             if (qualityToolbar) qualityToolbar.style.display = 'block';
+
+            // PDF-Export-Jobs laden (für View „PDF-Exporte“)
+            loadPdfExportJobs();
 
             // Lade Liste der Qualitäts-Seiten
             loadQualityPages();
@@ -7065,6 +7078,121 @@
             }
         }
 
+        let pdfExportJobsPollInterval = null;
+
+        async function loadPdfExportJobs() {
+            const container = document.getElementById('pdfExportJobsContainer');
+            if (!container) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/pages/export-jobs`);
+                if (!res.ok) throw new Error(res.statusText);
+                const jobs = await res.json();
+                if (!jobs || jobs.length === 0) {
+                    container.innerHTML = '<p style="color: #666;">Keine PDF-Export-Jobs.</p>';
+                    if (pdfExportJobsPollInterval) {
+                        clearInterval(pdfExportJobsPollInterval);
+                        pdfExportJobsPollInterval = null;
+                    }
+                    return;
+                }
+                let html = '<table class="queue-table" style="width: 100%;"><thead><tr><th>Job-ID</th><th>Erstellt</th><th>Status</th><th>Fortschritt</th><th>Seiten</th><th>Aktion</th></tr></thead><tbody>';
+                let hasPendingOrRunning = false;
+                jobs.forEach(j => {
+                    const status = (j.status || '').toUpperCase();
+                    if (status === 'PENDING' || status === 'RUNNING') hasPendingOrRunning = true;
+                    const created = j.created_at ? new Date(j.created_at).toLocaleString() : '–';
+                    const step = (j.current_step || '').trim() ? ' ' + j.current_step : '';
+                    const progress = (j.progress != null) ? (j.progress.toFixed(0) + '%' + step) : '–';
+                    const err = (j.error_message || '').trim();
+                    let action = '';
+                    if (status === 'COMPLETED' && j.output_file_path) {
+                        action = '<button type="button" class="btn btn-primary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="downloadExportJob(' + j.id + ')">Download</button>';
+                    } else if (status === 'FAILED' && err) {
+                        action = '<span style="color: #842029;" title="' + escapeHtml(err) + '">Fehler</span>';
+                    }
+                    if (status === 'PENDING') {
+                        action += '<button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="prioritizeExportJob(' + j.id + ')">Als nächstes</button>';
+                    }
+                    if (status === 'PENDING' || status === 'RUNNING') {
+                        action += '<button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px;" onclick="cancelExportJob(' + j.id + ')">Abbrechen</button>';
+                    }
+                    if (!action) action = '–';
+                    html += '<tr><td>' + j.id + '</td><td>' + escapeHtml(created) + '</td><td>' + escapeHtml(j.status) + '</td><td>' + escapeHtml(progress) + '</td><td>' + (j.page_count || 0) + '</td><td style="white-space: nowrap;">' + action + '</td></tr>';
+                });
+                html += '</tbody></table>';
+                container.innerHTML = html;
+                if (hasPendingOrRunning && !pdfExportJobsPollInterval) {
+                    pdfExportJobsPollInterval = setInterval(loadPdfExportJobs, 4000);
+                } else if (!hasPendingOrRunning && pdfExportJobsPollInterval) {
+                    clearInterval(pdfExportJobsPollInterval);
+                    pdfExportJobsPollInterval = null;
+                }
+            } catch (e) {
+                container.innerHTML = '<p style="color: #842029;">Fehler beim Laden: ' + escapeHtml(e.message || e) + '</p>';
+            }
+        }
+
+        async function prioritizeExportJob(jobId) {
+            try {
+                const res = await fetch(`${API_BASE}/api/ocr/jobs/${jobId}/prioritize`, { method: 'POST' });
+                if (!res.ok) {
+                    const t = await res.json().catch(() => ({ detail: res.statusText }));
+                    throw new Error(t.detail || res.statusText);
+                }
+                showMessage('Job ' + jobId + ' wird als nächstes ausgeführt.', 'success');
+                loadPdfExportJobs();
+            } catch (e) {
+                showMessage('Priorisieren fehlgeschlagen: ' + (e.message || e), 'error');
+            }
+        }
+
+        async function cancelExportJob(jobId) {
+            try {
+                const res = await fetch(`${API_BASE}/api/ocr/jobs/batch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ job_ids: [jobId], action: 'cancel' })
+                });
+                if (!res.ok) {
+                    const t = await res.json().catch(() => ({ detail: res.statusText }));
+                    throw new Error(t.detail || res.statusText);
+                }
+                const data = await res.json();
+                if (data.errors && data.errors.length) {
+                    throw new Error(data.errors.map(function(e) { return e.reason || ''; }).join('; '));
+                }
+                showMessage('Job ' + jobId + ' abgebrochen.', 'success');
+                loadPdfExportJobs();
+            } catch (e) {
+                showMessage('Abbrechen fehlgeschlagen: ' + (e.message || e), 'error');
+            }
+        }
+
+        async function downloadExportJob(jobId) {
+            try {
+                const res = await fetch(`${API_BASE}/api/pages/export-jobs/${jobId}/download`);
+                if (!res.ok) {
+                    const t = await res.text();
+                    throw new Error(t || res.statusText);
+                }
+                const blob = await res.blob();
+                const disposition = res.headers.get('Content-Disposition');
+                let filename = 'export_' + jobId + '.pdf';
+                if (disposition) {
+                    const m = disposition.match(/filename="?([^";]+)"?/);
+                    if (m) filename = m[1].trim();
+                }
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(a.href);
+                showMessage('PDF heruntergeladen.', 'success');
+            } catch (e) {
+                showMessage('Download fehlgeschlagen: ' + (e.message || e), 'error');
+            }
+        }
+
         async function exportSelectedQualityPagesAsPdf() {
             const checkboxes = document.querySelectorAll('#qualityPagesContainer .quality-page-cb:checked');
             const pageIds = [];
@@ -7078,7 +7206,7 @@
             }
             const btn = document.getElementById('exportPdfMultiBtn');
             const origText = btn ? btn.textContent : '';
-            if (btn) { btn.disabled = true; btn.textContent = 'PDF wird erstellt…'; }
+            if (btn) { btn.disabled = true; btn.textContent = 'Wird in Queue gestellt…'; }
             try {
                 const res = await fetch(`${API_BASE}/api/pages/export-pdf`, {
                     method: 'POST',
@@ -7089,19 +7217,12 @@
                     const err = await res.text();
                     throw new Error(err || res.statusText);
                 }
-                const blob = await res.blob();
-                const disposition = res.headers.get('Content-Disposition');
-                let filename = 'export_' + pageIds.length + '_seiten.pdf';
-                if (disposition) {
-                    const m = disposition.match(/filename="?([^";]+)"?/);
-                    if (m) filename = m[1].trim();
-                }
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = filename;
-                a.click();
-                URL.revokeObjectURL(a.href);
-                showMessage('PDF mit ' + pageIds.length + ' Seite(n) heruntergeladen.', 'success');
+                const data = await res.json();
+                const jobId = data.job_id;
+                showMessage('PDF-Export in Queue (Job ' + jobId + '). Fortschritt unter „PDF-Exporte“.', 'success');
+                await loadPdfExportJobs();
+                const section = document.getElementById('pdfExportJobsSection');
+                if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
             } catch (e) {
                 console.error('PDF-Export fehlgeschlagen:', e);
                 showMessage('PDF-Export fehlgeschlagen: ' + (e.message || e), 'error');

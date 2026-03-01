@@ -27,6 +27,8 @@ from src.rotary_archiv.core.models import (
     Document,
     DocumentPage,
     DocumentStatus,
+    OCRJob,
+    OCRJobStatus,
     OCRResult,
 )
 from src.rotary_archiv.utils.bbox_reading_order import sort_bboxes_reading_order
@@ -36,7 +38,6 @@ from src.rotary_archiv.utils.pdf_export import (
     DEFAULT_TEXT_OPACITY,
     EXPORT_DPI,
     REPORTLAB_AVAILABLE,
-    build_multi_page_pdf,
     build_page_pdf,
 )
 from src.rotary_archiv.utils.pdf_splitter import PDF2IMAGE_AVAILABLE, PDFSplitter
@@ -53,18 +54,41 @@ class MergePagesRequest(BaseModel):
 
 
 class ExportPdfRequest(BaseModel):
-    """Request für mehrseitigen PDF-Export"""
+    """Request für mehrseitigen PDF-Export (stellt Job in Queue)."""
 
     page_ids: list[int]
 
 
-@router.post("/export-pdf")
+class ExportPdfJobResponse(BaseModel):
+    """Response nach Anlegen eines PDF-Export-Jobs."""
+
+    job_id: int
+    status: str
+    message: str
+
+
+class ExportJobListItem(BaseModel):
+    """Ein Eintrag in der Liste der PDF-Export-Jobs."""
+
+    id: int
+    status: str
+    progress: float
+    current_step: str | None
+    created_at: str
+    completed_at: str | None
+    page_count: int
+    output_file_path: str | None
+    error_message: str | None
+
+
+@router.post("/export-pdf", response_model=ExportPdfJobResponse)
 def export_pages_pdf(
     request: ExportPdfRequest,
     db: Session = Depends(get_db),
 ):
     """
-    Exportiert mehrere Seiten als ein mehrseitiges PDF (Hintergrund + durchsuchbarer Text).
+    Stellt einen mehrseitigen PDF-Export in die Worker-Queue.
+    Ergebnis nach Abschluss unter GET /api/pages/export-jobs und Download dort.
     """
     if not REPORTLAB_AVAILABLE:
         raise HTTPException(
@@ -76,7 +100,14 @@ def export_pages_pdf(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="page_ids darf nicht leer sein",
         )
-    pages_data: list[tuple] = []
+    first_page = (
+        db.query(DocumentPage).filter(DocumentPage.id == request.page_ids[0]).first()
+    )
+    if not first_page:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Seite {request.page_ids[0]} nicht gefunden",
+        )
     for page_id in request.page_ids:
         page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
         if not page:
@@ -84,55 +115,109 @@ def export_pages_pdf(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Seite {page_id} nicht gefunden",
             )
+    job = OCRJob(
+        document_id=first_page.document_id,
+        document_page_id=None,
+        job_type="pdf_export",
+        status=OCRJobStatus.PENDING,
+        language="deu+eng",
+        use_correction=False,
+        job_params={"page_ids": request.page_ids},
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return ExportPdfJobResponse(
+        job_id=job.id,
+        status=job.status.value,
+        message="PDF-Export wurde in die Queue gestellt. Fortschritt unter „PDF-Exporte“.",
+    )
+
+
+@router.get("/export-jobs", response_model=list[ExportJobListItem])
+def list_export_jobs(
+    status_filter: str | None = Query(
+        None, description="Filter: PENDING, RUNNING, COMPLETED, FAILED"
+    ),
+    limit: int = Query(50, le=200),
+    db: Session = Depends(get_db),
+):
+    """Liste der PDF-Export-Jobs (für View „PDF-Exporte“)."""
+    query = db.query(OCRJob).filter(OCRJob.job_type == "pdf_export")
+    if status_filter:
         try:
-            img = _load_page_as_pil(page, db, dpi=EXPORT_DPI)
-        except HTTPException:
-            raise
-        except Exception as e:
-            logging.warning(
-                "Seitenbild für Export nicht geladen (page_id=%s): %s", page_id, e
+            status_enum = OCRJobStatus(status_filter)
+            query = query.filter(OCRJob.status == status_enum)
+        except ValueError:
+            pass
+    jobs = query.order_by(OCRJob.created_at.desc()).limit(limit).all()
+    result = []
+    for job in jobs:
+        params = job.job_params or {}
+        page_ids = params.get("page_ids") or []
+        output_path = params.get("output_file_path")
+        result.append(
+            ExportJobListItem(
+                id=job.id,
+                status=job.status.value,
+                progress=job.progress or 0.0,
+                current_step=job.current_step,
+                created_at=job.created_at.isoformat() if job.created_at else "",
+                completed_at=job.completed_at.isoformat() if job.completed_at else None,
+                page_count=len(page_ids),
+                output_file_path=output_path,
+                error_message=job.error_message,
             )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Seitenbild für Seite {page_id} konnte nicht geladen werden",
-            ) from e
-        export_w, export_h = img.size
-        ocr_width, ocr_height = export_w, export_h
-        bbox_items: list[dict] = []
-        ocr_results = (
-            db.query(OCRResult)
-            .filter(OCRResult.document_page_id == page_id)
-            .order_by(OCRResult.created_at.desc())
-            .limit(1)
-            .all()
         )
-        if ocr_results and ocr_results[0].bbox_data:
-            ocr = ocr_results[0]
-            ocr_width = ocr.image_width or export_w
-            ocr_height = ocr.image_height or export_h
-            raw = ocr.bbox_data
-            if isinstance(raw, str):
-                raw = json.loads(raw)
-            if isinstance(raw, list):
-                bbox_items = raw
-        pages_data.append((img, bbox_items, ocr_width, ocr_height))
-    try:
-        pdf_buffer = build_multi_page_pdf(
-            pages_data,
-            dpi=EXPORT_DPI,
-            text_opacity=DEFAULT_TEXT_OPACITY,
-        )
-    except Exception as e:
-        logging.exception("Mehrseitiger PDF-Export fehlgeschlagen")
+    return result
+
+
+@router.get("/export-jobs/{job_id}/download")
+def download_export_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+):
+    """Download der fertigen PDF-Datei (nur bei COMPLETED)."""
+    job = db.query(OCRJob).filter(OCRJob.id == job_id).first()
+    if not job or job.job_type != "pdf_export":
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"PDF konnte nicht erstellt werden: {e}",
-        ) from e
-    filename = f"export_{len(request.page_ids)}_seiten.pdf"
-    return StreamingResponse(
-        pdf_buffer,
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Export-Job nicht gefunden",
+        )
+    if job.status != OCRJobStatus.COMPLETED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Export noch nicht abgeschlossen",
+        )
+    params = job.job_params or {}
+    output_path = params.get("output_file_path")
+    if not output_path or not isinstance(output_path, str):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Keine Export-Datei vorhanden",
+        )
+    docs_root = Path(settings.documents_path).resolve()
+    if ".." in output_path or output_path.startswith("/"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ungültiger Pfad",
+        )
+    full_path = (docs_root / output_path).resolve()
+    if not str(full_path).startswith(str(docs_root)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ungültiger Pfad",
+        )
+    if not full_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Export-Datei nicht mehr vorhanden",
+        )
+    filename = full_path.name
+    return FileResponse(
+        path=str(full_path),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        filename=filename,
     )
 
 

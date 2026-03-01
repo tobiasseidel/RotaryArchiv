@@ -3,14 +3,19 @@ Background-Job-Processor für OCR-Verarbeitung
 """
 
 import asyncio
+import contextlib
 from datetime import datetime
 import json
 import logging
 from pathlib import Path
+import tempfile
+import uuid
 
+from PyPDF2 import PdfReader, PdfWriter
 from sqlalchemy.orm.attributes import flag_modified
 
 from src.rotary_archiv.api.settings import get_ocr_sight_settings_for_job
+from src.rotary_archiv.config import settings
 from src.rotary_archiv.core.database import SessionLocal
 from src.rotary_archiv.core.models import (
     Document,
@@ -34,7 +39,12 @@ from src.rotary_archiv.utils.bbox_reading_order import (
     get_reading_order_indices,
     get_text_in_reading_order,
 )
-from src.rotary_archiv.utils.file_handler import get_file_path
+from src.rotary_archiv.utils.file_handler import ensure_exports_dir, get_file_path
+from src.rotary_archiv.utils.pdf_export import (
+    DEFAULT_TEXT_OPACITY,
+    EXPORT_DPI,
+    build_page_pdf,
+)
 from src.rotary_archiv.utils.quality_metrics import (
     compute_black_pixels_per_char,
     compute_coverage,
@@ -2118,4 +2128,176 @@ async def process_persistent_region_quality_job(job_id: int) -> None:
         logger.exception("Persistent-Region-Quality Job %s fehlgeschlagen", job_id)
 
     finally:
+        db.close()
+
+
+def _load_page_export_data(db, page_id: int):
+    """
+    Lädt für einen PDF-Export-Job die Seitendaten (Bild + BBox).
+    Returns (PIL.Image, bbox_items, ocr_width, ocr_height).
+    """
+    from PIL import Image
+
+    from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
+
+    page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+    if not page:
+        raise ValueError(f"Seite {page_id} nicht gefunden")
+    document = db.query(Document).filter(Document.id == page.document_id).first()
+    if not document:
+        raise ValueError("Dokument nicht gefunden")
+
+    if not page.file_path:
+        pdf_path = get_file_path(document.file_path)
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF nicht gefunden: {pdf_path}")
+        img = extract_page_as_image(str(pdf_path), page.page_number, dpi=EXPORT_DPI)
+    else:
+        fp = get_file_path(page.file_path)
+        if not fp.exists():
+            raise FileNotFoundError(f"Seiten-Datei nicht gefunden: {fp}")
+        is_img = (
+            page.file_type
+            and page.file_type.lower() in ("image/png", "image/jpeg", "image/jpg")
+        ) or str(fp).lower().endswith((".png", ".jpg", ".jpeg"))
+        if is_img:
+            img = Image.open(fp).convert("RGB")
+        else:
+            from pdf2image import convert_from_path
+
+            convert_kwargs = {
+                "first_page": page.page_number,
+                "last_page": page.page_number,
+                "dpi": EXPORT_DPI,
+            }
+            if settings.poppler_path:
+                pp = Path(settings.poppler_path)
+                if pp.exists():
+                    convert_kwargs["poppler_path"] = str(pp)
+            images = convert_from_path(str(fp), **convert_kwargs)
+            if not images:
+                raise ValueError("PDF konnte nicht zu Bild konvertiert werden")
+            img = images[0]
+
+    export_w, export_h = img.size
+    ocr_width, ocr_height = export_w, export_h
+    bbox_items = []
+    ocr_results = (
+        db.query(OCRResult)
+        .filter(OCRResult.document_page_id == page_id)
+        .order_by(OCRResult.created_at.desc())
+        .limit(1)
+        .all()
+    )
+    if ocr_results and ocr_results[0].bbox_data:
+        ocr = ocr_results[0]
+        ocr_width = ocr.image_width or export_w
+        ocr_height = ocr.image_height or export_h
+        raw = ocr.bbox_data
+        if isinstance(raw, str):
+            raw = json.loads(raw)
+        if isinstance(raw, list):
+            bbox_items = raw
+    return img, bbox_items, ocr_width, ocr_height
+
+
+async def process_pdf_export_job(job_id: int) -> None:
+    """
+    PDF-Export-Job: Pro Seite eine Einzel-PDF erzeugen, am Ende mit PyPDF2 zusammenführen.
+    """
+    db = SessionLocal()
+    job = None
+    temp_paths = []
+
+    try:
+        job = db.query(OCRJob).filter(OCRJob.id == job_id).first()
+        if not job:
+            return
+        if job.job_type != "pdf_export":
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Ungültiger Job-Typ (erwartet: pdf_export)"
+            db.commit()
+            return
+        params = job.job_params or {}
+        page_ids = params.get("page_ids")
+        if not page_ids or not isinstance(page_ids, list):
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "job_params.page_ids fehlt oder ist keine Liste"
+            db.commit()
+            return
+
+        job.status = OCRJobStatus.RUNNING
+        job.started_at = datetime.now()
+        job.current_step = "Starte PDF-Export"
+        job.progress = 0.0
+        db.commit()
+
+        n = len(page_ids)
+        for i, page_id in enumerate(page_ids):
+            job.current_step = f"Seite {i + 1}/{n}"
+            job.progress = (i / n) * 100.0
+            db.commit()
+
+            img, bbox_items, ocr_width, ocr_height = _load_page_export_data(db, page_id)
+            buf = build_page_pdf(
+                img,
+                bbox_items,
+                ocr_width,
+                ocr_height,
+                dpi=EXPORT_DPI,
+                text_opacity=DEFAULT_TEXT_OPACITY,
+            )
+            tmp = tempfile.NamedTemporaryFile(
+                delete=False, suffix=".pdf", prefix=f"export_job_{job_id}_"
+            )
+            tmp.write(buf.read())
+            tmp.close()
+            temp_paths.append(tmp.name)
+
+        job.current_step = "Füge PDFs zusammen"
+        job.progress = 95.0
+        db.commit()
+
+        writer = PdfWriter()
+        for tmp_path in temp_paths:
+            reader = PdfReader(tmp_path, strict=False)
+            if reader.pages:
+                writer.add_page(reader.pages[0])
+            reader = None
+
+        exports_dir = ensure_exports_dir()
+        filename = f"export_{job_id}_{uuid.uuid4().hex[:8]}.pdf"
+        final_path = exports_dir / filename
+        with open(final_path, "wb") as f:
+            writer.write(f)
+
+        relative_path = f"exports/{filename}"
+        params["output_file_path"] = relative_path
+        job.job_params = params
+        flag_modified(job, "job_params")
+        job.status = OCRJobStatus.COMPLETED
+        job.progress = 100.0
+        job.current_step = "Fertig"
+        job.completed_at = datetime.now()
+        db.commit()
+        logger.info(
+            "PDF-Export Job %s: %s Seiten -> %s",
+            job_id,
+            n,
+            relative_path,
+        )
+
+    except Exception as e:
+        if job:
+            db.refresh(job)
+            if job.status not in [OCRJobStatus.CANCELLED, OCRJobStatus.ARCHIVED]:
+                job.status = OCRJobStatus.FAILED
+                job.error_message = str(e)
+                job.completed_at = datetime.now()
+                db.commit()
+        logger.exception("PDF-Export Job %s fehlgeschlagen", job_id)
+    finally:
+        for p in temp_paths:
+            with contextlib.suppress(Exception):
+                Path(p).unlink(missing_ok=True)
         db.close()

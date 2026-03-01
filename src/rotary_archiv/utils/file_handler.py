@@ -20,6 +20,19 @@ def ensure_documents_dir() -> Path:
     return docs_path
 
 
+def ensure_exports_dir() -> Path:
+    """
+    Stelle sicher, dass das Export-Verzeichnis (documents_path/exports) existiert.
+    Für PDF-Export-Jobs (Worker).
+
+    Returns:
+        Path zum Export-Verzeichnis
+    """
+    exports_path = Path(settings.documents_path) / "exports"
+    exports_path.mkdir(parents=True, exist_ok=True)
+    return exports_path
+
+
 def save_uploaded_file(file_content: bytes, filename: str) -> str:
     """
     Speichere hochgeladene Datei
