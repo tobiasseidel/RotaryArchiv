@@ -16,16 +16,18 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             background: #f5f5f5;
-            padding: 20px;
+            padding: 0;
+            margin: 0;
         }
 
         .container {
-            max-width: 1200px;
-            margin: 0 auto;
+            max-width: none;
+            width: 100%;
+            margin: 0;
             background: white;
-            border-radius: 8px;
-            padding: 30px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-radius: 0;
+            padding: 24px 30px 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.06);
         }
 
         h1 {
@@ -324,17 +326,17 @@
             display: none;
         }
 
-        /* Inspect-View: immer 100 % Fensterbreite und -höhe, Leaflet füllt den Rest unter dem Header */
+        /* Inspect-View: unter dem App-Header bis zur Unterkante des Fensters */
         #pageInspectView.active {
             display: flex;
             flex-direction: column;
             position: fixed;
-            top: 0;
+            top: 64px;
             left: 0;
             right: 0;
             bottom: 0;
             width: 100vw;
-            height: 100vh;
+            height: calc(100vh - 64px);
             padding: 0;
             margin: 0;
             max-width: none;
@@ -344,21 +346,52 @@
             z-index: 100;
         }
 
-        #pageInspectView.active .inspect-header {
-            flex-shrink: 0;
-            margin-bottom: 0;
-            padding: 10px 16px;
-            position: relative;
-            z-index: 1000;
+        /* Map-Container: absolut über die ganze View, damit Leaflet volle Höhe bekommt */
+        #pageInspectView.active .map-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            overflow: hidden;
         }
-
-        /* Leaflet braucht eine definierte Höhe – explizit mit calc, damit die Karte sichtbar ist */
-        #pageInspectView.active #map {
-            flex: 1;
-            min-height: 0;
+        #pageInspectView.active .map-container #map {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             width: 100%;
-            height: calc(100vh - 120px);
+            height: 100%;
         }
+        /* Dokument/Seite: rechts neben den Leaflet-Zoom-Buttons */
+        .inspect-map-overlay {
+            position: absolute;
+            top: 10px;
+            left: 52px;
+            z-index: 2000;
+            background: rgba(255,255,255,0.92);
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #333;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        }
+        /* Multibox-Aktionen: im oberen Kartenbereich unterhalb Dokument/Seite */
+        .inspect-multibox-overlay {
+            position: absolute;
+            top: 48px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 2001;
+            display: none;
+            padding: 8px 12px;
+            background: rgba(232, 244, 253, 0.96);
+            border: 1px solid #3388ff;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        }
+        .inspect-multibox-overlay .btn { padding: 4px 8px; font-size: 12px; }
 
         /* Vollbild-Modus: Map füllt gesamten Bildschirm */
         #pageInspectView:fullscreen {
@@ -371,21 +404,15 @@
             flex-direction: column;
         }
 
-        #pageInspectView:fullscreen .inspect-header {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            background: rgba(255, 255, 255, 0.95);
-            padding: 10px 20px;
-            margin: 0;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        #pageInspectView:fullscreen .map-container {
+            flex: 1;
+            min-height: 0;
         }
 
-        #pageInspectView:fullscreen #map {
-            flex: 1;
-            height: 100vh !important;
+        #pageInspectView:fullscreen .map-container #map {
+            position: absolute;
+            inset: 0;
+            height: 100% !important;
             width: 100% !important;
         }
 
@@ -400,21 +427,15 @@
             flex-direction: column;
         }
 
-        #pageInspectView:-webkit-full-screen .inspect-header {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            background: rgba(255, 255, 255, 0.95);
-            padding: 10px 20px;
-            margin: 0;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        #pageInspectView:-webkit-full-screen .map-container {
+            flex: 1;
+            min-height: 0;
         }
 
-        #pageInspectView:-webkit-full-screen #map {
-            flex: 1;
-            height: 100vh !important;
+        #pageInspectView:-webkit-full-screen .map-container #map {
+            position: absolute;
+            inset: 0;
+            height: 100% !important;
             width: 100% !important;
         }
 
@@ -428,21 +449,15 @@
             flex-direction: column;
         }
 
-        #pageInspectView:-moz-full-screen .inspect-header {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            background: rgba(255, 255, 255, 0.95);
-            padding: 10px 20px;
-            margin: 0;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        #pageInspectView:-moz-full-screen .map-container {
+            flex: 1;
+            min-height: 0;
         }
 
-        #pageInspectView:-moz-full-screen #map {
-            flex: 1;
-            height: 100vh !important;
+        #pageInspectView:-moz-full-screen .map-container #map {
+            position: absolute;
+            inset: 0;
+            height: 100% !important;
             width: 100% !important;
         }
 
@@ -456,21 +471,15 @@
             flex-direction: column;
         }
 
-        #pageInspectView:-ms-fullscreen .inspect-header {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            background: rgba(255, 255, 255, 0.95);
-            padding: 10px 20px;
-            margin: 0;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        #pageInspectView:-ms-fullscreen .map-container {
+            flex: 1;
+            min-height: 0;
         }
 
-        #pageInspectView:-ms-fullscreen #map {
-            flex: 1;
-            height: 100vh !important;
+        #pageInspectView:-ms-fullscreen .map-container #map {
+            position: absolute;
+            inset: 0;
+            height: 100% !important;
             width: 100% !important;
         }
 
@@ -691,11 +700,133 @@
             color: #333;
         }
 
+        /* App-Header mit Burger-Menü */
+        .app-header {
+            position: sticky;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 500;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            background: #fff;
+            border-bottom: 1px solid #e0e0e0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+
+        .burger-btn {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 5px;
+            width: 40px;
+            height: 40px;
+            padding: 8px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+        .burger-btn:hover {
+            background: #f0f0f0;
+        }
+        .burger-btn span {
+            display: block;
+            width: 22px;
+            height: 2px;
+            background: #333;
+            border-radius: 1px;
+        }
+
+        .app-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .header-inspect-toolbar {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            flex: 1;
+            min-width: 0;
+        }
+        .header-inspect-toolbar .btn {
+            padding: 6px 12px;
+            font-size: 13px;
+        }
+
+        .nav-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.3);
+            z-index: 501;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .nav-overlay.open {
+            display: block;
+            opacity: 1;
+        }
+
+        .nav-menu {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: min(280px, 85vw);
+            height: 100vh;
+            background: #fff;
+            box-shadow: 4px 0 12px rgba(0,0,0,0.1);
+            z-index: 502;
+            transform: translateX(-100%);
+            transition: transform 0.25s ease-out;
+            overflow-y: auto;
+        }
+        .nav-menu.open {
+            transform: translateX(0);
+        }
+        .nav-menu ul {
+            list-style: none;
+            padding: 60px 0 24px 0;
+            margin: 0;
+        }
+        .nav-menu ul li {
+            border-bottom: 1px solid #eee;
+        }
+        .nav-menu ul li a {
+            display: block;
+            padding: 14px 20px;
+            color: #333;
+            text-decoration: none;
+            font-size: 15px;
+            transition: background 0.2s;
+        }
+        .nav-menu ul li a:hover {
+            background: #f5f5f5;
+        }
+        .nav-menu ul li a.active {
+            background: #e3f2fd;
+            color: #1976D2;
+            font-weight: 600;
+        }
+
     </style>
 </head>
 <body>
-    <!-- Navigation Menu -->
-    <nav class="nav-menu">
+    <header class="app-header">
+        <button type="button" class="burger-btn" id="burgerBtn" aria-label="Menü öffnen">
+            <span></span><span></span><span></span>
+        </button>
+        <span class="app-title" id="appTitle">RotaryArchiv</span>
+        <div class="header-inspect-toolbar" id="headerInspectToolbar"></div>
+    </header>
+    <div class="nav-overlay" id="navOverlay" aria-hidden="true"></div>
+    <nav class="nav-menu" id="navMenu" aria-label="Hauptnavigation">
         <ul>
             <li><a href="#" id="navImport" class="active" onclick="showImportView(); return false;">Import & Jobs</a></li>
             <li><a href="#" id="navReview" onclick="showReviewView(); return false;">Review</a></li>
@@ -704,6 +835,7 @@
             <li><a href="#" id="navBboxList" onclick="showBboxListView(); return false;">BBox-Liste</a></li>
             <li><a href="#" id="navPersistentRegions" onclick="showPersistentRegionsView(); return false;">Persistente Regionen</a></li>
             <li><a href="#" id="navOcrSight" onclick="showOcrSightSettingsView(); return false;">OCR-Sichtung</a></li>
+            <li><a href="#" id="navComposedOverview" onclick="showComposedOverviewView(); return false;">Dokumenten-Übersicht</a></li>
         </ul>
     </nav>
 
@@ -759,6 +891,26 @@
         <p class="subtitle">Verarbeitete Seiten mit OCR-Ergebnissen</p>
         <div id="reviewContainer">
             <p style="color: #666;">Lade verarbeitete Seiten...</p>
+        </div>
+    </div>
+
+    <!-- Dokumenten-Übersicht (zusammengesetzte Einheiten) -->
+    <div id="composedOverviewView" class="container" style="display: none;">
+        <h1>Dokumenten-Übersicht</h1>
+        <p class="subtitle">Zusammengesetzte Einheiten mit BBox-Inhalt zur geordneten Analyse</p>
+        <div id="composedOverviewMessages" class="message" style="display: none;"></div>
+        <div style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 8px;">
+            <label for="composedOverviewDocumentSelect" style="font-weight: 600;">Dokument wählen:</label>
+            <select id="composedOverviewDocumentSelect" style="margin-left: 10px; padding: 8px 12px; min-width: 280px;" onchange="loadComposedOverview()">
+                <option value="">-- Bitte wählen --</option>
+            </select>
+            <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
+                <button type="button" class="upload-btn" onclick="startComposedOverviewJob('boundary_analysis')">Grenzen-Analyse starten</button>
+                <button type="button" class="upload-btn" onclick="startComposedOverviewJob('unit_content_analysis')">Inhaltliche Analyse starten</button>
+            </div>
+        </div>
+        <div id="composedOverviewUnits">
+            <p style="color: #666;">Dokument auswählen, um Einheiten anzuzeigen.</p>
         </div>
     </div>
 
@@ -1202,52 +1354,51 @@
         </div>
     </div>
 
-    <!-- Page Inspect View -->
+    <!-- Page Inspect View: Buttons werden per JS in den App-Header verschoben -->
     <div id="pageInspectView" class="container" style="display: none;">
-        <div class="inspect-header">
-            <div>
-                <h1>Page Inspect</h1>
-                <p class="subtitle" id="inspectSubtitle">Seite wird geladen...</p>
-            </div>
-            <div class="inspect-controls">
-                <button class="btn btn-secondary" id="prevPageBtn" style="display: none;">← Vorherige Seite</button>
-                <button class="btn btn-secondary" id="nextPageBtn" style="display: none;">Nächste Seite →</button>
-                <div class="inspect-add-box-wrapper" id="addBoxWrapper">
-                    <button class="btn btn-success" type="button" id="addBoxMainBtn" title="Box hinzufügen">+</button>
-                    <div id="addBoxDropdown" class="inspect-add-box-dropdown" style="display: none;">
-                        <button type="button" class="inspect-add-box-option" data-mode="single">Eine Box (+1)</button>
-                        <button type="button" class="inspect-add-box-option" data-mode="multiple">Mehrere Boxen (+X)</button>
-                        <button type="button" class="inspect-add-box-option" data-mode="persistent_multibox">Persistente Multibox-Region (+X behalten)</button>
-                        <button type="button" class="inspect-add-box-option" data-mode="ignore_region">Ignore-Bereich</button>
-                        <button type="button" class="inspect-add-box-option" data-mode="note">Notiz</button>
-                    </div>
-                </div>
-                <button class="btn btn-secondary" id="editBoxModeBtn" title="Boxen-Positionen und Maße ändern">Boxen bearbeiten</button>
-                <button class="btn btn-secondary" id="multiboxSelectBtn" title="Rechteck zeichnen – alle darin liegenden Boxen auswählen">Mehrere auswählen</button>
-                <button class="btn btn-secondary" id="measureSkewBtn" title="Schrägwinkel der Seite messen (Hough)">Schräge messen</button>
-                <button class="btn btn-secondary" id="measureSkewDebugBtn" title="Schrägwinkel mit Debug-Informationen messen">Schräge debuggen</button>
-                <button class="btn btn-secondary" id="showDeskewedBtn" title="Begradigte Seite mit erkannten Linien anzeigen">Begradigt anzeigen</button>
-                <button class="btn btn-secondary" id="qualityBtn" title="Qualitätsmetriken für diese Seite anzeigen">Qualität</button>
-                <button class="btn btn-primary" id="exportPdfBtn" title="Seite als PDF mit durchsuchbarem Text exportieren">Als PDF exportieren</button>
-                <button class="btn btn-primary" id="createReviewJobBtn" style="display: none;">Review-Job erstellen</button>
-                <button class="btn btn-primary" id="fullscreenBtn">Vollbild</button>
-                <button class="btn btn-secondary" id="backBtn">Zurück</button>
-            </div>
-        </div>
         <div id="inspectBoxPositionsPanel" style="display: none; margin-bottom: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px; max-height: 120px; overflow-y: auto;">
             <strong>Aktuelle Positionen (x1, y1, x2, y2):</strong>
             <div id="inspectBoxPositionsList"></div>
         </div>
-        <div id="inspectMultiboxActionsPanel" style="display: none; margin-bottom: 8px; padding: 8px; background: #e8f4fd; border: 1px solid #3388ff; border-radius: 4px;">
-            <strong id="inspectMultiboxSelectionCount">0 Boxen ausgewählt</strong>
-            <span style="margin-left: 12px;">
-                <button class="btn btn-secondary" id="inspectMultiboxClearBtn" style="padding: 4px 8px; font-size: 12px;">Auswahl aufheben</button>
-                <button class="btn btn-secondary" id="inspectMultiboxIgnoreBtn" style="padding: 4px 8px; font-size: 12px; margin-left: 4px;">Ignorieren</button>
-                <button class="btn btn-warning" id="inspectMultiboxRecalcBtn" style="padding: 4px 8px; font-size: 12px; margin-left: 4px; background: #ff9800; color: white;">Neu berechnen</button>
-                <button class="btn btn-danger" id="inspectMultiboxDeleteBtn" style="padding: 4px 8px; font-size: 12px; margin-left: 4px;">Löschen</button>
-            </span>
+        <div class="map-container">
+            <div id="map"></div>
+            <div id="inspectSubtitle" class="inspect-map-overlay">Seite wird geladen...</div>
+            <div id="inspectMultiboxActionsPanel" class="inspect-multibox-overlay">
+                <strong id="inspectMultiboxSelectionCount">0 Boxen ausgewählt</strong>
+                <span style="margin-left: 12px;">
+                    <button class="btn btn-secondary" id="inspectMultiboxClearBtn">Auswahl aufheben</button>
+                    <button class="btn btn-secondary" id="inspectMultiboxIgnoreBtn" style="margin-left: 4px;">Ignorieren</button>
+                    <button class="btn btn-warning" id="inspectMultiboxRecalcBtn" style="margin-left: 4px; background: #ff9800; color: white;">Neu berechnen</button>
+                    <button class="btn btn-danger" id="inspectMultiboxDeleteBtn" style="margin-left: 4px;">Löschen</button>
+                </span>
+            </div>
         </div>
-        <div id="map"></div>
+    </div>
+    <!-- Inspect-Controls werden bei Öffnen der Inspect-View in den Header verschoben (Slot für DOM) -->
+    <div id="inspectControlsSource" style="display: none;">
+        <div class="inspect-controls">
+            <button class="btn btn-secondary" id="prevPageBtn" style="display: none;">← Vorherige Seite</button>
+            <button class="btn btn-secondary" id="nextPageBtn" style="display: none;">Nächste Seite →</button>
+            <div class="inspect-add-box-wrapper" id="addBoxWrapper">
+                <button class="btn btn-success" type="button" id="addBoxMainBtn" title="Box hinzufügen">+</button>
+                <div id="addBoxDropdown" class="inspect-add-box-dropdown" style="display: none;">
+                    <button type="button" class="inspect-add-box-option" data-mode="single">Eine Box (+1)</button>
+                    <button type="button" class="inspect-add-box-option" data-mode="multiple">Mehrere Boxen (+X)</button>
+                    <button type="button" class="inspect-add-box-option" data-mode="persistent_multibox">Persistente Multibox-Region (+X behalten)</button>
+                    <button type="button" class="inspect-add-box-option" data-mode="ignore_region">Ignore-Bereich</button>
+                    <button type="button" class="inspect-add-box-option" data-mode="note">Notiz</button>
+                </div>
+            </div>
+            <button class="btn btn-secondary" id="editBoxModeBtn" title="Boxen-Positionen und Maße ändern">Boxen bearbeiten</button>
+            <button class="btn btn-secondary" id="multiboxSelectBtn" title="Rechteck zeichnen – alle darin liegenden Boxen auswählen">Mehrere auswählen</button>
+            <button class="btn btn-secondary" id="measureSkewBtn" title="Schrägwinkel der Seite messen (Hough)">Schräge messen</button>
+            <button class="btn btn-secondary" id="measureSkewDebugBtn" title="Schrägwinkel mit Debug-Informationen messen">Schräge debuggen</button>
+            <button class="btn btn-secondary" id="showDeskewedBtn" title="Begradigte Seite mit erkannten Linien anzeigen">Begradigt anzeigen</button>
+            <button class="btn btn-secondary" id="qualityBtn" title="Qualitätsmetriken für diese Seite anzeigen">Qualität</button>
+            <button class="btn btn-primary" id="exportPdfBtn" title="Seite als PDF mit durchsuchbarem Text exportieren">Als PDF exportieren</button>
+            <button class="btn btn-primary" id="createReviewJobBtn" style="display: none;">Review-Job erstellen</button>
+            <button class="btn btn-secondary" id="backBtn">Zurück</button>
+        </div>
     </div>
 
     <!-- Edit Dialog -->
@@ -1722,6 +1873,8 @@
                 showPersistentRegionsView();
             } else if (hash === '#/settings/ocr-sight') {
                 showOcrSightSettingsView();
+            } else if (hash === '#/composed-overview') {
+                showComposedOverviewView();
             } else {
                 showImportView(); // Diese Funktion startet das Polling automatisch
             }
@@ -1729,6 +1882,31 @@
 
         window.addEventListener('hashchange', handleRoute);
         handleRoute(); // Initial route
+
+        // Burger-Menü: öffnen/schließen
+        (function initNavMenu() {
+            const burgerBtn = document.getElementById('burgerBtn');
+            const navOverlay = document.getElementById('navOverlay');
+            const navMenu = document.getElementById('navMenu');
+            if (!burgerBtn || !navOverlay || !navMenu) return;
+
+            function closeNavMenu() {
+                navMenu.classList.remove('open');
+                navOverlay.classList.remove('open');
+                navOverlay.setAttribute('aria-hidden', 'true');
+            }
+            function toggleNavMenu() {
+                const isOpen = navMenu.classList.toggle('open');
+                navOverlay.classList.toggle('open', isOpen);
+                navOverlay.setAttribute('aria-hidden', !isOpen);
+            }
+
+            burgerBtn.addEventListener('click', toggleNavMenu);
+            navOverlay.addEventListener('click', closeNavMenu);
+            navMenu.addEventListener('click', function(e) {
+                if (e.target.closest('a')) closeNavMenu();
+            });
+        })();
 
         window.addEventListener('resize', () => {
             if (typeof map !== 'undefined' && map && document.getElementById('pageInspectView').classList.contains('active')) {
@@ -1747,9 +1925,64 @@
             }
         });
 
+        // Tastenkombinationen: ESC = Abbrechen in Dialogen, Pfeil links/rechts = Seite in Inspect
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const editOverlay = document.getElementById('editDialogOverlay');
+                const noteOverlay = document.getElementById('noteDialogOverlay');
+                const fillOverlay = document.getElementById('fillTextDialogOverlay');
+                const batchOverlay = document.getElementById('editTextsBatchDialogOverlay');
+                const contentDialog = document.getElementById('contentAnalysisResultDialog');
+                if (editOverlay && editOverlay.classList.contains('active')) {
+                    if (typeof closeEditDialog === 'function') closeEditDialog();
+                    e.preventDefault();
+                    return;
+                }
+                if (noteOverlay && noteOverlay.style.display !== 'none') {
+                    if (typeof closeNoteDialog === 'function') closeNoteDialog();
+                    e.preventDefault();
+                    return;
+                }
+                if (fillOverlay && fillOverlay.style.display !== 'none') {
+                    if (typeof closeFillTextDialog === 'function') closeFillTextDialog();
+                    e.preventDefault();
+                    return;
+                }
+                if (batchOverlay && batchOverlay.style.display !== 'none') {
+                    if (typeof closeEditTextsBatchDialog === 'function') closeEditTextsBatchDialog();
+                    e.preventDefault();
+                    return;
+                }
+                if (contentDialog && contentDialog.style.display !== 'none') {
+                    if (typeof closeContentAnalysisResultDialog === 'function') closeContentAnalysisResultDialog();
+                    e.preventDefault();
+                }
+                return;
+            }
+            // Pfeil links/rechts: Vorherige/Nächste Seite im Inspect-View (nur wenn nicht in Input/Textarea)
+            const tag = e.target && e.target.tagName ? e.target.tagName.toUpperCase() : '';
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+            const inspectView = document.getElementById('pageInspectView');
+            if (!inspectView || !inspectView.classList.contains('active')) return;
+            if (e.key === 'ArrowLeft') {
+                const prevBtn = document.getElementById('prevPageBtn');
+                if (prevBtn && prevBtn.style.display !== 'none') {
+                    prevBtn.click();
+                    e.preventDefault();
+                }
+            } else if (e.key === 'ArrowRight') {
+                const nextBtn = document.getElementById('nextPageBtn');
+                if (nextBtn && nextBtn.style.display !== 'none') {
+                    nextBtn.click();
+                    e.preventDefault();
+                }
+            }
+        });
+
         function showImportView() {
             const importView = document.getElementById('importView');
             const reviewView = document.getElementById('reviewView');
+            const composedOverviewView = document.getElementById('composedOverviewView');
             const pageInspectView = document.getElementById('pageInspectView');
             const qualityView = document.getElementById('qualityView');
             const deskewView = document.getElementById('deskewView');
@@ -1759,9 +1992,11 @@
 
             if (importView) importView.style.display = 'block';
             if (reviewView) reviewView.style.display = 'none';
+            if (composedOverviewView) composedOverviewView.style.display = 'none';
             if (pageInspectView) {
                 pageInspectView.style.display = 'none';
                 pageInspectView.classList.remove('active');
+                restoreHeaderFromInspect();
             }
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'none';
@@ -1776,6 +2011,7 @@
             const navBboxList = document.getElementById('navBboxList');
             const navPersistentRegions = document.getElementById('navPersistentRegions');
             const navOcrSight = document.getElementById('navOcrSight');
+            const navComposedOverview = document.getElementById('navComposedOverview');
             if (navImport) navImport.classList.add('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.remove('active');
@@ -1783,6 +2019,7 @@
             if (navBboxList) navBboxList.classList.remove('active');
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
             if (navOcrSight) navOcrSight.classList.remove('active');
+            if (navComposedOverview) navComposedOverview.classList.remove('active');
 
             // Starte Polling für Queue (falls noch nicht gestartet)
             if (!pollInterval) {
@@ -1802,12 +2039,15 @@
             const bboxListView = document.getElementById('bboxListView');
             const persistentRegionsView = document.getElementById('persistentRegionsView');
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
+            const composedOverviewView = document.getElementById('composedOverviewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'block';
+            if (composedOverviewView) composedOverviewView.style.display = 'none';
             if (pageInspectView) {
                 pageInspectView.style.display = 'none';
                 pageInspectView.classList.remove('active');
+                restoreHeaderFromInspect();
             }
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'none';
@@ -1822,6 +2062,7 @@
             const navBboxList = document.getElementById('navBboxList');
             const navPersistentRegions = document.getElementById('navPersistentRegions');
             const navOcrSight = document.getElementById('navOcrSight');
+            const navComposedOverview = document.getElementById('navComposedOverview');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.add('active');
             if (navQuality) navQuality.classList.remove('active');
@@ -1829,6 +2070,7 @@
             if (navBboxList) navBboxList.classList.remove('active');
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
             if (navOcrSight) navOcrSight.classList.remove('active');
+            if (navComposedOverview) navComposedOverview.classList.remove('active');
 
             // Stoppe Queue-Polling wenn Review-View angezeigt wird
             if (pollInterval) {
@@ -1849,18 +2091,21 @@
             const bboxListView = document.getElementById('bboxListView');
             const persistentRegionsView = document.getElementById('persistentRegionsView');
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
+            const composedOverviewView = document.getElementById('composedOverviewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
             if (pageInspectView) {
                 pageInspectView.style.display = 'none';
                 pageInspectView.classList.remove('active');
+                restoreHeaderFromInspect();
             }
             if (qualityView) qualityView.style.display = 'block';
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'none';
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
+            if (composedOverviewView) composedOverviewView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -1876,6 +2121,7 @@
             if (navBboxList) navBboxList.classList.remove('active');
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
             if (navOcrSight) navOcrSight.classList.remove('active');
+            if (document.getElementById('navComposedOverview')) document.getElementById('navComposedOverview').classList.remove('active');
 
             // Stoppe Queue-Polling wenn Quality-View angezeigt wird
             if (pollInterval) {
@@ -1911,18 +2157,21 @@
             const bboxListView = document.getElementById('bboxListView');
             const persistentRegionsView = document.getElementById('persistentRegionsView');
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
+            const composedOverviewView = document.getElementById('composedOverviewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
             if (pageInspectView) {
                 pageInspectView.style.display = 'none';
                 pageInspectView.classList.remove('active');
+                restoreHeaderFromInspect();
             }
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'block';
             if (bboxListView) bboxListView.style.display = 'none';
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
+            if (composedOverviewView) composedOverviewView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -1938,6 +2187,7 @@
             if (navBboxList) navBboxList.classList.remove('active');
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
             if (navOcrSight) navOcrSight.classList.remove('active');
+            if (document.getElementById('navComposedOverview')) document.getElementById('navComposedOverview').classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -1957,18 +2207,21 @@
             const bboxListView = document.getElementById('bboxListView');
             const persistentRegionsView = document.getElementById('persistentRegionsView');
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
+            const composedOverviewView = document.getElementById('composedOverviewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
             if (pageInspectView) {
                 pageInspectView.style.display = 'none';
                 pageInspectView.classList.remove('active');
+                restoreHeaderFromInspect();
             }
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'block';
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
+            if (composedOverviewView) composedOverviewView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -1984,6 +2237,7 @@
             if (navBboxList) navBboxList.classList.add('active');
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
             if (navOcrSight) navOcrSight.classList.remove('active');
+            if (document.getElementById('navComposedOverview')) document.getElementById('navComposedOverview').classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -2007,18 +2261,21 @@
             const bboxListView = document.getElementById('bboxListView');
             const persistentRegionsView = document.getElementById('persistentRegionsView');
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
+            const composedOverviewView = document.getElementById('composedOverviewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
             if (pageInspectView) {
                 pageInspectView.style.display = 'none';
                 pageInspectView.classList.remove('active');
+                restoreHeaderFromInspect();
             }
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'none';
             if (persistentRegionsView) persistentRegionsView.style.display = 'block';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
+            if (composedOverviewView) composedOverviewView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -2034,6 +2291,7 @@
             if (navBboxList) navBboxList.classList.remove('active');
             if (navPersistentRegions) navPersistentRegions.classList.add('active');
             if (navOcrSight) navOcrSight.classList.remove('active');
+            if (document.getElementById('navComposedOverview')) document.getElementById('navComposedOverview').classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -2053,18 +2311,21 @@
             const bboxListView = document.getElementById('bboxListView');
             const persistentRegionsView = document.getElementById('persistentRegionsView');
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
+            const composedOverviewView = document.getElementById('composedOverviewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
             if (pageInspectView) {
                 pageInspectView.style.display = 'none';
                 pageInspectView.classList.remove('active');
+                restoreHeaderFromInspect();
             }
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'none';
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'block';
+            if (composedOverviewView) composedOverviewView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -2080,6 +2341,7 @@
             if (navBboxList) navBboxList.classList.remove('active');
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
             if (navOcrSight) navOcrSight.classList.add('active');
+            if (document.getElementById('navComposedOverview')) document.getElementById('navComposedOverview').classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -2088,6 +2350,149 @@
 
             window.location.hash = '#/settings/ocr-sight';
             loadOcrSightSettings();
+        }
+
+        function showComposedOverviewView() {
+            const importView = document.getElementById('importView');
+            const reviewView = document.getElementById('reviewView');
+            const pageInspectView = document.getElementById('pageInspectView');
+            const qualityView = document.getElementById('qualityView');
+            const deskewView = document.getElementById('deskewView');
+            const bboxListView = document.getElementById('bboxListView');
+            const persistentRegionsView = document.getElementById('persistentRegionsView');
+            const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
+            const composedOverviewView = document.getElementById('composedOverviewView');
+
+            if (importView) importView.style.display = 'none';
+            if (reviewView) reviewView.style.display = 'none';
+            if (pageInspectView) {
+                pageInspectView.style.display = 'none';
+                pageInspectView.classList.remove('active');
+                restoreHeaderFromInspect();
+            }
+            if (qualityView) qualityView.style.display = 'none';
+            if (deskewView) deskewView.style.display = 'none';
+            if (bboxListView) bboxListView.style.display = 'none';
+            if (persistentRegionsView) persistentRegionsView.style.display = 'none';
+            if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
+            if (composedOverviewView) composedOverviewView.style.display = 'block';
+
+            const navImport = document.getElementById('navImport');
+            const navReview = document.getElementById('navReview');
+            const navQuality = document.getElementById('navQuality');
+            const navDeskew = document.getElementById('navDeskew');
+            const navBboxList = document.getElementById('navBboxList');
+            const navPersistentRegions = document.getElementById('navPersistentRegions');
+            const navOcrSight = document.getElementById('navOcrSight');
+            const navComposedOverview = document.getElementById('navComposedOverview');
+            if (navImport) navImport.classList.remove('active');
+            if (navReview) navReview.classList.remove('active');
+            if (navQuality) navQuality.classList.remove('active');
+            if (navDeskew) navDeskew.classList.remove('active');
+            if (navBboxList) navBboxList.classList.remove('active');
+            if (navPersistentRegions) navPersistentRegions.classList.remove('active');
+            if (navOcrSight) navOcrSight.classList.remove('active');
+            if (navComposedOverview) navComposedOverview.classList.add('active');
+
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+            window.location.hash = '#/composed-overview';
+            loadComposedOverviewDocuments();
+            loadComposedOverview();
+        }
+
+        async function loadComposedOverviewDocuments() {
+            const sel = document.getElementById('composedOverviewDocumentSelect');
+            if (!sel) return;
+            try {
+                const response = await fetch(API_BASE + '/api/documents/');
+                if (!response.ok) throw new Error('Dokumente konnten nicht geladen werden');
+                const documents = await response.json();
+                const currentVal = sel.value;
+                sel.innerHTML = '<option value="">-- Bitte wählen --</option>';
+                documents.forEach(function(d) {
+                    const opt = document.createElement('option');
+                    opt.value = d.id;
+                    opt.textContent = (d.filename || 'Dokument ' + d.id) + ' (ID ' + d.id + ')';
+                    sel.appendChild(opt);
+                });
+                if (currentVal) sel.value = currentVal;
+            } catch (e) {
+                sel.innerHTML = '<option value="">Fehler beim Laden</option>';
+                console.error(e);
+            }
+        }
+
+        async function loadComposedOverview() {
+            const sel = document.getElementById('composedOverviewDocumentSelect');
+            const container = document.getElementById('composedOverviewUnits');
+            const msgEl = document.getElementById('composedOverviewMessages');
+            if (!sel || !container) return;
+            const docId = sel.value;
+            if (!docId) {
+                container.innerHTML = '<p style="color: #666;">Dokument auswählen, um Einheiten anzuzeigen.</p>';
+                if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
+                return;
+            }
+            container.innerHTML = '<p style="color: #666;">Lade Einheiten...</p>';
+            if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
+            try {
+                const response = await fetch(API_BASE + '/api/documents/' + docId + '/composed-overview');
+                if (!response.ok) throw new Error('Übersicht konnte nicht geladen werden');
+                const units = await response.json();
+                if (units.length === 0) {
+                    container.innerHTML = '<p style="color: #666;">Keine Einheiten für dieses Dokument. Starten Sie zuerst die Grenzen-Analyse.</p>';
+                    return;
+                }
+                let html = '';
+                units.forEach(function(u, idx) {
+                    const pageRange = u.page_numbers && u.page_numbers.length ? 'Seiten ' + u.page_numbers.join(', ') : 'Seiten ' + (u.page_ids || []).join(', ');
+                    html += '<div style="margin-bottom: 24px; padding: 16px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa;">';
+                    html += '<div style="font-weight: 600; margin-bottom: 8px;">Einheit ' + (idx + 1) + ' (' + pageRange + ')</div>';
+                    if (u.event_date || u.topic || u.place) {
+                        html += '<div style="font-size: 12px; color: #666; margin-bottom: 8px;">';
+                        if (u.event_date) html += 'Datum: ' + escapeHtml(u.event_date) + ' &middot; ';
+                        if (u.place) html += 'Ort: ' + escapeHtml(u.place) + ' &middot; ';
+                        if (u.topic) html += 'Thema: ' + escapeHtml(u.topic);
+                        html += '</div>';
+                    }
+                    if (u.summary) html += '<div style="margin-bottom: 8px; font-size: 13px;">' + escapeHtml(u.summary) + '</div>';
+                    html += '<div style="margin-top: 8px;"><label style="font-size: 12px; color: #666;">BBox-Inhalt (Lesereihenfolge):</label>';
+                    html += '<pre style="margin-top: 4px; padding: 12px; background: #fff; border: 1px solid #eee; border-radius: 4px; max-height: 280px; overflow: auto; white-space: pre-wrap; font-size: 12px;">' + escapeHtml(u.full_text || '') + '</pre></div>';
+                    html += '</div>';
+                });
+                container.innerHTML = html;
+            } catch (e) {
+                container.innerHTML = '<p style="color: #c00;">Fehler: ' + escapeHtml(e.message) + '</p>';
+                console.error(e);
+            }
+        }
+
+        function startComposedOverviewJob(jobType) {
+            const sel = document.getElementById('composedOverviewDocumentSelect');
+            const msgEl = document.getElementById('composedOverviewMessages');
+            if (!sel || !sel.value) {
+                if (msgEl) { msgEl.style.display = 'block'; msgEl.className = 'message message-error'; msgEl.textContent = 'Bitte zuerst ein Dokument wählen.'; }
+                return;
+            }
+            const docId = sel.value;
+            const label = jobType === 'boundary_analysis' ? 'Grenzen-Analyse' : 'Inhaltliche Analyse';
+            if (msgEl) { msgEl.style.display = 'block'; msgEl.className = 'message message-info'; msgEl.textContent = label + ' wird gestartet...'; }
+            fetch(API_BASE + '/api/ocr/documents/' + docId + '/jobs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ job_type: jobType })
+            }).then(function(r) {
+                if (!r.ok) return r.json().then(function(d) { throw new Error(d.detail || r.statusText); });
+                return r.json();
+            }).then(function() {
+                if (msgEl) { msgEl.className = 'message message-success'; msgEl.textContent = label + ' gestartet. Der Worker verarbeitet den Job. Nach Abschluss Liste aktualisieren.'; }
+                loadComposedOverview();
+            }).catch(function(e) {
+                if (msgEl) { msgEl.className = 'message message-error'; msgEl.textContent = 'Fehler: ' + (e.message || String(e)); }
+            });
         }
 
         async function loadOcrSightSettings() {
@@ -3453,6 +3858,30 @@
             }
         }
 
+        function moveInspectToolbarToHeader() {
+            const toolbar = document.getElementById('headerInspectToolbar');
+            const appTitle = document.getElementById('appTitle');
+            const source = document.getElementById('inspectControlsSource');
+            const controls = source && source.querySelector('.inspect-controls');
+            if (toolbar && controls) {
+                toolbar.appendChild(controls);
+                toolbar.style.display = 'flex';
+                if (appTitle) appTitle.style.display = 'none';
+            }
+        }
+
+        function restoreHeaderFromInspect() {
+            const toolbar = document.getElementById('headerInspectToolbar');
+            const appTitle = document.getElementById('appTitle');
+            const source = document.getElementById('inspectControlsSource');
+            const controls = toolbar && toolbar.querySelector('.inspect-controls');
+            if (source && controls) {
+                source.appendChild(controls);
+                if (toolbar) toolbar.style.display = 'none';
+                if (appTitle) appTitle.style.display = '';
+            }
+        }
+
         function showPageInspect(pageId) {
             const importView = document.getElementById('importView');
             const reviewView = document.getElementById('reviewView');
@@ -3470,6 +3899,7 @@
                 pageInspectView.style.display = 'block';
                 pageInspectView.classList.add('active');
             }
+            moveInspectToolbarToHeader();
 
             window.location.hash = `#/page/${pageId}/inspect`;
             loadPageInspect(pageId);
@@ -3551,7 +3981,6 @@
         }
 
         let map = null;
-        let isFullscreen = false;
         let textOverlays = [];
         let fontSize = 12;
         let skewLinesLayer = null;
@@ -3697,6 +4126,8 @@
                     maxZoom: 5,          // Erlaube stärkeres Hineinzoomen
                     zoomControl: true    // Zeige Zoom-Controls
                 });
+                // Größe nach Layout setzen (Container kann anfangs 0 sein)
+                setTimeout(() => { if (map) map.invalidateSize(); }, 0);
 
                 // Setup Box-Zeichnen Event-Handler
                 setupMapDrawingHandlers();
@@ -4067,78 +4498,13 @@
                     }
                 };
 
-                // Vollbild-Button
-                document.getElementById('fullscreenBtn').onclick = () => {
-                    const element = document.getElementById('pageInspectView');
-
-                    if (!isFullscreen) {
-                        // Vollbild aktivieren
-                        if (element.requestFullscreen) {
-                            element.requestFullscreen();
-                        } else if (element.webkitRequestFullscreen) { // Safari
-                            element.webkitRequestFullscreen();
-                        } else if (element.msRequestFullscreen) { // IE/Edge
-                            element.msRequestFullscreen();
-                        } else if (element.mozRequestFullScreen) { // Firefox
-                            element.mozRequestFullScreen();
-                        }
-                        isFullscreen = true;
-                        document.getElementById('fullscreenBtn').textContent = 'Vollbild beenden';
-                    } else {
-                        // Vollbild beenden
-                        if (document.exitFullscreen) {
-                            document.exitFullscreen();
-                        } else if (document.webkitExitFullscreen) { // Safari
-                            document.webkitExitFullscreen();
-                        } else if (document.msExitFullscreen) { // IE/Edge
-                            document.msExitFullscreen();
-                        } else if (document.mozCancelFullScreen) { // Firefox
-                            document.mozCancelFullScreen();
-                        }
-                        isFullscreen = false;
-                        document.getElementById('fullscreenBtn').textContent = 'Vollbild';
-                    }
-                };
-
-                // Listener für Fullscreen-Änderungen (falls Benutzer ESC drückt)
-                document.addEventListener('fullscreenchange', () => {
-                    if (!document.fullscreenElement) {
-                        isFullscreen = false;
-                        document.getElementById('fullscreenBtn').textContent = 'Vollbild';
-                    }
-                });
-                document.addEventListener('webkitfullscreenchange', () => {
-                    if (!document.webkitFullscreenElement) {
-                        isFullscreen = false;
-                        document.getElementById('fullscreenBtn').textContent = 'Vollbild';
-                    }
-                });
-                document.addEventListener('msfullscreenchange', () => {
-                    if (!document.msFullscreenElement) {
-                        isFullscreen = false;
-                        document.getElementById('fullscreenBtn').textContent = 'Vollbild';
-                    }
-                });
-                document.addEventListener('mozfullscreenchange', () => {
-                    if (!document.mozFullScreenElement) {
-                        isFullscreen = false;
-                        document.getElementById('fullscreenBtn').textContent = 'Vollbild';
-                    }
-                });
-
-                // Map-Größe aktualisieren nach Fullscreen-Änderung oder Fenster-Resize
+                // Map-Größe einmalig nach Layout aktualisieren
                 const updateMapSize = () => {
                     setTimeout(() => {
-                        if (map) {
-                            map.invalidateSize();
-                        }
+                        if (map) map.invalidateSize();
                     }, 100);
                 };
-                document.addEventListener('fullscreenchange', updateMapSize);
-                document.addEventListener('webkitfullscreenchange', updateMapSize);
-                document.addEventListener('msfullscreenchange', updateMapSize);
-                document.addEventListener('mozfullscreenchange', updateMapSize);
-                updateMapSize(); // einmalig nach Layout (100 % Viewport)
+                updateMapSize();
 
                 // Zurück-Button
                 document.getElementById('backBtn').onclick = () => {
