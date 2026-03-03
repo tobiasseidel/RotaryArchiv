@@ -9,6 +9,12 @@ from typing import TYPE_CHECKING, Any
 
 logger = logging.getLogger(__name__)
 
+
+# Zeichen außerhalb Latin-1 können bei ReportLab Helvetica zu Hänger oder Fehlern führen
+def _sanitize_text_for_reportlab(text: str) -> str:
+    return "".join(c if ord(c) < 256 else "?" for c in (text or ""))
+
+
 REPORTLAB_AVAILABLE = False
 try:
     from reportlab.lib.colors import Color
@@ -54,12 +60,14 @@ def _wrap_text(
         words = para.split()
         current: list[str] = []
         current_width = 0.0
+        # Nur Schätzung (kein stringWidth), um Hänger in ReportLab zu vermeiden
+        char_width_pt = font_size_pt * 0.5
         for word in words:
-            w = c.stringWidth(word + " ", font_name, font_size_pt)
+            w = (len(word) + 1) * char_width_pt
             if current_width + w > width_pt and current:
                 lines_out.append(" ".join(current))
                 current = [word]
-                current_width = c.stringWidth(word + " ", font_name, font_size_pt)
+                current_width = (len(word) + 1) * char_width_pt
             else:
                 current.append(word)
                 current_width += w
@@ -93,45 +101,56 @@ def _draw_one_page(
     img_buffer.seek(0)
     c.drawImage(ImageReader(img_buffer), 0, 0, width=width_pt, height=height_pt)
 
-    for item in bbox_items:
+    for bbox_idx, item in enumerate(bbox_items):
         box_type = (item.get("box_type") or "").strip().lower()
         if box_type == "ignore_region":
             continue
         text = (item.get("text") or "").strip()
         if not text:
             continue
+        text = _sanitize_text_for_reportlab(text)
+        if not text:
+            continue
         pixel = item.get("bbox_pixel")
         if not pixel or len(pixel) < 4:
             continue
-        x1_ocr, y1_ocr = float(pixel[0]), float(pixel[1])
-        x2_ocr, y2_ocr = float(pixel[2]), float(pixel[3])
-        x1 = min(x1_ocr, x2_ocr) * scale_x
-        x2 = max(x1_ocr, x2_ocr) * scale_x
-        y1 = min(y1_ocr, y2_ocr) * scale_y
-        y2 = max(y1_ocr, y2_ocr) * scale_y
-        box_w_px = max(1, x2 - x1)
-        box_h_px = max(1, y2 - y1)
-        box_width_pt = box_w_px * 72 / dpi
-        box_height_pt = box_h_px * 72 / dpi
-        left_pt = x1 * 72 / dpi
-        bottom_pt_box = (export_h - y2) * 72 / dpi
-        # Schriftgröße skaliert mit Boxhöhe; wird verkleinert bis der ganze Text in die Box passt
-        font_size_pt = max(MIN_FONT_SIZE_PT, box_h_px * 72 / dpi * 0.85)
-        text_limited = (text.replace("\r", "\n") or "")[:2000]
-        while font_size_pt >= MIN_FONT_SIZE_PT:
-            lines = _wrap_text(c, text_limited, box_width_pt, "Helvetica", font_size_pt)
+        try:
+            x1_ocr, y1_ocr = float(pixel[0]), float(pixel[1])
+            x2_ocr, y2_ocr = float(pixel[2]), float(pixel[3])
+            x1 = min(x1_ocr, x2_ocr) * scale_x
+            x2 = max(x1_ocr, x2_ocr) * scale_x
+            y1 = min(y1_ocr, y2_ocr) * scale_y
+            y2 = max(y1_ocr, y2_ocr) * scale_y
+            box_w_px = max(1, x2 - x1)
+            box_h_px = max(1, y2 - y1)
+            box_width_pt = box_w_px * 72 / dpi
+            box_height_pt = box_h_px * 72 / dpi
+            left_pt = x1 * 72 / dpi
+            bottom_pt_box = (export_h - y2) * 72 / dpi
+            font_size_pt = max(MIN_FONT_SIZE_PT, box_h_px * 72 / dpi * 0.85)
+            text_limited = (text.replace("\r", "\n") or "")[:2000]
+            # Schriftgröße so lange verkleinern, bis der Text in die Box passt; Abbruch bei MIN_FONT_SIZE_PT,
+            # damit bei extrem flachen Boxen (z. B. 1px Höhe) keine Endlosschleife entsteht (font_size_pt
+            # bleibt sonst durch max(..., 0.85*...) konstant bei MIN_FONT_SIZE_PT und len(lines) > max_lines_fit).
+            while font_size_pt >= MIN_FONT_SIZE_PT:
+                lines = _wrap_text(
+                    c, text_limited, box_width_pt, "Helvetica", font_size_pt
+                )
+                line_height_pt = font_size_pt * LINE_HEIGHT_FACTOR
+                max_lines_fit = box_height_pt / line_height_pt
+                if len(lines) <= max_lines_fit:
+                    break
+                font_size_pt = max(MIN_FONT_SIZE_PT, font_size_pt * 0.85)
+                if font_size_pt <= MIN_FONT_SIZE_PT:
+                    break
             line_height_pt = font_size_pt * LINE_HEIGHT_FACTOR
-            max_lines_fit = box_height_pt / line_height_pt
-            if len(lines) <= max_lines_fit:
-                break
-            font_size_pt = max(MIN_FONT_SIZE_PT, font_size_pt * 0.85)
-        line_height_pt = font_size_pt * LINE_HEIGHT_FACTOR
-        c.setFont("Helvetica", font_size_pt)
-        c.setFillColor(Color(0, 0, 0, alpha=text_opacity))
-        # Von oben nach unten zeichnen (obere Zeile zuerst; PDF-Y nach unten)
-        top_baseline = bottom_pt_box + box_height_pt - font_size_pt
-        for i, line in enumerate(lines):
-            c.drawString(left_pt, top_baseline - i * line_height_pt, line)
+            c.setFont("Helvetica", font_size_pt)
+            c.setFillColor(Color(0, 0, 0, alpha=text_opacity))
+            top_baseline = bottom_pt_box + box_height_pt - font_size_pt
+            for i, line in enumerate(lines):
+                c.drawString(left_pt, top_baseline - i * line_height_pt, line)
+        except Exception as e:
+            logger.warning("PDF-Export: Bbox %s übersprungen: %s", bbox_idx, e)
 
 
 def build_page_pdf(

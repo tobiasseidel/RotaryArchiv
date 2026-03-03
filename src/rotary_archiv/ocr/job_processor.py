@@ -28,7 +28,11 @@ from src.rotary_archiv.core.models import (
     OCRSource,
 )
 from src.rotary_archiv.ocr.bbox_ocr import process_bbox_ocr
-from src.rotary_archiv.ocr.content_analysis_llm import call_ollama_content_analysis
+from src.rotary_archiv.ocr.content_analysis_llm import (
+    call_ollama_boundary_only,
+    call_ollama_content_analysis,
+    call_ollama_content_only,
+)
 from src.rotary_archiv.ocr.llm_sight import (
     call_ollama_sight,
     should_auto_confirm,
@@ -954,7 +958,11 @@ async def process_llm_sight_job(job_id: int) -> None:
 def _get_pages_with_all_boxes_confirmed(db, document_id: int) -> list[DocumentPage]:
     """
     Liefert alle Seiten des Dokuments, sortiert nach page_number, bei denen
-    jede BBox review_status in ('confirmed', 'auto_confirmed') hat.
+    jede OCR-relevante BBox review_status in ('confirmed', 'auto_confirmed') hat.
+
+    Notiz-Boxen (box_type 'note') und Ignore-Bereiche (box_type 'ignore_region')
+    werden bei der Prüfung nicht mitgezählt, damit Seiten mit Notizen trotzdem
+    für Grenzen- und Content-Analyse nutzbar sind.
     """
     pages = (
         db.query(DocumentPage)
@@ -963,6 +971,7 @@ def _get_pages_with_all_boxes_confirmed(db, document_id: int) -> list[DocumentPa
         .all()
     )
     result = []
+    allowed = {"confirmed", "auto_confirmed"}
     for page in pages:
         ocr_result = (
             db.query(OCRResult)
@@ -982,8 +991,16 @@ def _get_pages_with_all_boxes_confirmed(db, document_id: int) -> list[DocumentPa
         )
         if not bbox_list:
             continue
-        allowed = {"confirmed", "auto_confirmed"}
-        if all((b.get("review_status") or "").strip() in allowed for b in bbox_list):
+        # Nur OCR-relevante Boxen prüfen; Notizen und Ignore-Bereiche ausnehmen
+        review_relevant = [
+            b for b in bbox_list if b.get("box_type") not in ("note", "ignore_region")
+        ]
+        if not review_relevant:
+            result.append(page)
+            continue
+        if all(
+            (b.get("review_status") or "").strip() in allowed for b in review_relevant
+        ):
             result.append(page)
     return result
 
@@ -1007,6 +1024,142 @@ def _get_page_text_in_reading_order(db, page_id: int) -> str:
         else list(ocr_result.bbox_data)
     )
     return get_text_in_reading_order(bbox_list, separator="\n")
+
+
+def get_unit_text_in_reading_order(
+    db,
+    page_ids: list[int],
+    page_separator: str = "\n\n",
+) -> str:
+    """
+    Liefert den zusammengesetzten BBox-Text aller angegebenen Seiten in Lesereihenfolge.
+    Pro Seite wird der neueste OCRResult mit bbox_data verwendet.
+    """
+    parts = [_get_page_text_in_reading_order(db, pid) for pid in page_ids]
+    return page_separator.join(parts)
+
+
+async def process_boundary_analysis_job(job_id: int) -> None:
+    """
+    Phase 1: Nur Grenzerkennung (belongs_with_next) pro Seitenpaar.
+    Erstellt DocumentUnits nur mit page_ids und belongs_with_next (keine inhaltlichen Felder).
+    Vor dem Lauf werden bestehende DocumentUnits des Dokuments gelöscht.
+    """
+    db = SessionLocal()
+    job = None
+    try:
+        job = db.query(OCRJob).filter(OCRJob.id == job_id).first()
+        if not job:
+            return
+        if job.job_type != "boundary_analysis":
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Ungültiger Job-Typ (erwartet: boundary_analysis)"
+            db.commit()
+            return
+        if not job.document_id:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "boundary_analysis-Job benötigt document_id"
+            db.commit()
+            return
+        if job.document_page_id:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "boundary_analysis-Job darf kein document_page_id haben"
+            db.commit()
+            return
+
+        document = db.query(Document).filter(Document.id == job.document_id).first()
+        if not document:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Dokument nicht gefunden"
+            db.commit()
+            return
+
+        pages_confirmed = _get_pages_with_all_boxes_confirmed(db, job.document_id)
+        if not pages_confirmed:
+            job.status = OCRJobStatus.COMPLETED
+            job.current_step = "Keine Seiten mit vollständig bestätigten Boxen"
+            job.completed_at = datetime.now()
+            db.commit()
+            return
+
+        # Bestehende DocumentUnits dieses Dokuments entfernen (Re-Run ersetzt)
+        db.query(DocumentUnit).filter(
+            DocumentUnit.document_id == job.document_id
+        ).delete()
+        db.commit()
+
+        job.status = OCRJobStatus.RUNNING
+        job.current_step = "Grenzerkennung"
+        db.commit()
+
+        i = 0
+        units_created = 0
+        while i < len(pages_confirmed):
+            page_a = pages_confirmed[i]
+            page_b = pages_confirmed[i + 1] if i + 1 < len(pages_confirmed) else None
+            job.current_step = f"Grenze Seite {page_a.page_number}"
+            db.commit()
+
+            text_a = _get_page_text_in_reading_order(db, page_a.id)
+            text_b = _get_page_text_in_reading_order(db, page_b.id) if page_b else None
+            llm_result = call_ollama_boundary_only(text_a, text_b)
+
+            if not llm_result.get("success"):
+                job.status = OCRJobStatus.FAILED
+                job.error_message = (
+                    llm_result.get("error") or "LLM-Aufruf fehlgeschlagen"
+                )
+                job.completed_at = datetime.now()
+                db.commit()
+                return
+
+            belongs_with_next = llm_result.get("belongs_with_next", False)
+            page_ids = [page_a.id]
+            if belongs_with_next and page_b:
+                page_ids.append(page_b.id)
+                i += 2
+            else:
+                i += 1
+
+            unit = DocumentUnit(
+                document_id=job.document_id,
+                page_ids=page_ids,
+                belongs_with_next=belongs_with_next,
+                summary=None,
+                persons=None,
+                topic=None,
+                place=None,
+                event_date=None,
+                extracted_phrases=None,
+                extracted_names=None,
+            )
+            db.add(unit)
+            units_created += 1
+
+        job.status = OCRJobStatus.COMPLETED
+        job.current_step = f"Abgeschlossen - {units_created} Einheit(en)"
+        job.completed_at = datetime.now()
+        db.commit()
+        logger.info(
+            "Boundary-Analyse Job %s: %s Einheiten für Dokument %s",
+            job_id,
+            units_created,
+            job.document_id,
+        )
+    except Exception as e:
+        if job:
+            db.refresh(job)
+            if job.status not in [
+                OCRJobStatus.CANCELLED,
+                OCRJobStatus.ARCHIVED,
+            ]:
+                job.status = OCRJobStatus.FAILED
+                job.error_message = str(e)
+                job.completed_at = datetime.now()
+                db.commit()
+        logger.exception("Boundary-Analyse Job %s fehlgeschlagen", job_id)
+    finally:
+        db.close()
 
 
 async def process_content_analysis_job(job_id: int) -> None:
@@ -1124,6 +1277,115 @@ async def process_content_analysis_job(job_id: int) -> None:
             job.completed_at = datetime.now()
             db.commit()
         logger.exception("Content-Analyse Job %s fehlgeschlagen", job_id)
+    finally:
+        db.close()
+
+
+async def process_unit_content_analysis_job(job_id: int) -> None:
+    """
+    Phase 2: Inhaltliche Analyse pro DocumentUnit (summary, persons, topic, ...).
+    Verarbeitet nur Units mit summary IS NULL. Holt Volltext pro Unit und ruft LLM.
+    """
+    db = SessionLocal()
+    job = None
+    try:
+        job = db.query(OCRJob).filter(OCRJob.id == job_id).first()
+        if not job:
+            return
+        if job.job_type != "unit_content_analysis":
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Ungültiger Job-Typ (erwartet: unit_content_analysis)"
+            db.commit()
+            return
+        if not job.document_id:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "unit_content_analysis-Job benötigt document_id"
+            db.commit()
+            return
+        if job.document_page_id:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = (
+                "unit_content_analysis-Job darf kein document_page_id haben"
+            )
+            db.commit()
+            return
+
+        document = db.query(Document).filter(Document.id == job.document_id).first()
+        if not document:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Dokument nicht gefunden"
+            db.commit()
+            return
+
+        units = (
+            db.query(DocumentUnit)
+            .filter(
+                DocumentUnit.document_id == job.document_id,
+                DocumentUnit.summary.is_(None),
+            )
+            .order_by(DocumentUnit.id)
+            .all()
+        )
+        if not units:
+            job.status = OCRJobStatus.COMPLETED
+            job.current_step = "Keine Units mit ausstehender inhaltlicher Analyse"
+            job.completed_at = datetime.now()
+            db.commit()
+            return
+
+        job.status = OCRJobStatus.RUNNING
+        db.commit()
+
+        processed = 0
+        for unit in units:
+            job.current_step = f"Einheit {unit.id} (Seiten {unit.page_ids})"
+            db.commit()
+
+            unit_full_text = get_unit_text_in_reading_order(
+                db, unit.page_ids, page_separator="\n\n"
+            )
+            llm_result = call_ollama_content_only(unit_full_text)
+
+            if not llm_result.get("success"):
+                job.status = OCRJobStatus.FAILED
+                job.error_message = (
+                    llm_result.get("error") or "LLM-Aufruf fehlgeschlagen"
+                )
+                job.completed_at = datetime.now()
+                db.commit()
+                return
+
+            unit.summary = llm_result.get("summary")
+            unit.persons = llm_result.get("persons") or []
+            unit.topic = llm_result.get("topic")
+            unit.place = llm_result.get("place")
+            unit.event_date = llm_result.get("event_date")
+            unit.extracted_phrases = llm_result.get("extracted_phrases") or []
+            unit.extracted_names = llm_result.get("extracted_names") or []
+            processed += 1
+
+        job.status = OCRJobStatus.COMPLETED
+        job.current_step = f"Abgeschlossen - {processed} Einheit(en)"
+        job.completed_at = datetime.now()
+        db.commit()
+        logger.info(
+            "Unit-Content-Analyse Job %s: %s Einheiten für Dokument %s",
+            job_id,
+            processed,
+            job.document_id,
+        )
+    except Exception as e:
+        if job:
+            db.refresh(job)
+            if job.status not in [
+                OCRJobStatus.CANCELLED,
+                OCRJobStatus.ARCHIVED,
+            ]:
+                job.status = OCRJobStatus.FAILED
+                job.error_message = str(e)
+                job.completed_at = datetime.now()
+                db.commit()
+        logger.exception("Unit-Content-Analyse Job %s fehlgeschlagen", job_id)
     finally:
         db.close()
 
@@ -2226,13 +2488,13 @@ async def process_pdf_export_job(job_id: int) -> None:
             db.commit()
             return
 
+        n = len(page_ids)
         job.status = OCRJobStatus.RUNNING
         job.started_at = datetime.now()
         job.current_step = "Starte PDF-Export"
         job.progress = 0.0
         db.commit()
 
-        n = len(page_ids)
         for i, page_id in enumerate(page_ids):
             job.current_step = f"Seite {i + 1}/{n}"
             job.progress = (i / n) * 100.0
