@@ -184,7 +184,7 @@ def create_ocr_job(
 
     job_type = (job_data.job_type or "ocr").strip() or "ocr"
     document_page_id = None
-    if job_type == "content_analysis":
+    if job_type in ("content_analysis", "boundary_analysis", "unit_content_analysis"):
         document_page_id = None  # Dokument-Level-Job
     # Andere Job-Typen (ocr, bbox_review, ...) werden typischerweise mit document_page_id erstellt
 

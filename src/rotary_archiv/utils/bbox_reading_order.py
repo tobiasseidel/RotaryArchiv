@@ -81,6 +81,25 @@ def get_reading_order_indices(
     return [i for i, _ in sorted_pairs]
 
 
+# Platzhalter-Texte für persistente Multibox-Regionen (reine Hüll-Boxen)
+# und Ignore-Bereiche. Diese sollen nicht in Lesetext / Export erscheinen.
+REGION_PLACEHOLDER_PREFIX = "[Region - "
+IGNORE_BEREICH_PREFIX = "[Ignore-Bereich]"
+
+
+def _should_skip_bbox_text(b: dict[str, Any], text: str) -> bool:
+    """True wenn diese BBox nicht in Lesetext/Export erscheinen soll."""
+    if not text:
+        return True
+    if b.get("box_type") in ("ignore_region", "note"):
+        return True
+    if text.startswith(REGION_PLACEHOLDER_PREFIX) or text.startswith(
+        IGNORE_BEREICH_PREFIX
+    ):
+        return True
+    return False
+
+
 def get_text_in_reading_order(
     bbox_list: list[dict[str, Any]],
     *,
@@ -91,9 +110,11 @@ def get_text_in_reading_order(
     Liefert den konkatenierten Text aller BBoxen in Lesereihenfolge.
 
     Pro BBox wird (reviewed_text or text) verwendet.
+    Region-Platzhalter (z. B. "[Region - OCR abgeschlossen]"), Ignore-Bereiche
+    (box_type ignore_region / "[Ignore-Bereich]") und Notiz-Boxen werden ausgelassen.
 
     Args:
-        bbox_list: Liste von BBox-Dicts (mit text, reviewed_text, bbox_pixel).
+        bbox_list: Liste von BBox-Dicts (mit text, reviewed_text, bbox_pixel, optional box_type).
         line_tolerance: Wie in sort_bboxes_reading_order.
         separator: Zwischen den BBox-Texten (z. B. " " oder "\\n").
 
@@ -104,6 +125,6 @@ def get_text_in_reading_order(
     parts = []
     for b in sorted_boxes:
         text = (b.get("reviewed_text") or b.get("text") or "").strip()
-        if text:
+        if not _should_skip_bbox_text(b, text):
             parts.append(text)
     return separator.join(parts)

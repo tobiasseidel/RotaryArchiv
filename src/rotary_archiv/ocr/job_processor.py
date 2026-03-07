@@ -14,7 +14,10 @@ import uuid
 from PyPDF2 import PdfReader, PdfWriter
 from sqlalchemy.orm.attributes import flag_modified
 
-from src.rotary_archiv.api.settings import get_ocr_sight_settings_for_job
+from src.rotary_archiv.api.settings import (
+    get_content_analysis_settings,
+    get_ocr_sight_settings_for_job,
+)
 from src.rotary_archiv.config import settings
 from src.rotary_archiv.core.database import SessionLocal
 from src.rotary_archiv.core.models import (
@@ -22,6 +25,7 @@ from src.rotary_archiv.core.models import (
     DocumentPage,
     DocumentStatus,
     DocumentUnit,
+    DocumentUnitSuggestion,
     OCRJob,
     OCRJobStatus,
     OCRResult,
@@ -955,14 +959,19 @@ async def process_llm_sight_job(job_id: int) -> None:
         db.close()
 
 
-def _get_pages_with_all_boxes_confirmed(db, document_id: int) -> list[DocumentPage]:
+def _get_pages_with_all_boxes_confirmed(
+    db,
+    document_id: int,
+    min_confirmed_ratio: float = 1.0,
+) -> list[DocumentPage]:
     """
     Liefert alle Seiten des Dokuments, sortiert nach page_number, bei denen
-    jede OCR-relevante BBox review_status in ('confirmed', 'auto_confirmed') hat.
+    mindestens min_confirmed_ratio (0.0-1.0) der OCR-relevanten BBoxen
+    review_status in ('confirmed', 'auto_confirmed') haben.
+    min_confirmed_ratio=1.0 = 100 % (alle müssen bestätigt sein).
 
     Notiz-Boxen (box_type 'note') und Ignore-Bereiche (box_type 'ignore_region')
-    werden bei der Prüfung nicht mitgezählt, damit Seiten mit Notizen trotzdem
-    für Grenzen- und Content-Analyse nutzbar sind.
+    werden bei der Prüfung nicht mitgezählt.
     """
     pages = (
         db.query(DocumentPage)
@@ -991,16 +1000,18 @@ def _get_pages_with_all_boxes_confirmed(db, document_id: int) -> list[DocumentPa
         )
         if not bbox_list:
             continue
-        # Nur OCR-relevante Boxen prüfen; Notizen und Ignore-Bereiche ausnehmen
         review_relevant = [
             b for b in bbox_list if b.get("box_type") not in ("note", "ignore_region")
         ]
         if not review_relevant:
             result.append(page)
             continue
-        if all(
-            (b.get("review_status") or "").strip() in allowed for b in review_relevant
-        ):
+        confirmed_count = sum(
+            1
+            for b in review_relevant
+            if (b.get("review_status") or "").strip() in allowed
+        )
+        if confirmed_count / len(review_relevant) >= min_confirmed_ratio:
             result.append(page)
     return result
 
@@ -1074,7 +1085,12 @@ async def process_boundary_analysis_job(job_id: int) -> None:
             db.commit()
             return
 
-        pages_confirmed = _get_pages_with_all_boxes_confirmed(db, job.document_id)
+        content_settings = get_content_analysis_settings(db)
+        threshold_pct = content_settings.get("review_threshold_pct", 100)
+        min_ratio = max(0.0, min(1.0, float(threshold_pct) / 100.0))
+        pages_confirmed = _get_pages_with_all_boxes_confirmed(
+            db, job.document_id, min_confirmed_ratio=min_ratio
+        )
         if not pages_confirmed:
             job.status = OCRJobStatus.COMPLETED
             job.current_step = "Keine Seiten mit vollständig bestätigten Boxen"
@@ -1082,9 +1098,9 @@ async def process_boundary_analysis_job(job_id: int) -> None:
             db.commit()
             return
 
-        # Bestehende DocumentUnits dieses Dokuments entfernen (Re-Run ersetzt)
-        db.query(DocumentUnit).filter(
-            DocumentUnit.document_id == job.document_id
+        # Bestehende DocumentUnitSuggestions dieses Dokuments entfernen (Re-Run ersetzt)
+        db.query(DocumentUnitSuggestion).filter(
+            DocumentUnitSuggestion.document_id == job.document_id
         ).delete()
         db.commit()
 
@@ -1121,27 +1137,21 @@ async def process_boundary_analysis_job(job_id: int) -> None:
             else:
                 i += 1
 
-            unit = DocumentUnit(
+            suggestion = DocumentUnitSuggestion(
                 document_id=job.document_id,
                 page_ids=page_ids,
                 belongs_with_next=belongs_with_next,
-                summary=None,
-                persons=None,
-                topic=None,
-                place=None,
-                event_date=None,
-                extracted_phrases=None,
-                extracted_names=None,
+                source_job_id=job.id,
             )
-            db.add(unit)
+            db.add(suggestion)
             units_created += 1
 
         job.status = OCRJobStatus.COMPLETED
-        job.current_step = f"Abgeschlossen - {units_created} Einheit(en)"
+        job.current_step = f"Abgeschlossen - {units_created} Vorschlag/Vorschläge"
         job.completed_at = datetime.now()
         db.commit()
         logger.info(
-            "Boundary-Analyse Job %s: %s Einheiten für Dokument %s",
+            "Boundary-Analyse Job %s: %s Vorschläge für Dokument %s",
             job_id,
             units_created,
             job.document_id,
@@ -1198,7 +1208,12 @@ async def process_content_analysis_job(job_id: int) -> None:
             db.commit()
             return
 
-        pages_confirmed = _get_pages_with_all_boxes_confirmed(db, job.document_id)
+        content_settings = get_content_analysis_settings(db)
+        threshold_pct = content_settings.get("review_threshold_pct", 100)
+        min_ratio = max(0.0, min(1.0, float(threshold_pct) / 100.0))
+        pages_confirmed = _get_pages_with_all_boxes_confirmed(
+            db, job.document_id, min_confirmed_ratio=min_ratio
+        )
         if not pages_confirmed:
             job.status = OCRJobStatus.COMPLETED
             job.current_step = "Keine Seiten mit vollständig bestätigten Boxen"

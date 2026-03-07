@@ -22,12 +22,14 @@ from src.rotary_archiv.core.database import SessionLocal  # noqa: E402
 from src.rotary_archiv.core.models import OCRJob, OCRJobStatus  # noqa: E402
 from src.rotary_archiv.ocr.job_processor import (  # noqa: E402
     process_bbox_review_job,
+    process_boundary_analysis_job,
     process_content_analysis_job,
     process_llm_sight_job,
     process_ocr_job,
     process_pdf_export_job,
     process_persistent_region_quality_job,
     process_quality_job,
+    process_unit_content_analysis_job,
 )
 
 # Logging konfigurieren
@@ -149,6 +151,14 @@ async def worker_loop(poll_interval: int = 5):
                     elif job_type == "content_analysis":
                         task = asyncio.create_task(  # noqa: RUF006
                             process_content_analysis_job(job.id)
+                        )
+                    elif job_type == "boundary_analysis":
+                        task = asyncio.create_task(  # noqa: RUF006
+                            process_boundary_analysis_job(job.id)
+                        )
+                    elif job_type == "unit_content_analysis":
+                        task = asyncio.create_task(  # noqa: RUF006
+                            process_unit_content_analysis_job(job.id)
                         )
                     elif job_type == "pdf_export":
                         task = asyncio.create_task(  # noqa: RUF006

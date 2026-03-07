@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from src.rotary_archiv.core.models import (
     DocumentStatus,
@@ -117,7 +117,7 @@ class OCRJobCreate(BaseModel):
 
     job_type: str = Field(
         default="ocr",
-        description="Job-Typ: ocr, bbox_review, llm_sight, quality, content_analysis, ...",
+        description="Job-Typ: ocr, bbox_review, llm_sight, quality, content_analysis, boundary_analysis, unit_content_analysis, ...",
     )
     language: str = Field(
         default="deu+eng",
@@ -219,6 +219,18 @@ class DocumentUpdate(BaseModel):
     status: DocumentStatus | None = None
 
 
+class DocumentListEntry(BaseModel):
+    """Minimales Schema für Dokument-Listen (z. B. Dropdown), ohne OCR-Inhalt."""
+
+    id: int
+    filename: str
+    title: str | None = None
+    status: DocumentStatus
+
+    class Config:
+        from_attributes = True
+
+
 class DocumentResponse(DocumentBase):
     """Schema für Dokument-Response"""
 
@@ -240,6 +252,46 @@ class DocumentResponse(DocumentBase):
         from_attributes = True
 
 
+class DocumentUnitSuggestionResponse(BaseModel):
+    """Schema für einen Einheiten-Vorschlag (aus Grenzen-Analyse)."""
+
+    id: int
+    document_id: int
+    page_ids: list[int]
+    belongs_with_next: bool
+    source_job_id: int | None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentUnitCreate(BaseModel):
+    """Body zum manuellen Anlegen einer Einheit."""
+
+    page_ids: list[int] = Field(
+        ..., min_length=1, description="Seiten-IDs in Reihenfolge"
+    )
+    belongs_with_next: bool = Field(
+        default=False,
+        description="Gehört mit nächster Seite zusammen",
+    )
+
+
+class DocumentUnitUpdate(BaseModel):
+    """Body zum Bearbeiten einer Einheit (alle Felder optional)."""
+
+    page_ids: list[int] | None = Field(None, min_length=1)
+    belongs_with_next: bool | None = None
+    summary: str | None = None
+    persons: list[dict[str, Any]] | None = None
+    topic: str | None = None
+    place: str | None = None
+    event_date: str | None = None
+    extracted_phrases: list[str] | None = None
+    extracted_names: list[str] | None = None
+
+
 class DocumentUnitResponse(BaseModel):
     """Schema für Content-Analyse-Einheit (eine oder mehrere zusammenhängende Seiten)"""
 
@@ -249,6 +301,44 @@ class DocumentUnitResponse(BaseModel):
     belongs_with_next: bool
     summary: str | None
     persons: list[dict[str, Any]]  # [{"name": "...", "role": "..."}]
+    topic: str | None
+    place: str | None
+    event_date: str | None
+    extracted_phrases: list[str]
+    extracted_names: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+    @field_validator("persons", "extracted_phrases", "extracted_names", mode="before")
+    @classmethod
+    def default_list(cls, v: Any) -> list:
+        return v if isinstance(v, list) else []
+
+    class Config:
+        from_attributes = True
+
+
+class UnassignedPageItem(BaseModel):
+    """Seite eines Dokuments, die noch keiner Einheit zugeordnet ist (für manuelle Grenzen)."""
+
+    page_id: int
+    page_number: int
+    full_text: str = Field(description="BBox-Text der Seite in Lesereihenfolge")
+
+
+class ComposedUnitOverviewItem(BaseModel):
+    """Eine zusammengesetzte Einheit für die Dokumenten-Übersicht inkl. full_text."""
+
+    id: int
+    document_id: int
+    page_ids: list[int]
+    page_numbers: list[int] = Field(
+        description="Seitenzahlen (1-basiert) aus DocumentPage"
+    )
+    full_text: str = Field(description="Zusammengesetzter BBox-Text in Lesereihenfolge")
+    belongs_with_next: bool
+    summary: str | None
+    persons: list[dict[str, Any]]
     topic: str | None
     place: str | None
     event_date: str | None

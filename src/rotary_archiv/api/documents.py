@@ -13,9 +13,15 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from src.rotary_archiv.api.schemas import (
+    ComposedUnitOverviewItem,
+    DocumentListEntry,
     DocumentResponse,
+    DocumentUnitCreate,
     DocumentUnitResponse,
+    DocumentUnitSuggestionResponse,
+    DocumentUnitUpdate,
     DocumentUpdate,
+    UnassignedPageItem,
 )
 from src.rotary_archiv.core.database import get_db
 from src.rotary_archiv.core.models import (
@@ -23,9 +29,11 @@ from src.rotary_archiv.core.models import (
     DocumentPage,
     DocumentStatus,
     DocumentUnit,
+    DocumentUnitSuggestion,
     OCRJob,
     OCRJobStatus,
 )
+from src.rotary_archiv.ocr.job_processor import get_unit_text_in_reading_order
 from src.rotary_archiv.utils.file_handler import get_file_size, save_uploaded_file
 from src.rotary_archiv.utils.pdf_utils import get_pdf_page_count
 
@@ -163,6 +171,27 @@ async def create_document(
         ) from e
 
 
+@router.get("/summary", response_model=list[DocumentListEntry])
+def list_documents_summary(
+    skip: int = 0,
+    limit: int = 500,
+    status_filter: DocumentStatus | None = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Leichte Liste aller Dokumente (id, filename, title, status) für Dropdowns.
+    Kein OCR-Text, keine Relationships - schnell und kleine Antwort.
+    """
+    query = db.query(Document)
+    if status_filter:
+        query = query.filter(Document.status == status_filter)
+    rows = query.offset(skip).limit(limit).all()
+    return [
+        DocumentListEntry(id=d.id, filename=d.filename, title=d.title, status=d.status)
+        for d in rows
+    ]
+
+
 @router.get("/", response_model=list[DocumentResponse])
 def list_documents(
     skip: int = 0,
@@ -171,7 +200,8 @@ def list_documents(
     db: Session = Depends(get_db),
 ):
     """
-    Liste alle Dokumente
+    Liste alle Dokumente (vollständige Response inkl. Metadaten).
+    Für Dropdowns/Listen bevorzugen: GET /api/documents/summary
     """
     query = db.query(Document)
 
@@ -212,6 +242,319 @@ def get_document_units(document_id: int, db: Session = Depends(get_db)):
         .all()
     )
     return [DocumentUnitResponse.model_validate(u) for u in units]
+
+
+@router.get(
+    "/{document_id}/unassigned-pages",
+    response_model=list[UnassignedPageItem],
+)
+def get_unassigned_pages(document_id: int, db: Session = Depends(get_db)):
+    """
+    Seiten des Dokuments, die noch keiner DocumentUnit zugeordnet sind.
+    Pro Seite wird full_text (BBox-Inhalt in Lesereihenfolge) mitgeliefert
+    für manuelle Grenzen-Zuordnung.
+    """
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Dokument nicht gefunden"
+        )
+    all_pages = (
+        db.query(DocumentPage)
+        .filter(DocumentPage.document_id == document_id)
+        .order_by(DocumentPage.page_number)
+        .all()
+    )
+    units = db.query(DocumentUnit).filter(DocumentUnit.document_id == document_id).all()
+    assigned_ids = set()
+    for u in units:
+        for pid in u.page_ids or []:
+            assigned_ids.add(pid)
+    unassigned = [p for p in all_pages if p.id not in assigned_ids]
+    result = []
+    for p in unassigned:
+        full_text = get_unit_text_in_reading_order(db, [p.id], page_separator="\n\n")
+        result.append(
+            UnassignedPageItem(
+                page_id=p.id,
+                page_number=p.page_number,
+                full_text=full_text,
+            )
+        )
+    return result
+
+
+def _document_page_ids_for_document(db: Session, document_id: int) -> set[int]:
+    """Set aller DocumentPage-IDs die zu diesem Dokument gehören."""
+    rows = (
+        db.query(DocumentPage.id).filter(DocumentPage.document_id == document_id).all()
+    )
+    return {r[0] for r in rows}
+
+
+@router.get(
+    "/{document_id}/unit-suggestions",
+    response_model=list[DocumentUnitSuggestionResponse],
+)
+def get_unit_suggestions(document_id: int, db: Session = Depends(get_db)):
+    """Liste aller Einheiten-Vorschläge für das Dokument."""
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Dokument nicht gefunden"
+        )
+    suggestions = (
+        db.query(DocumentUnitSuggestion)
+        .filter(DocumentUnitSuggestion.document_id == document_id)
+        .order_by(DocumentUnitSuggestion.id)
+        .all()
+    )
+    return [DocumentUnitSuggestionResponse.model_validate(s) for s in suggestions]
+
+
+@router.post(
+    "/{document_id}/unit-suggestions/accept-all",
+    response_model=list[DocumentUnitResponse],
+)
+def accept_all_unit_suggestions(document_id: int, db: Session = Depends(get_db)):
+    """Alle Vorschläge des Dokuments in DocumentUnits überführen und Vorschläge löschen."""
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Dokument nicht gefunden"
+        )
+    suggestions = (
+        db.query(DocumentUnitSuggestion)
+        .filter(DocumentUnitSuggestion.document_id == document_id)
+        .order_by(DocumentUnitSuggestion.id)
+        .all()
+    )
+    created = []
+    for s in suggestions:
+        unit = DocumentUnit(
+            document_id=document_id,
+            page_ids=s.page_ids,
+            belongs_with_next=s.belongs_with_next,
+        )
+        db.add(unit)
+        db.flush()
+        created.append(unit)
+    for s in suggestions:
+        db.delete(s)
+    db.commit()
+    for u in created:
+        db.refresh(u)
+    return [DocumentUnitResponse.model_validate(u) for u in created]
+
+
+@router.post(
+    "/{document_id}/unit-suggestions/{suggestion_id}/accept",
+    response_model=DocumentUnitResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def accept_unit_suggestion(
+    document_id: int, suggestion_id: int, db: Session = Depends(get_db)
+):
+    """Einen Vorschlag in eine DocumentUnit überführen und Vorschlag löschen."""
+    suggestion = (
+        db.query(DocumentUnitSuggestion)
+        .filter(
+            DocumentUnitSuggestion.id == suggestion_id,
+            DocumentUnitSuggestion.document_id == document_id,
+        )
+        .first()
+    )
+    if not suggestion:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Vorschlag nicht gefunden",
+        )
+    unit = DocumentUnit(
+        document_id=document_id,
+        page_ids=suggestion.page_ids,
+        belongs_with_next=suggestion.belongs_with_next,
+    )
+    db.add(unit)
+    db.delete(suggestion)
+    db.commit()
+    db.refresh(unit)
+    return DocumentUnitResponse.model_validate(unit)
+
+
+@router.delete(
+    "/{document_id}/unit-suggestions/{suggestion_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def reject_unit_suggestion(
+    document_id: int, suggestion_id: int, db: Session = Depends(get_db)
+):
+    """Einzelnen Vorschlag verwerfen."""
+    suggestion = (
+        db.query(DocumentUnitSuggestion)
+        .filter(
+            DocumentUnitSuggestion.id == suggestion_id,
+            DocumentUnitSuggestion.document_id == document_id,
+        )
+        .first()
+    )
+    if not suggestion:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Vorschlag nicht gefunden",
+        )
+    db.delete(suggestion)
+    db.commit()
+    return None
+
+
+@router.post(
+    "/{document_id}/units",
+    response_model=DocumentUnitResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_document_unit(
+    document_id: int, body: DocumentUnitCreate, db: Session = Depends(get_db)
+):
+    """Einheit manuell anlegen (Seiten auswählen)."""
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Dokument nicht gefunden"
+        )
+    allowed_ids = _document_page_ids_for_document(db, document_id)
+    for pid in body.page_ids:
+        if pid not in allowed_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Seite {pid} gehört nicht zum Dokument",
+            )
+    unit = DocumentUnit(
+        document_id=document_id,
+        page_ids=body.page_ids,
+        belongs_with_next=body.belongs_with_next,
+    )
+    db.add(unit)
+    db.commit()
+    db.refresh(unit)
+    return DocumentUnitResponse.model_validate(unit)
+
+
+@router.put(
+    "/{document_id}/units/{unit_id}",
+    response_model=DocumentUnitResponse,
+)
+def update_document_unit(
+    document_id: int,
+    unit_id: int,
+    body: DocumentUnitUpdate,
+    db: Session = Depends(get_db),
+):
+    """Einheit bearbeiten (Seiten/Inhalt)."""
+    unit = (
+        db.query(DocumentUnit)
+        .filter(
+            DocumentUnit.id == unit_id,
+            DocumentUnit.document_id == document_id,
+        )
+        .first()
+    )
+    if not unit:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Einheit nicht gefunden",
+        )
+    update_data = body.model_dump(exclude_unset=True)
+    if "page_ids" in update_data:
+        allowed_ids = _document_page_ids_for_document(db, document_id)
+        for pid in update_data["page_ids"]:
+            if pid not in allowed_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Seite {pid} gehört nicht zum Dokument",
+                )
+    for field, value in update_data.items():
+        setattr(unit, field, value)
+    db.commit()
+    db.refresh(unit)
+    return DocumentUnitResponse.model_validate(unit)
+
+
+@router.delete(
+    "/{document_id}/units/{unit_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_document_unit(document_id: int, unit_id: int, db: Session = Depends(get_db)):
+    """Einheit löschen."""
+    unit = (
+        db.query(DocumentUnit)
+        .filter(
+            DocumentUnit.id == unit_id,
+            DocumentUnit.document_id == document_id,
+        )
+        .first()
+    )
+    if not unit:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Einheit nicht gefunden",
+        )
+    db.delete(unit)
+    db.commit()
+    return None
+
+
+@router.get(
+    "/{document_id}/composed-overview",
+    response_model=list[ComposedUnitOverviewItem],
+)
+def get_composed_overview(document_id: int, db: Session = Depends(get_db)):
+    """
+    Übersicht der zusammengesetzten Dokument-Einheiten inkl. Volltext (BBox-Inhalt
+    in Lesereihenfolge) zur geordneten Analyse.
+    """
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Dokument nicht gefunden"
+        )
+    units = (
+        db.query(DocumentUnit)
+        .filter(DocumentUnit.document_id == document_id)
+        .order_by(DocumentUnit.id)
+        .all()
+    )
+    result = []
+    for u in units:
+        page_numbers = []
+        for pid in u.page_ids:
+            page = db.query(DocumentPage).filter(DocumentPage.id == pid).first()
+            if page:
+                page_numbers.append(page.page_number)
+            else:
+                page_numbers.append(0)
+        full_text = get_unit_text_in_reading_order(
+            db, u.page_ids, page_separator="\n\n"
+        )
+        result.append(
+            ComposedUnitOverviewItem(
+                id=u.id,
+                document_id=u.document_id,
+                page_ids=u.page_ids,
+                page_numbers=page_numbers,
+                full_text=full_text,
+                belongs_with_next=u.belongs_with_next,
+                summary=u.summary,
+                persons=u.persons or [],
+                topic=u.topic,
+                place=u.place,
+                event_date=u.event_date,
+                extracted_phrases=u.extracted_phrases or [],
+                extracted_names=u.extracted_names or [],
+                created_at=u.created_at,
+                updated_at=u.updated_at,
+            )
+        )
+    return result
 
 
 @router.put("/{document_id}", response_model=DocumentResponse)

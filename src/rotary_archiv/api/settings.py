@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 OCR_SIGHT_KEY = "ocr_sight"
+CONTENT_ANALYSIS_KEY = "content_analysis"
 
 
 def _default_ocr_sight() -> dict[str, Any]:
@@ -98,6 +99,63 @@ def get_ocr_sight_settings_for_job(db: Session) -> dict[str, Any]:
         out.update(row.value_json)
         return out
     return _default_ocr_sight()
+
+
+def _default_content_analysis() -> dict[str, Any]:
+    """Defaults für Content-Analyse (Review-Quote)."""
+    return {"review_threshold_pct": 100}
+
+
+def get_content_analysis_settings(db: Session) -> dict[str, Any]:
+    """
+    Liest Content-Analyse-Einstellungen (für Job-Prozessor / Worker).
+    review_threshold_pct: 0-100, Anteil bestätigter BBoxen pro Seite für automatische Erkennung.
+    """
+    row = db.query(AppSetting).filter(AppSetting.key == CONTENT_ANALYSIS_KEY).first()
+    if row and row.value_json:
+        out = dict(_default_content_analysis())
+        out.update(row.value_json)
+        return out
+    return _default_content_analysis()
+
+
+class ContentAnalysisSettingsBody(BaseModel):
+    """Request-Body für PUT /api/settings/content-analysis."""
+
+    review_threshold_pct: float = Field(
+        default=100,
+        ge=0,
+        le=100,
+        description="Review-Quote (%): Seiten mit mindestens so viel bestätigten BBoxen fließen in die automatische Erkennung ein (0-100).",
+    )
+
+
+@router.get("/content-analysis")
+def get_content_analysis_settings_endpoint(
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Liest die Einstellungen für Content-Analyse (Review-Quote)."""
+    return get_content_analysis_settings(db)
+
+
+@router.put("/content-analysis")
+def put_content_analysis_settings(
+    body: ContentAnalysisSettingsBody,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Speichert die Einstellungen für Content-Analyse."""
+    row = db.query(AppSetting).filter(AppSetting.key == CONTENT_ANALYSIS_KEY).first()
+    payload = body.model_dump()
+    if row:
+        row.value_json = payload
+        db.commit()
+    else:
+        row = AppSetting(key=CONTENT_ANALYSIS_KEY, value_json=payload)
+        db.add(row)
+        db.commit()
+    out = dict(_default_content_analysis())
+    out.update(payload)
+    return out
 
 
 @router.put("/ocr-sight")

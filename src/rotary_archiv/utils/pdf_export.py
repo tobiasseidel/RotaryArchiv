@@ -108,6 +108,9 @@ def _draw_one_page(
         text = (item.get("text") or "").strip()
         if not text:
             continue
+        # Region-Platzhalter und Ignore-Bereich nicht ins PDF zeichnen
+        if text.startswith("[Region - ") or text.startswith("[Ignore-Bereich]"):
+            continue
         text = _sanitize_text_for_reportlab(text)
         if not text:
             continue

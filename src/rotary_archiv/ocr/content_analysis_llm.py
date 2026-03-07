@@ -75,6 +75,269 @@ def build_content_analysis_prompts(
     return system_prompt, user_prompt
 
 
+def build_boundary_only_prompt(
+    page_a_text: str,
+    page_b_text: str | None,
+) -> tuple[str, str]:
+    """
+    Baut System- und User-Prompt nur für Grenzerkennung (belongs_with_next).
+    Keine inhaltliche Analyse.
+    """
+    system_prompt = (
+        "Du bist ein Experte für die Auswertung von Club-Protokollen und Sitzungsberichten.\n\n"
+        "Aufgabe: Entscheide NUR, ob Seite A und Seite B inhaltlich zusammengehören "
+        "(ein und dasselbe Protokoll / dieselbe Veranstaltung).\n\n"
+        "Antworte AUSSCHLIESSLICH mit einem JSON-Objekt (kein anderer Text, kein Markdown):\n"
+        '{"belongs_with_next": true} oder {"belongs_with_next": false}'
+    )
+    user_prompt = "=== SEITE A ===\n" + (page_a_text or "(leer)")
+    if page_b_text is not None:
+        user_prompt += "\n\n=== SEITE B (gehört sie zu A?) ===\n" + page_b_text
+    return system_prompt, user_prompt
+
+
+def parse_boundary_response(response_text: str) -> dict[str, Any] | None:
+    """Parst LLM-Antwort auf nur belongs_with_next. Returns dict or None."""
+    if not response_text or not response_text.strip():
+        return None
+    text = response_text.strip()
+    code_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if code_match:
+        text = code_match.group(1).strip()
+    brace = text.find("{")
+    if brace < 0:
+        return None
+    depth = 0
+    end = -1
+    for i in range(brace, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    if end < 0:
+        return None
+    try:
+        data = json.loads(text[brace : end + 1])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return {"belongs_with_next": bool(data.get("belongs_with_next", False))}
+
+
+def call_ollama_boundary_only(
+    page_a_text: str,
+    page_b_text: str | None = None,
+) -> dict[str, Any]:
+    """
+    Ruft Ollama nur für Grenzerkennung (belongs_with_next) auf.
+    Returns: success, belongs_with_next, error, raw_content
+    """
+    base_url = app_config.ollama_base_url
+    model = app_config.ollama_gpt_model
+    timeout_sec = getattr(app_config, "ollama_timeout_seconds", 300)
+    system_prompt, user_prompt = build_boundary_only_prompt(page_a_text, page_b_text)
+    timeout = httpx.Timeout(
+        connect=10.0, read=timeout_sec, write=timeout_sec, pool=10.0
+    )
+    result: dict[str, Any] = {
+        "success": False,
+        "belongs_with_next": False,
+        "raw_content": "",
+        "error": None,
+    }
+    try:
+        start = time.time()
+        with httpx.Client(timeout=timeout) as client:
+            response = client.post(
+                f"{base_url}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "stream": False,
+                },
+            )
+        response.raise_for_status()
+        content = (response.json().get("message") or {}).get("content") or ""
+        result["raw_content"] = content
+        parsed = parse_boundary_response(content)
+        if parsed is not None:
+            result["success"] = True
+            result["belongs_with_next"] = parsed["belongs_with_next"]
+        else:
+            result["error"] = "LLM-Antwort konnte nicht als JSON gelesen werden"
+        logger.info(
+            "Ollama boundary_only %.1fs, belongs_with_next=%s",
+            time.time() - start,
+            result["belongs_with_next"],
+        )
+        return result
+    except httpx.TimeoutException as e:
+        result["error"] = f"Timeout: {e}"
+        return result
+    except httpx.HTTPStatusError as e:
+        result["error"] = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
+        return result
+    except Exception as e:
+        result["error"] = str(e)
+        logger.exception("Ollama boundary_only error")
+        return result
+
+
+def build_content_only_prompt(unit_full_text: str) -> tuple[str, str]:
+    """
+    Baut System- und User-Prompt nur für inhaltliche Analyse einer Einheit.
+    Eingabe: zusammengesetzter Volltext einer DocumentUnit (alle Seiten in Lesereihenfolge).
+    Kein belongs_with_next.
+    """
+    roles_str = ", ".join(PERSON_ROLES)
+    system_prompt = (
+        "Du bist ein Experte für die Auswertung von Club-Protokollen und Sitzungsberichten.\n\n"
+        "Analysiere den folgenden Text einer Protokoll-Einheit (eine oder mehrere Seiten). "
+        "Extrahiere: Zusammenfassung, Personen mit Rollen, Thema, Ort, Datum, "
+        "typische Formulierungen (Floskeln) und alle erwähnten Personennamen.\n\n"
+        "Personen: Jede erwähnte Person mit ihrer Rolle. Rolle MUSS eine der folgenden sein: "
+        f"{roles_str}.\n\n"
+        "Antworte AUSSCHLIESSLICH mit einem JSON-Objekt (kein anderer Text, kein Markdown):\n"
+        '"summary": "Zusammenfassung", '
+        '"persons": [{"name": "Name", "role": "Rolle"}], '
+        '"topic": "...", "place": "...", "event_date": "...", '
+        '"extracted_phrases": ["..."], "extracted_names": ["..."]}'
+    )
+    user_prompt = unit_full_text or "(leer)"
+    return system_prompt, user_prompt
+
+
+def parse_content_only_response(response_text: str) -> dict[str, Any] | None:
+    """
+    Parst LLM-Antwort auf nur inhaltliche Felder (ohne belongs_with_next).
+    """
+    if not response_text or not response_text.strip():
+        return None
+    text = response_text.strip()
+    code_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if code_match:
+        text = code_match.group(1).strip()
+    brace = text.find("{")
+    if brace >= 0:
+        depth = 0
+        end = -1
+        for i in range(brace, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        if end >= 0:
+            text = text[brace : end + 1]
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    result: dict[str, Any] = {
+        "summary": (data.get("summary") or "").strip() or None,
+        "persons": data.get("persons"),
+        "topic": (data.get("topic") or "").strip() or None,
+        "place": (data.get("place") or "").strip() or None,
+        "event_date": (data.get("event_date") or "").strip() or None,
+        "extracted_phrases": data.get("extracted_phrases"),
+        "extracted_names": data.get("extracted_names"),
+    }
+    if not isinstance(result["persons"], list):
+        result["persons"] = []
+    if not isinstance(result["extracted_phrases"], list):
+        result["extracted_phrases"] = []
+    if not isinstance(result["extracted_names"], list):
+        result["extracted_names"] = []
+    normalized_persons = []
+    for p in result["persons"]:
+        if isinstance(p, dict) and p.get("name"):
+            role = (p.get("role") or "").strip()
+            if role not in PERSON_ROLES:
+                role = "andere"
+            normalized_persons.append({"name": str(p["name"]).strip(), "role": role})
+    result["persons"] = normalized_persons
+    return result
+
+
+def call_ollama_content_only(unit_full_text: str) -> dict[str, Any]:
+    """
+    Ruft Ollama nur für inhaltliche Analyse einer Einheit (Volltext).
+    Returns: success, summary, persons, topic, place, event_date,
+    extracted_phrases, extracted_names, error, raw_content.
+    """
+    base_url = app_config.ollama_base_url
+    model = app_config.ollama_gpt_model
+    timeout_sec = getattr(app_config, "ollama_timeout_seconds", 300)
+    system_prompt, user_prompt = build_content_only_prompt(unit_full_text)
+    timeout = httpx.Timeout(
+        connect=10.0, read=timeout_sec, write=timeout_sec, pool=10.0
+    )
+    result: dict[str, Any] = {
+        "success": False,
+        "summary": None,
+        "persons": [],
+        "topic": None,
+        "place": None,
+        "event_date": None,
+        "extracted_phrases": [],
+        "extracted_names": [],
+        "raw_content": "",
+        "error": None,
+    }
+    try:
+        start = time.time()
+        with httpx.Client(timeout=timeout) as client:
+            response = client.post(
+                f"{base_url}/api/chat",
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "stream": False,
+                },
+            )
+        response.raise_for_status()
+        content = (response.json().get("message") or {}).get("content") or ""
+        result["raw_content"] = content
+        parsed = parse_content_only_response(content)
+        if parsed:
+            result["success"] = True
+            result["summary"] = parsed["summary"]
+            result["persons"] = parsed["persons"]
+            result["topic"] = parsed["topic"]
+            result["place"] = parsed["place"]
+            result["event_date"] = parsed["event_date"]
+            result["extracted_phrases"] = parsed["extracted_phrases"]
+            result["extracted_names"] = parsed["extracted_names"]
+        else:
+            result["error"] = "LLM-Antwort konnte nicht als JSON gelesen werden"
+        logger.info("Ollama content_only %.1fs", time.time() - start)
+        return result
+    except httpx.TimeoutException as e:
+        result["error"] = f"Timeout: {e}"
+        return result
+    except httpx.HTTPStatusError as e:
+        result["error"] = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
+        return result
+    except Exception as e:
+        result["error"] = str(e)
+        logger.exception("Ollama content_only error")
+        return result
+
+
 def parse_content_analysis_response(response_text: str) -> dict[str, Any] | None:
     """
     Parst die LLM-Antwort auf strukturierte Felder für Content-Analyse.

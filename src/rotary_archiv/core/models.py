@@ -356,6 +356,34 @@ class DocumentUnit(Base):
         return f"<DocumentUnit(id={self.id}, document_id={self.document_id}, page_ids={self.page_ids})>"
 
 
+class DocumentUnitSuggestion(Base):
+    """
+    Vorschlag für eine Einheit (aus Grenzen-Analyse). Wird zu DocumentUnit,
+    wenn der Nutzer „Übernehmen“ wählt.
+    """
+
+    __tablename__ = "document_unit_suggestions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_id = Column(
+        Integer, ForeignKey("documents.id"), nullable=False, index=True
+    )
+    page_ids = Column(JSON, nullable=False)  # Liste von document_page.id
+    belongs_with_next = Column(
+        Boolean, default=False, nullable=False, server_default="0"
+    )
+    source_job_id = Column(
+        Integer, ForeignKey("ocr_jobs.id"), nullable=True, index=True
+    )
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+    document = relationship("Document", backref="document_unit_suggestions")
+    source_job = relationship("OCRJob", backref="unit_suggestions_created")
+
+    def __repr__(self) -> str:
+        return f"<DocumentUnitSuggestion(id={self.id}, document_id={self.document_id}, page_ids={self.page_ids})>"
+
+
 class AppSetting(Base):
     """Globale App-Einstellungen (Key-Value), z. B. für OCR-Sichtung."""
 

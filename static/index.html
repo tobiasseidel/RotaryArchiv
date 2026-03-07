@@ -835,6 +835,7 @@
             <li><a href="#" id="navBboxList" onclick="showBboxListView(); return false;">BBox-Liste</a></li>
             <li><a href="#" id="navPersistentRegions" onclick="showPersistentRegionsView(); return false;">Persistente Regionen</a></li>
             <li><a href="#" id="navOcrSight" onclick="showOcrSightSettingsView(); return false;">OCR-Sichtung</a></li>
+            <li><a href="#" id="navContentAnalysis" onclick="showContentAnalysisSettingsView(); return false;">Content-Analyse</a></li>
             <li><a href="#" id="navComposedOverview" onclick="showComposedOverviewView(); return false;">Dokumenten-Übersicht</a></li>
         </ul>
     </nav>
@@ -907,10 +908,65 @@
             <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
                 <button type="button" class="upload-btn" onclick="startComposedOverviewJob('boundary_analysis')">Grenzen-Analyse starten</button>
                 <button type="button" class="upload-btn" onclick="startComposedOverviewJob('unit_content_analysis')">Inhaltliche Analyse starten</button>
+                <button type="button" class="upload-btn" id="composedOverviewAddUnitBtn" style="display: none; background: #2e7d32;" onclick="openCreateUnitModal()">Einheit manuell anlegen</button>
+                <button type="button" class="upload-btn" id="composedOverviewUnassignedBtn" style="display: none; background: #1565c0;" onclick="toggleUnassignedPages()">Nicht zugeordnete Seiten</button>
+            </div>
+        </div>
+        <div id="composedOverviewUnassigned" style="display: none; margin-bottom: 20px; padding: 16px; background: #fff3e0; border: 1px solid #ffcc80; border-radius: 8px;">
+            <h3 style="margin: 0 0 12px 0;">Nicht zugeordnete Seiten</h3>
+            <p style="font-size: 13px; color: #666; margin-bottom: 12px;">Seiten, die noch in keiner Einheit sind. BBox-Inhalt anzeigen und manuell zu Einheiten zusammenfügen oder einzeln als Einheit anlegen. Zugeordnete Seiten verschwinden hier.</p>
+            <div id="composedOverviewUnassignedToolbar" style="margin-bottom: 12px;">
+                <button type="button" class="btn btn-primary" id="unassignedMergeBtn" onclick="createUnitFromUnassignedSelection()" disabled>Ausgewählte zu einer Einheit zusammenfügen</button>
+            </div>
+            <div id="composedOverviewUnassignedList">
+                <p style="color: #666;">Lade...</p>
+            </div>
+        </div>
+        <div id="composedOverviewSuggestions" style="display: none; margin-bottom: 20px; padding: 16px; background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 8px;">
+            <h3 style="margin: 0 0 12px 0;">Vorschläge (Grenzen-Analyse)</h3>
+            <p style="font-size: 13px; color: #666; margin-bottom: 12px;">Einzeln übernehmen oder alle auf einmal. Verwerfen entfernt den Vorschlag.</p>
+            <div id="composedOverviewSuggestionsList"></div>
+            <div style="margin-top: 10px;">
+                <button type="button" class="btn btn-primary" onclick="acceptAllUnitSuggestions()">Alle übernehmen</button>
             </div>
         </div>
         <div id="composedOverviewUnits">
             <p style="color: #666;">Dokument auswählen, um Einheiten anzuzeigen.</p>
+        </div>
+    </div>
+
+    <!-- Modal: Einheit manuell anlegen -->
+    <div id="createUnitModal" style="display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 10000; overflow: auto;" onclick="if (event.target === this) closeCreateUnitModal();">
+        <div style="max-width: 500px; margin: 40px auto; background: white; border-radius: 8px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);" onclick="event.stopPropagation();">
+            <h2 style="margin: 0 0 16px 0;">Einheit manuell anlegen</h2>
+            <p style="color: #666; margin-bottom: 12px;">Wählen Sie die Seiten für diese Einheit (in Lesereihenfolge).</p>
+            <div id="createUnitPageCheckboxes" style="max-height: 300px; overflow-y: auto; margin-bottom: 12px;"></div>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+                <input type="checkbox" id="createUnitBelongsWithNext">
+                <span>Gehört mit nächster Seite zusammen</span>
+            </label>
+            <div style="display: flex; gap: 10px;">
+                <button type="button" class="btn btn-primary" onclick="submitCreateUnit()">Anlegen</button>
+                <button type="button" class="btn btn-secondary" onclick="closeCreateUnitModal()">Abbrechen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Einheit bearbeiten -->
+    <div id="editUnitModal" style="display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 10000; overflow: auto;" onclick="if (event.target === this) closeEditUnitModal();">
+        <div style="max-width: 500px; margin: 40px auto; background: white; border-radius: 8px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);" onclick="event.stopPropagation();">
+            <h2 style="margin: 0 0 16px 0;">Einheit bearbeiten</h2>
+            <input type="hidden" id="editUnitId">
+            <p style="color: #666; margin-bottom: 12px;">Seiten für diese Einheit (in Lesereihenfolge):</p>
+            <div id="editUnitPageCheckboxes" style="max-height: 300px; overflow-y: auto; margin-bottom: 12px;"></div>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+                <input type="checkbox" id="editUnitBelongsWithNext">
+                <span>Gehört mit nächster Seite zusammen</span>
+            </label>
+            <div style="display: flex; gap: 10px;">
+                <button type="button" class="btn btn-primary" onclick="submitEditUnit()">Speichern</button>
+                <button type="button" class="btn btn-secondary" onclick="closeEditUnitModal()">Abbrechen</button>
+            </div>
         </div>
     </div>
 
@@ -1207,6 +1263,21 @@
                 <input type="number" id="ocrSightScoreThreshold" min="0" max="1" step="0.05" placeholder="0.85" style="width: 120px; padding: 8px;">
             </div>
             <button type="button" class="btn btn-primary" onclick="saveOcrSightSettings()">Speichern</button>
+        </div>
+    </div>
+
+    <!-- Content-Analyse Einstellungen (Review-Quote) -->
+    <div id="contentAnalysisSettingsView" class="container" style="display: none;">
+        <h1>Content-Analyse</h1>
+        <p class="subtitle">Einstellungen für die automatische Grenzen- und Inhaltserkennung</p>
+        <div id="contentAnalysisSettingsMessages" style="margin-bottom: 12px;"></div>
+        <div style="max-width: 600px; padding: 20px; background: #f9f9f9; border-radius: 8px;">
+            <div style="margin-bottom: 16px;">
+                <label for="contentAnalysisReviewThresholdPct" style="display: block; font-weight: 600; margin-bottom: 4px;">Review-Quote für automatische Erkennung (%)</label>
+                <input type="number" id="contentAnalysisReviewThresholdPct" min="0" max="100" value="100" style="width: 120px; padding: 8px;">
+                <span style="font-size: 12px; color: #666; margin-left: 8px;">0–100. Nur Seiten, bei denen mindestens dieser Anteil der OCR-Boxen bestätigt ist, fließen in die Vorschläge ein.</span>
+            </div>
+            <button type="button" class="btn btn-primary" onclick="saveContentAnalysisSettings()">Speichern</button>
         </div>
     </div>
 
@@ -1873,6 +1944,8 @@
                 showPersistentRegionsView();
             } else if (hash === '#/settings/ocr-sight') {
                 showOcrSightSettingsView();
+            } else if (hash === '#/settings/content-analysis') {
+                showContentAnalysisSettingsView();
             } else if (hash === '#/composed-overview') {
                 showComposedOverviewView();
             } else {
@@ -2311,6 +2384,7 @@
             const bboxListView = document.getElementById('bboxListView');
             const persistentRegionsView = document.getElementById('persistentRegionsView');
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
+            const contentAnalysisSettingsView = document.getElementById('contentAnalysisSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
 
             if (importView) importView.style.display = 'none';
@@ -2325,6 +2399,7 @@
             if (bboxListView) bboxListView.style.display = 'none';
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'block';
+            if (contentAnalysisSettingsView) contentAnalysisSettingsView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
@@ -2341,6 +2416,7 @@
             if (navBboxList) navBboxList.classList.remove('active');
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
             if (navOcrSight) navOcrSight.classList.add('active');
+            if (document.getElementById('navContentAnalysis')) document.getElementById('navContentAnalysis').classList.remove('active');
             if (document.getElementById('navComposedOverview')) document.getElementById('navComposedOverview').classList.remove('active');
 
             if (pollInterval) {
@@ -2352,7 +2428,7 @@
             loadOcrSightSettings();
         }
 
-        function showComposedOverviewView() {
+        function showContentAnalysisSettingsView() {
             const importView = document.getElementById('importView');
             const reviewView = document.getElementById('reviewView');
             const pageInspectView = document.getElementById('pageInspectView');
@@ -2361,6 +2437,7 @@
             const bboxListView = document.getElementById('bboxListView');
             const persistentRegionsView = document.getElementById('persistentRegionsView');
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
+            const contentAnalysisSettingsView = document.getElementById('contentAnalysisSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
 
             if (importView) importView.style.display = 'none';
@@ -2375,6 +2452,62 @@
             if (bboxListView) bboxListView.style.display = 'none';
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
+            if (contentAnalysisSettingsView) contentAnalysisSettingsView.style.display = 'block';
+            if (composedOverviewView) composedOverviewView.style.display = 'none';
+
+            const navImport = document.getElementById('navImport');
+            const navReview = document.getElementById('navReview');
+            const navQuality = document.getElementById('navQuality');
+            const navDeskew = document.getElementById('navDeskew');
+            const navBboxList = document.getElementById('navBboxList');
+            const navPersistentRegions = document.getElementById('navPersistentRegions');
+            const navOcrSight = document.getElementById('navOcrSight');
+            const navContentAnalysis = document.getElementById('navContentAnalysis');
+            const navComposedOverview = document.getElementById('navComposedOverview');
+            if (navImport) navImport.classList.remove('active');
+            if (navReview) navReview.classList.remove('active');
+            if (navQuality) navQuality.classList.remove('active');
+            if (navDeskew) navDeskew.classList.remove('active');
+            if (navBboxList) navBboxList.classList.remove('active');
+            if (navPersistentRegions) navPersistentRegions.classList.remove('active');
+            if (navOcrSight) navOcrSight.classList.remove('active');
+            if (navContentAnalysis) navContentAnalysis.classList.add('active');
+            if (navComposedOverview) navComposedOverview.classList.remove('active');
+
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+
+            window.location.hash = '#/settings/content-analysis';
+            loadContentAnalysisSettings();
+        }
+
+        function showComposedOverviewView() {
+            const importView = document.getElementById('importView');
+            const reviewView = document.getElementById('reviewView');
+            const pageInspectView = document.getElementById('pageInspectView');
+            const qualityView = document.getElementById('qualityView');
+            const deskewView = document.getElementById('deskewView');
+            const bboxListView = document.getElementById('bboxListView');
+            const persistentRegionsView = document.getElementById('persistentRegionsView');
+            const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
+            const contentAnalysisSettingsView = document.getElementById('contentAnalysisSettingsView');
+            const composedOverviewView = document.getElementById('composedOverviewView');
+
+            if (importView) importView.style.display = 'none';
+            if (reviewView) reviewView.style.display = 'none';
+            if (pageInspectView) {
+                pageInspectView.style.display = 'none';
+                pageInspectView.classList.remove('active');
+                restoreHeaderFromInspect();
+            }
+            if (qualityView) qualityView.style.display = 'none';
+            if (deskewView) deskewView.style.display = 'none';
+            if (bboxListView) bboxListView.style.display = 'none';
+            if (persistentRegionsView) persistentRegionsView.style.display = 'none';
+            if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
+            if (contentAnalysisSettingsView) contentAnalysisSettingsView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'block';
 
             const navImport = document.getElementById('navImport');
@@ -2384,6 +2517,7 @@
             const navBboxList = document.getElementById('navBboxList');
             const navPersistentRegions = document.getElementById('navPersistentRegions');
             const navOcrSight = document.getElementById('navOcrSight');
+            const navContentAnalysis = document.getElementById('navContentAnalysis');
             const navComposedOverview = document.getElementById('navComposedOverview');
             if (navImport) navImport.classList.remove('active');
             if (navReview) navReview.classList.remove('active');
@@ -2392,6 +2526,7 @@
             if (navBboxList) navBboxList.classList.remove('active');
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
             if (navOcrSight) navOcrSight.classList.remove('active');
+            if (navContentAnalysis) navContentAnalysis.classList.remove('active');
             if (navComposedOverview) navComposedOverview.classList.add('active');
 
             if (pollInterval) {
@@ -2407,7 +2542,7 @@
             const sel = document.getElementById('composedOverviewDocumentSelect');
             if (!sel) return;
             try {
-                const response = await fetch(API_BASE + '/api/documents/');
+                const response = await fetch(API_BASE + '/api/documents/summary');
                 if (!response.ok) throw new Error('Dokumente konnten nicht geladen werden');
                 const documents = await response.json();
                 const currentVal = sel.value;
@@ -2429,28 +2564,65 @@
             const sel = document.getElementById('composedOverviewDocumentSelect');
             const container = document.getElementById('composedOverviewUnits');
             const msgEl = document.getElementById('composedOverviewMessages');
+            const suggestionsBlock = document.getElementById('composedOverviewSuggestions');
+            const suggestionsList = document.getElementById('composedOverviewSuggestionsList');
+            const addUnitBtn = document.getElementById('composedOverviewAddUnitBtn');
             if (!sel || !container) return;
             const docId = sel.value;
             if (!docId) {
                 container.innerHTML = '<p style="color: #666;">Dokument auswählen, um Einheiten anzuzeigen.</p>';
+                if (suggestionsBlock) suggestionsBlock.style.display = 'none';
+                if (addUnitBtn) addUnitBtn.style.display = 'none';
+                var unassignedBtn = document.getElementById('composedOverviewUnassignedBtn');
+                if (unassignedBtn) unassignedBtn.style.display = 'none';
+                document.getElementById('composedOverviewUnassigned').style.display = 'none';
                 if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
                 return;
             }
             container.innerHTML = '<p style="color: #666;">Lade Einheiten...</p>';
+            if (suggestionsBlock) suggestionsBlock.style.display = 'none';
+            if (addUnitBtn) addUnitBtn.style.display = 'block';
+            var unassignedBtn = document.getElementById('composedOverviewUnassignedBtn');
+            if (unassignedBtn) unassignedBtn.style.display = 'block';
+            document.getElementById('composedOverviewUnassigned').style.display = 'none';
             if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
             try {
-                const response = await fetch(API_BASE + '/api/documents/' + docId + '/composed-overview');
-                if (!response.ok) throw new Error('Übersicht konnte nicht geladen werden');
-                const units = await response.json();
-                if (units.length === 0) {
-                    container.innerHTML = '<p style="color: #666;">Keine Einheiten für dieses Dokument. Starten Sie zuerst die Grenzen-Analyse.</p>';
+                const [overviewRes, suggestionsRes] = await Promise.all([
+                    fetch(API_BASE + '/api/documents/' + docId + '/composed-overview'),
+                    fetch(API_BASE + '/api/documents/' + docId + '/unit-suggestions')
+                ]);
+                if (!overviewRes.ok) throw new Error('Übersicht konnte nicht geladen werden');
+                const units = await overviewRes.json();
+                const suggestions = suggestionsRes.ok ? await suggestionsRes.json() : [];
+
+                if (suggestions.length > 0 && suggestionsList) {
+                    suggestionsBlock.style.display = 'block';
+                    let sHtml = '<ul style="list-style: none; padding: 0; margin: 0;">';
+                    suggestions.forEach(function(s) {
+                        const pageLabel = (s.page_ids && s.page_ids.length) ? 'Seiten ' + s.page_ids.join(', ') : 'Vorschlag';
+                        sHtml += '<li style="padding: 8px 0; border-bottom: 1px solid #c8e6c9; display: flex; justify-content: space-between; align-items: center;">';
+                        sHtml += '<span>' + escapeHtml(pageLabel) + (s.belongs_with_next ? ' (mit Folgeseite)' : '') + '</span>';
+                        sHtml += '<span><button type="button" class="btn btn-primary" style="margin-right: 6px;" onclick="acceptUnitSuggestion(' + s.id + ')">Übernehmen</button>';
+                        sHtml += '<button type="button" class="btn btn-secondary" onclick="rejectUnitSuggestion(' + s.id + ')">Verwerfen</button></span></li>';
+                    });
+                    sHtml += '</ul>';
+                    suggestionsList.innerHTML = sHtml;
+                } else {
+                    suggestionsBlock.style.display = 'none';
+                }
+
+                if (units.length === 0 && suggestions.length === 0) {
+                    container.innerHTML = '<p style="color: #666;">Keine Einheiten für dieses Dokument. Starten Sie die Grenzen-Analyse für Vorschläge oder legen Sie eine Einheit manuell an.</p>';
                     return;
                 }
                 let html = '';
                 units.forEach(function(u, idx) {
                     const pageRange = u.page_numbers && u.page_numbers.length ? 'Seiten ' + u.page_numbers.join(', ') : 'Seiten ' + (u.page_ids || []).join(', ');
                     html += '<div style="margin-bottom: 24px; padding: 16px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa;">';
-                    html += '<div style="font-weight: 600; margin-bottom: 8px;">Einheit ' + (idx + 1) + ' (' + pageRange + ')</div>';
+                    html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">';
+                    html += '<div style="font-weight: 600;">Einheit ' + (idx + 1) + ' (' + pageRange + ')</div>';
+                    html += '<span><button type="button" class="btn btn-secondary" style="margin-right: 6px; padding: 4px 10px; font-size: 12px;" onclick="openEditUnitModal(' + u.id + ', ' + JSON.stringify(u.page_ids || []) + ', ' + (u.belongs_with_next ? 'true' : 'false') + ')">Bearbeiten</button>';
+                    html += '<button type="button" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="deleteDocumentUnit(' + u.id + ')">Löschen</button></span></div>';
                     if (u.event_date || u.topic || u.place) {
                         html += '<div style="font-size: 12px; color: #666; margin-bottom: 8px;">';
                         if (u.event_date) html += 'Datum: ' + escapeHtml(u.event_date) + ' &middot; ';
@@ -2467,6 +2639,318 @@
             } catch (e) {
                 container.innerHTML = '<p style="color: #c00;">Fehler: ' + escapeHtml(e.message) + '</p>';
                 console.error(e);
+            }
+        }
+
+        function getComposedOverviewDocId() {
+            const sel = document.getElementById('composedOverviewDocumentSelect');
+            return sel ? sel.value : null;
+        }
+
+        function toggleUnassignedPages() {
+            const block = document.getElementById('composedOverviewUnassigned');
+            const btn = document.getElementById('composedOverviewUnassignedBtn');
+            if (!block || !btn) return;
+            if (block.style.display === 'none') {
+                block.style.display = 'block';
+                btn.textContent = 'Einheiten-Ansicht';
+                loadUnassignedPages();
+            } else {
+                block.style.display = 'none';
+                btn.textContent = 'Nicht zugeordnete Seiten';
+                loadComposedOverview();
+            }
+        }
+
+        var composedOverviewUnassignedPages = [];
+
+        async function loadUnassignedPages() {
+            const docId = getComposedOverviewDocId();
+            const listEl = document.getElementById('composedOverviewUnassignedList');
+            const mergeBtn = document.getElementById('unassignedMergeBtn');
+            if (!docId || !listEl) return;
+            listEl.innerHTML = '<p style="color: #666;">Lade...</p>';
+            try {
+                const r = await fetch(API_BASE + '/api/documents/' + docId + '/unassigned-pages');
+                if (!r.ok) throw new Error('Nicht zugeordnete Seiten konnten nicht geladen werden');
+                const pages = await r.json();
+                composedOverviewUnassignedPages = pages;
+                if (pages.length === 0) {
+                    listEl.innerHTML = '<p style="color: #666;">Alle Seiten sind Einheiten zugeordnet.</p>';
+                    if (mergeBtn) mergeBtn.disabled = true;
+                    return;
+                }
+                if (mergeBtn) mergeBtn.disabled = true;
+                let html = '';
+                pages.forEach(function(p) {
+                    html += '<div style="margin-bottom: 16px; padding: 12px; border: 1px solid #ffcc80; border-radius: 6px; background: #fff;" data-page-id="' + p.page_id + '" data-page-number="' + p.page_number + '">';
+                    html += '<div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">';
+                    html += '<label style="display: flex; align-items: center;"><input type="checkbox" class="unassigned-page-cb" data-page-id="' + p.page_id + '" data-page-number="' + p.page_number + '" onchange="updateUnassignedMergeButton()">';
+                    html += ' <span style="font-weight: 600;">Seite ' + p.page_number + '</span></label>';
+                    html += '<button type="button" class="btn btn-primary" style="padding: 4px 10px; font-size: 12px;" onclick="createUnitFromUnassignedPage(' + p.page_id + ')">Als eigene Einheit</button>';
+                    html += '<button type="button" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="openPageInspectInNewWindow(' + p.page_id + ')">Inspect (neues Fenster)</button>';
+                    html += '</div>';
+                    html += '<pre style="margin: 0; padding: 10px; background: #f5f5f5; border-radius: 4px; max-height: 200px; overflow: auto; white-space: pre-wrap; font-size: 12px;">' + escapeHtml(p.full_text || '') + '</pre>';
+                    html += '</div>';
+                });
+                listEl.innerHTML = html;
+            } catch (e) {
+                listEl.innerHTML = '<p style="color: #c00;">Fehler: ' + escapeHtml(e.message) + '</p>';
+                if (mergeBtn) mergeBtn.disabled = true;
+            }
+        }
+
+        function updateUnassignedMergeButton() {
+            const listEl = document.getElementById('composedOverviewUnassignedList');
+            const mergeBtn = document.getElementById('unassignedMergeBtn');
+            if (!listEl || !mergeBtn) return;
+            const checked = listEl.querySelectorAll('.unassigned-page-cb:checked');
+            mergeBtn.disabled = checked.length === 0;
+        }
+
+        async function createUnitFromUnassignedPage(pageId) {
+            const docId = getComposedOverviewDocId();
+            if (!docId) return;
+            try {
+                const r = await fetch(API_BASE + '/api/documents/' + docId + '/units', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ page_ids: [pageId], belongs_with_next: false })
+                });
+                if (!r.ok) throw new Error((await r.json().catch(function() { return {}; })).detail || r.statusText);
+                loadUnassignedPages();
+            } catch (e) {
+                if (document.getElementById('composedOverviewMessages')) {
+                    const m = document.getElementById('composedOverviewMessages');
+                    m.style.display = 'block';
+                    m.className = 'message message-error';
+                    m.textContent = 'Fehler: ' + (e.message || e);
+                }
+            }
+        }
+
+        async function createUnitFromUnassignedSelection() {
+            const docId = getComposedOverviewDocId();
+            const listEl = document.getElementById('composedOverviewUnassignedList');
+            if (!docId || !listEl) return;
+            const checked = listEl.querySelectorAll('.unassigned-page-cb:checked');
+            if (checked.length === 0) return;
+            var items = [];
+            checked.forEach(function(cb) {
+                items.push({ page_id: parseInt(cb.dataset.pageId, 10), page_number: parseInt(cb.dataset.pageNumber, 10) });
+            });
+            items.sort(function(a, b) { return a.page_number - b.page_number; });
+            var pageIds = items.map(function(i) { return i.page_id; });
+            try {
+                const r = await fetch(API_BASE + '/api/documents/' + docId + '/units', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ page_ids: pageIds, belongs_with_next: false })
+                });
+                if (!r.ok) throw new Error((await r.json().catch(function() { return {}; })).detail || r.statusText);
+                loadUnassignedPages();
+            } catch (e) {
+                if (document.getElementById('composedOverviewMessages')) {
+                    const m = document.getElementById('composedOverviewMessages');
+                    m.style.display = 'block';
+                    m.className = 'message message-error';
+                    m.textContent = 'Fehler: ' + (e.message || e);
+                }
+            }
+        }
+
+        async function acceptUnitSuggestion(suggestionId) {
+            const docId = getComposedOverviewDocId();
+            if (!docId) return;
+            try {
+                const r = await fetch(API_BASE + '/api/documents/' + docId + '/unit-suggestions/' + suggestionId + '/accept', { method: 'POST' });
+                if (!r.ok) throw new Error(r.statusText);
+                loadComposedOverview();
+            } catch (e) {
+                if (document.getElementById('composedOverviewMessages')) {
+                    const m = document.getElementById('composedOverviewMessages');
+                    m.style.display = 'block';
+                    m.className = 'message message-error';
+                    m.textContent = 'Fehler: ' + (e.message || e);
+                }
+            }
+        }
+
+        async function acceptAllUnitSuggestions() {
+            const docId = getComposedOverviewDocId();
+            if (!docId) return;
+            try {
+                const r = await fetch(API_BASE + '/api/documents/' + docId + '/unit-suggestions/accept-all', { method: 'POST' });
+                if (!r.ok) throw new Error(r.statusText);
+                loadComposedOverview();
+            } catch (e) {
+                if (document.getElementById('composedOverviewMessages')) {
+                    const m = document.getElementById('composedOverviewMessages');
+                    m.style.display = 'block';
+                    m.className = 'message message-error';
+                    m.textContent = 'Fehler: ' + (e.message || e);
+                }
+            }
+        }
+
+        async function rejectUnitSuggestion(suggestionId) {
+            const docId = getComposedOverviewDocId();
+            if (!docId) return;
+            try {
+                const r = await fetch(API_BASE + '/api/documents/' + docId + '/unit-suggestions/' + suggestionId, { method: 'DELETE' });
+                if (!r.ok) throw new Error(r.statusText);
+                loadComposedOverview();
+            } catch (e) {
+                if (document.getElementById('composedOverviewMessages')) {
+                    const m = document.getElementById('composedOverviewMessages');
+                    m.style.display = 'block';
+                    m.className = 'message message-error';
+                    m.textContent = 'Fehler: ' + (e.message || e);
+                }
+            }
+        }
+
+        var composedOverviewDocumentPages = [];
+
+        async function openCreateUnitModal() {
+            const docId = getComposedOverviewDocId();
+            if (!docId) return;
+            try {
+                const r = await fetch(API_BASE + '/api/pages/document/' + docId);
+                if (!r.ok) throw new Error('Seiten konnten nicht geladen werden');
+                const data = await r.json();
+                composedOverviewDocumentPages = data.pages || [];
+                const container = document.getElementById('createUnitPageCheckboxes');
+                if (!container) return;
+                container.innerHTML = '';
+                composedOverviewDocumentPages.forEach(function(p) {
+                    const label = document.createElement('label');
+                    label.style.display = 'block';
+                    label.style.marginBottom = '6px';
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.value = p.id;
+                    cb.dataset.pageNumber = p.page_number;
+                    label.appendChild(cb);
+                    label.appendChild(document.createTextNode(' Seite ' + p.page_number + ' (ID ' + p.id + ')'));
+                    container.appendChild(label);
+                });
+                document.getElementById('createUnitBelongsWithNext').checked = false;
+                document.getElementById('createUnitModal').style.display = 'block';
+            } catch (e) {
+                if (document.getElementById('composedOverviewMessages')) {
+                    const m = document.getElementById('composedOverviewMessages');
+                    m.style.display = 'block';
+                    m.className = 'message message-error';
+                    m.textContent = 'Fehler: ' + (e.message || e);
+                }
+            }
+        }
+
+        function closeCreateUnitModal() {
+            document.getElementById('createUnitModal').style.display = 'none';
+        }
+
+        async function submitCreateUnit() {
+            const docId = getComposedOverviewDocId();
+            if (!docId) return;
+            const container = document.getElementById('createUnitPageCheckboxes');
+            const checked = container ? Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map(function(c) { return parseInt(c.value, 10); }) : [];
+            if (checked.length === 0) {
+                alert('Bitte mindestens eine Seite auswählen.');
+                return;
+            }
+            const belongsWithNext = document.getElementById('createUnitBelongsWithNext').checked;
+            try {
+                const r = await fetch(API_BASE + '/api/documents/' + docId + '/units', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ page_ids: checked, belongs_with_next: belongsWithNext })
+                });
+                if (!r.ok) throw new Error((await r.json().catch(function() { return {}; })).detail || r.statusText);
+                closeCreateUnitModal();
+                loadComposedOverview();
+            } catch (e) {
+                alert('Fehler: ' + (e.message || e));
+            }
+        }
+
+        function openEditUnitModal(unitId, pageIds, belongsWithNext) {
+            document.getElementById('editUnitId').value = unitId;
+            document.getElementById('editUnitBelongsWithNext').checked = !!belongsWithNext;
+            const docId = getComposedOverviewDocId();
+            if (!docId) return;
+            fetch(API_BASE + '/api/pages/document/' + docId).then(function(r) { return r.json(); }).then(function(data) {
+                const pages = data.pages || [];
+                const container = document.getElementById('editUnitPageCheckboxes');
+                container.innerHTML = '';
+                const selectedSet = new Set((pageIds || []).map(Number));
+                pages.forEach(function(p) {
+                    const label = document.createElement('label');
+                    label.style.display = 'block';
+                    label.style.marginBottom = '6px';
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.value = p.id;
+                    cb.checked = selectedSet.has(p.id);
+                    label.appendChild(cb);
+                    label.appendChild(document.createTextNode(' Seite ' + p.page_number + ' (ID ' + p.id + ')'));
+                    container.appendChild(label);
+                });
+                document.getElementById('editUnitModal').style.display = 'block';
+            }).catch(function(e) {
+                if (document.getElementById('composedOverviewMessages')) {
+                    const m = document.getElementById('composedOverviewMessages');
+                    m.style.display = 'block';
+                    m.className = 'message message-error';
+                    m.textContent = 'Fehler: ' + (e.message || e);
+                }
+            });
+        }
+
+        function closeEditUnitModal() {
+            document.getElementById('editUnitModal').style.display = 'none';
+        }
+
+        async function submitEditUnit() {
+            const docId = getComposedOverviewDocId();
+            const unitId = document.getElementById('editUnitId').value;
+            if (!docId || !unitId) return;
+            const container = document.getElementById('editUnitPageCheckboxes');
+            const checked = container ? Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map(function(c) { return parseInt(c.value, 10); }) : [];
+            if (checked.length === 0) {
+                alert('Bitte mindestens eine Seite auswählen.');
+                return;
+            }
+            const belongsWithNext = document.getElementById('editUnitBelongsWithNext').checked;
+            try {
+                const r = await fetch(API_BASE + '/api/documents/' + docId + '/units/' + unitId, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ page_ids: checked, belongs_with_next: belongsWithNext })
+                });
+                if (!r.ok) throw new Error((await r.json().catch(function() { return {}; })).detail || r.statusText);
+                closeEditUnitModal();
+                loadComposedOverview();
+            } catch (e) {
+                alert('Fehler: ' + (e.message || e));
+            }
+        }
+
+        async function deleteDocumentUnit(unitId) {
+            const docId = getComposedOverviewDocId();
+            if (!docId || !confirm('Einheit wirklich löschen?')) return;
+            try {
+                const r = await fetch(API_BASE + '/api/documents/' + docId + '/units/' + unitId, { method: 'DELETE' });
+                if (!r.ok) throw new Error(r.statusText);
+                loadComposedOverview();
+            } catch (e) {
+                if (document.getElementById('composedOverviewMessages')) {
+                    const m = document.getElementById('composedOverviewMessages');
+                    m.style.display = 'block';
+                    m.className = 'message message-error';
+                    m.textContent = 'Fehler: ' + (e.message || e);
+                }
             }
         }
 
@@ -2564,6 +3048,41 @@
             } catch (e) {
                 if (msg) msg.textContent = 'Fehler: ' + (e.message || e);
                 msg.style.color = '#c00';
+            }
+        }
+
+        async function loadContentAnalysisSettings() {
+            const msg = document.getElementById('contentAnalysisSettingsMessages');
+            if (msg) msg.textContent = '';
+            try {
+                const response = await fetch(API_BASE + '/api/settings/content-analysis');
+                if (!response.ok) throw new Error('Einstellungen konnten nicht geladen werden');
+                const data = await response.json();
+                const el = document.getElementById('contentAnalysisReviewThresholdPct');
+                if (el) el.value = data.review_threshold_pct != null ? data.review_threshold_pct : 100;
+            } catch (e) {
+                if (msg) { msg.textContent = 'Fehler: ' + (e.message || e); msg.style.color = '#c00'; }
+            }
+        }
+
+        async function saveContentAnalysisSettings() {
+            const msg = document.getElementById('contentAnalysisSettingsMessages');
+            if (msg) msg.textContent = 'Speichern...';
+            msg.style.color = '';
+            try {
+                const el = document.getElementById('contentAnalysisReviewThresholdPct');
+                const v = el && el.value !== '' ? parseInt(el.value, 10) : 100;
+                const review_threshold_pct = Math.max(0, Math.min(100, v));
+                const response = await fetch(API_BASE + '/api/settings/content-analysis', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ review_threshold_pct })
+                });
+                if (!response.ok) throw new Error('Speichern fehlgeschlagen');
+                if (msg) msg.textContent = 'Gespeichert.';
+                msg.style.color = '#080';
+            } catch (e) {
+                if (msg) { msg.textContent = 'Fehler: ' + (e.message || e); msg.style.color = '#c00'; }
             }
         }
 
@@ -3917,6 +4436,12 @@
             }
             const currentUrl = window.location.origin + window.location.pathname;
             const inspectUrl = `${currentUrl}#/page/${pageId}/inspect`;
+            window.open(inspectUrl, '_blank');
+        }
+
+        function openPageInspectInNewWindow(pageId) {
+            const currentUrl = window.location.origin + window.location.pathname;
+            const inspectUrl = currentUrl + '#/page/' + pageId + '/inspect';
             window.open(inspectUrl, '_blank');
         }
 
