@@ -51,6 +51,7 @@ class OCRSource(str, Enum):
 
     TESSERACT = "tesseract"
     OLLAMA_VISION = "ollama_vision"
+    PDF_NATIVE = "pdf_native"  # Text ohne OCR aus PDF extrahiert
     GPT_CORRECTED = "gpt_corrected"
     MANUAL = "manual"
     COMBINED = "combined"

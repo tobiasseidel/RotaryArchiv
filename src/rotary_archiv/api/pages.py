@@ -34,6 +34,9 @@ from src.rotary_archiv.core.models import (
 from src.rotary_archiv.utils.bbox_reading_order import sort_bboxes_reading_order
 from src.rotary_archiv.utils.file_handler import get_file_path
 from src.rotary_archiv.utils.image_utils import deskew_image, detect_skew_angle
+from src.rotary_archiv.utils.ocr_result_loading import (
+    get_best_ocr_result_with_bbox_for_page,
+)
 from src.rotary_archiv.utils.pdf_export import (
     DEFAULT_TEXT_OPACITY,
     EXPORT_DPI,
@@ -367,16 +370,8 @@ def get_deskew_overview(
             else f"Dokument #{page.document_id}"
         )
 
-        # Neuestes OCRResult mit bbox_data für BBox-Statistik
-        ocr_result = (
-            db.query(OCRResult)
-            .filter(
-                OCRResult.document_page_id == page.id,
-                OCRResult.bbox_data.isnot(None),
-            )
-            .order_by(OCRResult.created_at.desc())
-            .first()
-        )
+        # Bestes OCRResult mit bbox_data für BBox-Statistik (OLLAMA_VISION oder PDF_NATIVE)
+        ocr_result = get_best_ocr_result_with_bbox_for_page(db, page.id)
         bbox_count = 0
         bbox_with_deskew_count = 0
         if ocr_result and ocr_result.bbox_data:
@@ -1100,22 +1095,12 @@ def get_page_inspect(
             pdf_path = get_file_path(document.file_path)
             if pdf_path.exists():
                 # Prüfe ob OCR-Ergebnisse vorhanden sind und verwende deren Dimensionen
-                ocr_results = (
-                    db.query(OCRResult)
-                    .filter(OCRResult.document_page_id == page_id)
-                    .order_by(OCRResult.created_at.desc())
-                    .limit(1)
-                    .all()
-                )
+                ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
-                if (
-                    ocr_results
-                    and ocr_results[0].image_width
-                    and ocr_results[0].image_height
-                ):
+                if ocr_result and ocr_result.image_width and ocr_result.image_height:
                     # Verwende OCR-Bild-Dimensionen (wichtig für korrekte BBox-Positionierung)
-                    image_width = ocr_results[0].image_width
-                    image_height = ocr_results[0].image_height
+                    image_width = ocr_result.image_width
+                    image_height = ocr_result.image_height
                     logging.info(
                         f"Verwende OCR-Bild-Dimensionen für Preview: {image_width}x{image_height}"
                     )
@@ -1126,13 +1111,9 @@ def get_page_inspect(
     except Exception as e:
         logging.warning(f"Konnte Bild-Dimensionen nicht ermitteln: {e}")
 
-    # Lade OCR-Ergebnisse mit BBox-Daten
-    ocr_results = (
-        db.query(OCRResult)
-        .filter(OCRResult.document_page_id == page_id)
-        .order_by(OCRResult.created_at.desc())
-        .all()
-    )
+    # Lade bestes OCR-Ergebnis mit BBox-Daten (OLLAMA_VISION oder PDF_NATIVE)
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
+    ocr_results = [ocr_result] if ocr_result else []
 
     # Konvertiere zu Response-Schemas
     from src.rotary_archiv.api.schemas import BBoxItem
@@ -1253,18 +1234,11 @@ def export_page_pdf(
     export_w, export_h = img.size
     ocr_width, ocr_height = export_w, export_h
     bbox_items: list[dict] = []
-    ocr_results = (
-        db.query(OCRResult)
-        .filter(OCRResult.document_page_id == page_id)
-        .order_by(OCRResult.created_at.desc())
-        .limit(1)
-        .all()
-    )
-    if ocr_results and ocr_results[0].bbox_data:
-        ocr = ocr_results[0]
-        ocr_width = ocr.image_width or export_w
-        ocr_height = ocr.image_height or export_h
-        raw = ocr.bbox_data
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
+    if ocr_result and ocr_result.bbox_data:
+        ocr_width = ocr_result.image_width or export_w
+        ocr_height = ocr_result.image_height or export_h
+        raw = ocr_result.bbox_data
         if isinstance(raw, str):
             raw = json.loads(raw)
         if isinstance(raw, list):

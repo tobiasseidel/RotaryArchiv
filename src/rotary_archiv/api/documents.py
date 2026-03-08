@@ -2,6 +2,8 @@
 API Endpoints für Dokumente
 """
 
+import logging
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -35,7 +37,10 @@ from src.rotary_archiv.core.models import (
 )
 from src.rotary_archiv.ocr.job_processor import get_unit_text_in_reading_order
 from src.rotary_archiv.utils.file_handler import get_file_size, save_uploaded_file
-from src.rotary_archiv.utils.pdf_utils import get_pdf_page_count
+from src.rotary_archiv.utils.pdf_utils import (
+    create_pdf_native_ocr_result_for_page,
+    get_pdf_page_count,
+)
 
 # Optional imports für OCR und NLP
 try:
@@ -126,6 +131,24 @@ async def create_document(
                 # Refresh für IDs
                 for page in pages:
                     db.refresh(page)
+
+                # Native PDF-Text pro Seite in einer Box speichern (ohne OCR)
+                for page in pages:
+                    try:
+                        create_pdf_native_ocr_result_for_page(
+                            db,
+                            db_document.id,
+                            page.id,
+                            absolute_file_path,
+                            page.page_number,
+                        )
+                    except Exception as e:
+                        logging.warning(
+                            "PDF-Native-Text für Seite %s (Doc %s) übersprungen: %s",
+                            page.page_number,
+                            db_document.id,
+                            e,
+                        )
 
                 # Erstelle OCR-Jobs für jede Seite
                 ocr_jobs = []

@@ -2,7 +2,8 @@
 Konfiguration für RotaryArchiv
 """
 
-from pydantic_settings import BaseSettings
+from pydantic import AliasChoices, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -32,7 +33,10 @@ class Settings(BaseSettings):
     pdf_extraction_batch_size: int = 50  # Anzahl Seiten pro Batch für große PDFs
     debug_save_bbox_crops: bool = True  # Speichere ausgeschnittene BBoxes für Debugging
     debug_bbox_crops_path: str = "./data/debug/bbox_crops"  # Pfad für Debug-BBox-Bilder
-    ollama_base_url: str = "http://localhost:11434"
+    ollama_base_url: str = Field(
+        default="http://localhost:11434",
+        validation_alias=AliasChoices("ollama_base_url", "ollama_api_base"),
+    )
     ollama_vision_model: str = "deepseek-ocr:latest"  # Standard: deepseek-ocr:latest, kann über .env überschrieben werden
     ollama_gpt_model: str = (
         "gpt-oss:20b"  # Standard: gpt-oss:20b, kann über .env überschrieben werden
@@ -77,9 +81,11 @@ class Settings(BaseSettings):
         """Fuseki SPARQL Endpoint URL"""
         return f"http://{self.fuseki_host}:{self.fuseki_port}/{self.fuseki_dataset}"
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
 
 settings = Settings()

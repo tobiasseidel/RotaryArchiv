@@ -139,6 +139,51 @@ def compare_ocr_results(
     }
 
 
+def box_text_matches_native(
+    box_text: str,
+    native_page_text: str,
+    threshold: float = 0.95,
+) -> bool:
+    """
+    Prüft, ob der Box-Text an irgendeiner Stelle im nativen Seitentext
+    mit Ähnlichkeit >= threshold vorkommt (Sliding-Window).
+
+    Args:
+        box_text: Erkannter Text der Box (Ollama/Tesseract)
+        native_page_text: Volltext der Seite aus PDF (ohne OCR)
+        threshold: Mindest-Ähnlichkeit 0-1 (Standard 0.95)
+
+    Returns:
+        True wenn ein Fenster im nativen Text die Box mit >= threshold ähnelt.
+    """
+    if not box_text or not box_text.strip():
+        return False
+    if not native_page_text or not native_page_text.strip():
+        return False
+    box_norm = normalize_text(box_text)
+    native_norm = normalize_text(native_page_text)
+    if not box_norm:
+        return False
+    box_len = len(box_norm)
+    if box_len > len(native_norm):
+        return False
+    lengths = [
+        max(1, box_len - 1),
+        box_len,
+        min(len(native_norm), box_len + 1),
+    ]
+    lengths = list(dict.fromkeys(lengths))
+    for start in range(0, len(native_norm) - min(lengths) + 1):
+        for wlen in lengths:
+            if start + wlen > len(native_norm):
+                continue
+            window = native_norm[start : start + wlen]
+            result = compare_ocr_results(box_norm, window, ignore_whitespace=False)
+            if result["similarity"] >= threshold:
+                return True
+    return False
+
+
 async def process_bbox_ocr(
     db: Session,
     document_page_id: int,
@@ -148,6 +193,7 @@ async def process_bbox_ocr(
     page_number: int | None = None,
     ocr_models: list[str] | None = None,
     bbox_index: int | None = None,
+    native_page_text: str | None = None,
 ) -> dict[str, Any]:
     """
     Verarbeite OCR für einzelne Bounding Box
@@ -160,6 +206,7 @@ async def process_bbox_ocr(
         pdf_path: Pfad zur PDF-Datei (falls Bild nicht verfügbar)
         page_number: Seitenzahl (falls PDF verwendet wird)
         ocr_models: Liste der zu verwendenden OCR-Modelle
+        native_page_text: Optionaler nativer Seitentext für Auto-Review (Ähnlichkeit >= 95%)
 
     Returns:
         {
@@ -198,18 +245,12 @@ async def process_bbox_ocr(
             f"Angepasst (X * 0.7)={bbox_pixel_adjusted}"
         )
 
-        # Hole OCRResult um Bild-Dimensionen zu vergleichen
-        from src.rotary_archiv.core.models import OCRResult, OCRSource
-
-        ocr_result_ref = (
-            db.query(OCRResult)
-            .filter(
-                OCRResult.document_page_id == document_page_id,
-                OCRResult.source == OCRSource.OLLAMA_VISION,
-            )
-            .order_by(OCRResult.created_at.desc())
-            .first()
+        # Hole OCRResult um Bild-Dimensionen zu vergleichen (OLLAMA_VISION oder PDF_NATIVE)
+        from src.rotary_archiv.utils.ocr_result_loading import (
+            get_best_ocr_result_with_bbox_for_page,
         )
+
+        ocr_result_ref = get_best_ocr_result_with_bbox_for_page(db, document_page_id)
 
         ocr_image_width = ocr_result_ref.image_width if ocr_result_ref else None
         ocr_image_height = ocr_result_ref.image_height if ocr_result_ref else None
@@ -440,6 +481,16 @@ async def process_bbox_ocr(
             comparison = compare_ocr_results(tesseract_text, ollama_text)
             # Automatische Bestätigung nur wenn beide identisch (nach Normalisierung)
             auto_confirmed = comparison["match"]
+
+        # Zusätzlich: Auto-Bestätigung wenn Box-Text im nativen Seitentext mit >= 95% vorkommt
+        final_text = (ollama_text or tesseract_text or "").strip()
+        if (
+            native_page_text
+            and final_text
+            and not auto_confirmed
+            and box_text_matches_native(final_text, native_page_text, threshold=0.95)
+        ):
+            auto_confirmed = True
 
         return {
             "tesseract": results.get("tesseract"),

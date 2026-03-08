@@ -35,6 +35,9 @@ from src.rotary_archiv.core.models import (
     OCRSource,
 )
 from src.rotary_archiv.utils.file_handler import get_file_path
+from src.rotary_archiv.utils.ocr_result_loading import (
+    get_best_ocr_result_with_bbox_for_page,
+)
 from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
 
 logger = logging.getLogger(__name__)
@@ -355,16 +358,8 @@ async def get_page_bboxes(
     if not page:
         raise HTTPException(status_code=404, detail="Seite nicht gefunden")
 
-    # Hole OCRResult mit bbox_data
-    ocr_result = (
-        db.query(OCRResult)
-        .filter(
-            OCRResult.document_page_id == page_id,
-            OCRResult.source == OCRSource.OLLAMA_VISION,
-        )
-        .order_by(OCRResult.created_at.desc())
-        .first()
-    )
+    # Hole OCRResult mit bbox_data (OLLAMA_VISION oder PDF_NATIVE)
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
     if not ocr_result or not ocr_result.bbox_data:
         return {"page_id": page_id, "bboxes": []}
@@ -421,15 +416,7 @@ async def confirm_bbox(
         raise HTTPException(status_code=404, detail="Seite nicht gefunden")
 
     # Hole OCRResult
-    ocr_result = (
-        db.query(OCRResult)
-        .filter(
-            OCRResult.document_page_id == page_id,
-            OCRResult.source == OCRSource.OLLAMA_VISION,
-        )
-        .order_by(OCRResult.created_at.desc())
-        .first()
-    )
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
     if not ocr_result or not ocr_result.bbox_data:
         raise HTTPException(
@@ -484,15 +471,7 @@ async def reject_bbox(
         raise HTTPException(status_code=404, detail="Seite nicht gefunden")
 
     # Hole OCRResult
-    ocr_result = (
-        db.query(OCRResult)
-        .filter(
-            OCRResult.document_page_id == page_id,
-            OCRResult.source == OCRSource.OLLAMA_VISION,
-        )
-        .order_by(OCRResult.created_at.desc())
-        .first()
-    )
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
     if not ocr_result or not ocr_result.bbox_data:
         raise HTTPException(
@@ -547,15 +526,7 @@ async def ignore_bbox(
         raise HTTPException(status_code=404, detail="Seite nicht gefunden")
 
     # Hole OCRResult
-    ocr_result = (
-        db.query(OCRResult)
-        .filter(
-            OCRResult.document_page_id == page_id,
-            OCRResult.source == OCRSource.OLLAMA_VISION,
-        )
-        .order_by(OCRResult.created_at.desc())
-        .first()
-    )
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
     if not ocr_result or not ocr_result.bbox_data:
         raise HTTPException(
@@ -611,15 +582,7 @@ async def delete_bbox(
     if not page:
         raise HTTPException(status_code=404, detail="Seite nicht gefunden")
 
-    ocr_result = (
-        db.query(OCRResult)
-        .filter(
-            OCRResult.document_page_id == page_id,
-            OCRResult.source == OCRSource.OLLAMA_VISION,
-        )
-        .order_by(OCRResult.created_at.desc())
-        .first()
-    )
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
     if not ocr_result or not ocr_result.bbox_data:
         raise HTTPException(
@@ -678,15 +641,7 @@ async def update_bbox(
     if not page:
         raise HTTPException(status_code=404, detail="Seite nicht gefunden")
 
-    ocr_result = (
-        db.query(OCRResult)
-        .filter(
-            OCRResult.document_page_id == page_id,
-            OCRResult.source == OCRSource.OLLAMA_VISION,
-        )
-        .order_by(OCRResult.created_at.desc())
-        .first()
-    )
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
     if not ocr_result or not ocr_result.bbox_data:
         raise HTTPException(
@@ -797,15 +752,7 @@ async def batch_change_status(
             continue
 
         # Hole OCRResult
-        ocr_result = (
-            db.query(OCRResult)
-            .filter(
-                OCRResult.document_page_id == page_id,
-                OCRResult.source == OCRSource.OLLAMA_VISION,
-            )
-            .order_by(OCRResult.created_at.desc())
-            .first()
-        )
+        ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
         if not ocr_result or not ocr_result.bbox_data:
             for idx in bbox_indices:
@@ -931,15 +878,7 @@ async def batch_discard_and_recalc(
             )
             continue
 
-        ocr_result = (
-            db.query(OCRResult)
-            .filter(
-                OCRResult.document_page_id == page_id,
-                OCRResult.source == OCRSource.OLLAMA_VISION,
-            )
-            .order_by(OCRResult.created_at.desc())
-            .first()
-        )
+        ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
         if not ocr_result or not ocr_result.bbox_data:
             # Zusammenfassende Fehlermeldung statt für jeden Index
@@ -1136,15 +1075,7 @@ async def batch_delete(
             )
             continue
 
-        ocr_result = (
-            db.query(OCRResult)
-            .filter(
-                OCRResult.document_page_id == page_id,
-                OCRResult.source == OCRSource.OLLAMA_VISION,
-            )
-            .order_by(OCRResult.created_at.desc())
-            .first()
-        )
+        ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
         if not ocr_result or not ocr_result.bbox_data:
             # Zusammenfassende Fehlermeldung statt für jeden Index
@@ -1275,15 +1206,7 @@ async def get_bbox_crop_preview(
         raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
 
     # Hole OCRResult
-    ocr_result = (
-        db.query(OCRResult)
-        .filter(
-            OCRResult.document_page_id == page_id,
-            OCRResult.source == OCRSource.OLLAMA_VISION,
-        )
-        .order_by(OCRResult.created_at.desc())
-        .first()
-    )
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
     if not ocr_result or not ocr_result.bbox_data:
         raise HTTPException(
@@ -1525,15 +1448,7 @@ async def save_reviewed_bbox(
         raise HTTPException(status_code=404, detail="Seite nicht gefunden")
 
     # Hole OCRResult
-    ocr_result = (
-        db.query(OCRResult)
-        .filter(
-            OCRResult.document_page_id == page_id,
-            OCRResult.source == OCRSource.OLLAMA_VISION,
-        )
-        .order_by(OCRResult.created_at.desc())
-        .first()
-    )
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
     if not ocr_result or not ocr_result.bbox_data:
         raise HTTPException(
@@ -1585,15 +1500,7 @@ async def set_bbox_text(
     if not page:
         raise HTTPException(status_code=404, detail="Seite nicht gefunden")
 
-    ocr_result = (
-        db.query(OCRResult)
-        .filter(
-            OCRResult.document_page_id == page_id,
-            OCRResult.source == OCRSource.OLLAMA_VISION,
-        )
-        .order_by(OCRResult.created_at.desc())
-        .first()
-    )
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
     if not ocr_result or not ocr_result.bbox_data:
         raise HTTPException(
             status_code=404, detail="Keine BBox-Daten für diese Seite gefunden"
@@ -1667,15 +1574,7 @@ async def test_bbox_review(
         raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
 
     # Hole OCRResult
-    ocr_result = (
-        db.query(OCRResult)
-        .filter(
-            OCRResult.document_page_id == page_id,
-            OCRResult.source == OCRSource.OLLAMA_VISION,
-        )
-        .order_by(OCRResult.created_at.desc())
-        .first()
-    )
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
     if not ocr_result or not ocr_result.bbox_data:
         raise HTTPException(
@@ -1789,15 +1688,7 @@ async def create_review_job(
         }
 
     # Prüfe ob BBox-Daten vorhanden sind
-    ocr_result = (
-        db.query(OCRResult)
-        .filter(
-            OCRResult.document_page_id == page_id,
-            OCRResult.source == OCRSource.OLLAMA_VISION,
-        )
-        .order_by(OCRResult.created_at.desc())
-        .first()
-    )
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
     if not ocr_result or not ocr_result.bbox_data:
         raise HTTPException(
@@ -1893,15 +1784,7 @@ async def add_new_bbox(
         raise HTTPException(status_code=404, detail="Seite nicht gefunden")
 
     # Hole OCRResult
-    ocr_result = (
-        db.query(OCRResult)
-        .filter(
-            OCRResult.document_page_id == page_id,
-            OCRResult.source == OCRSource.OLLAMA_VISION,
-        )
-        .order_by(OCRResult.created_at.desc())
-        .first()
-    )
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
     if not ocr_result:
         raise HTTPException(
@@ -2076,15 +1959,7 @@ async def add_multiple_bboxes(
             raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
 
         # Hole OCRResult für Bild-Dimensionen (oder lege eines an, wenn noch keins existiert)
-        ocr_result = (
-            db.query(OCRResult)
-            .filter(
-                OCRResult.document_page_id == page_id,
-                OCRResult.source == OCRSource.OLLAMA_VISION,
-            )
-            .order_by(OCRResult.created_at.desc())
-            .first()
-        )
+        ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
         ocr_image_width = ocr_result.image_width if ocr_result else None
         ocr_image_height = ocr_result.image_height if ocr_result else None

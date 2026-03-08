@@ -29,7 +29,6 @@ from src.rotary_archiv.core.models import (
     OCRJob,
     OCRJobStatus,
     OCRResult,
-    OCRSource,
 )
 from src.rotary_archiv.ocr.bbox_ocr import process_bbox_ocr
 from src.rotary_archiv.ocr.content_analysis_llm import (
@@ -48,6 +47,10 @@ from src.rotary_archiv.utils.bbox_reading_order import (
     get_text_in_reading_order,
 )
 from src.rotary_archiv.utils.file_handler import ensure_exports_dir, get_file_path
+from src.rotary_archiv.utils.ocr_result_loading import (
+    get_best_ocr_result_with_bbox_for_page,
+    get_pdf_native_text_for_page,
+)
 from src.rotary_archiv.utils.pdf_export import (
     DEFAULT_TEXT_OPACITY,
     EXPORT_DPI,
@@ -297,16 +300,8 @@ async def process_bbox_review_job(job_id: int) -> None:
         job.current_step = f"Review für Seite {page.page_number}"
         db.commit()
 
-        # Hole OCRResult mit bbox_data für diese Seite
-        ocr_result = (
-            db.query(OCRResult)
-            .filter(
-                OCRResult.document_page_id == job.document_page_id,
-                OCRResult.source == OCRSource.OLLAMA_VISION,
-            )
-            .order_by(OCRResult.created_at.desc())
-            .first()
-        )
+        # Hole OCRResult mit bbox_data für diese Seite (OLLAMA_VISION oder PDF_NATIVE)
+        ocr_result = get_best_ocr_result_with_bbox_for_page(db, job.document_page_id)
 
         if not ocr_result or not ocr_result.bbox_data:
             job.status = OCRJobStatus.FAILED
@@ -354,6 +349,9 @@ async def process_bbox_review_job(job_id: int) -> None:
         # Hole Bild-Pfad
         pdf_path = document.file_path
         page_number = page.page_number
+
+        # Native PDF-Seitentext einmal laden für Auto-Review (pro Box Ähnlichkeit >= 95%)
+        native_page_text = get_pdf_native_text_for_page(db, job.document_page_id)
 
         # Verarbeite jede BBox (nur "new" BBoxes)
         updated_bboxes = bbox_list.copy()  # Behalte alle BBoxes, auch ignorierte
@@ -444,6 +442,7 @@ async def process_bbox_review_job(job_id: int) -> None:
                 page_number=page_number,
                 ocr_models=["tesseract", "ollama_vision"],
                 bbox_index=idx,  # Für Debug-Dateinamen
+                native_page_text=native_page_text,
             )
 
             # Aktualisiere BBox-Item mit Review-Daten (sollte "new" sein, da wir bereits gefiltert haben)
@@ -676,15 +675,7 @@ async def process_llm_sight_job(job_id: int) -> None:
             db.commit()
             return
 
-        ocr_result = (
-            db.query(OCRResult)
-            .filter(
-                OCRResult.document_page_id == job.document_page_id,
-                OCRResult.source == OCRSource.OLLAMA_VISION,
-            )
-            .order_by(OCRResult.created_at.desc())
-            .first()
-        )
+        ocr_result = get_best_ocr_result_with_bbox_for_page(db, job.document_page_id)
         if not ocr_result or not ocr_result.bbox_data:
             job.status = OCRJobStatus.FAILED
             job.error_message = "Keine BBox-Daten für diese Seite"
@@ -1018,15 +1009,7 @@ def _get_pages_with_all_boxes_confirmed(
 
 def _get_page_text_in_reading_order(db, page_id: int) -> str:
     """Holt BBox-Text der Seite in Lesereihenfolge (reviewed_text or text)."""
-    ocr_result = (
-        db.query(OCRResult)
-        .filter(
-            OCRResult.document_page_id == page_id,
-            OCRResult.bbox_data.isnot(None),
-        )
-        .order_by(OCRResult.created_at.desc())
-        .first()
-    )
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
     if not ocr_result or not ocr_result.bbox_data:
         return ""
     bbox_list = (
@@ -1925,16 +1908,8 @@ async def process_quality_job(job_id: int) -> None:
         job.current_step = f"Lade OCRResult für Seite {page.page_number}"
         db.commit()
 
-        # Hole neuestes OCRResult mit bbox_data für diese Seite
-        ocr_result = (
-            db.query(OCRResult)
-            .filter(
-                OCRResult.document_page_id == job.document_page_id,
-                OCRResult.bbox_data.isnot(None),
-            )
-            .order_by(OCRResult.created_at.desc())
-            .first()
-        )
+        # Hole bestes OCRResult mit bbox_data für diese Seite (OLLAMA_VISION oder PDF_NATIVE)
+        ocr_result = get_best_ocr_result_with_bbox_for_page(db, job.document_page_id)
 
         if not ocr_result or not ocr_result.bbox_data:
             job.status = OCRJobStatus.FAILED
@@ -2187,15 +2162,7 @@ async def process_persistent_region_quality_job(job_id: int) -> None:
         job.current_step = f"Lade OCRResult für Seite {page.page_number}"
         db.commit()
 
-        ocr_result = (
-            db.query(OCRResult)
-            .filter(
-                OCRResult.document_page_id == job.document_page_id,
-                OCRResult.bbox_data.isnot(None),
-            )
-            .order_by(OCRResult.created_at.desc())
-            .first()
-        )
+        ocr_result = get_best_ocr_result_with_bbox_for_page(db, job.document_page_id)
 
         if not ocr_result or not ocr_result.bbox_data:
             job.status = OCRJobStatus.FAILED
@@ -2459,18 +2426,11 @@ def _load_page_export_data(db, page_id: int):
     export_w, export_h = img.size
     ocr_width, ocr_height = export_w, export_h
     bbox_items = []
-    ocr_results = (
-        db.query(OCRResult)
-        .filter(OCRResult.document_page_id == page_id)
-        .order_by(OCRResult.created_at.desc())
-        .limit(1)
-        .all()
-    )
-    if ocr_results and ocr_results[0].bbox_data:
-        ocr = ocr_results[0]
-        ocr_width = ocr.image_width or export_w
-        ocr_height = ocr.image_height or export_h
-        raw = ocr.bbox_data
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
+    if ocr_result and ocr_result.bbox_data:
+        ocr_width = ocr_result.image_width or export_w
+        ocr_height = ocr_result.image_height or export_h
+        raw = ocr_result.bbox_data
         if isinstance(raw, str):
             raw = json.loads(raw)
         if isinstance(raw, list):

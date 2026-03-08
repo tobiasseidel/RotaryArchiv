@@ -4,6 +4,7 @@ PDF-Utilities für Seiten-Extraktion im Speicher (ohne Datei-Extraktion)
 
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PyPDF2 import PdfReader
 
@@ -19,6 +20,9 @@ except ImportError:
     PIL_AVAILABLE = False
 
 from src.rotary_archiv.config import settings
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +61,39 @@ def get_pdf_page_count(pdf_path: str | Path) -> int:
     except Exception as e:
         logger.error(f"Fehler beim Lesen der PDF {pdf_path}: {e}")
         raise Exception(f"Fehler beim Lesen der PDF: {e}") from e
+
+
+def extract_text_from_pdf_page(pdf_path: str | Path, page_number: int) -> str:
+    """
+    Lese Text von einer PDF-Seite ohne OCR (nur eingebettete Text-Objekte).
+
+    Args:
+        pdf_path: Pfad zur PDF-Datei
+        page_number: Seitenzahl (1-basiert)
+
+    Returns:
+        Extrahierter Text oder leerer String wenn keine Text-Objekte oder bei Fehler.
+    """
+    pdf_path_obj = Path(pdf_path)
+    if not pdf_path_obj.exists():
+        return ""
+    try:
+        reader = PdfReader(str(pdf_path_obj), strict=False)
+        if reader.is_encrypted:
+            try:
+                reader.decrypt("")
+            except Exception:
+                return ""
+        if page_number < 1 or page_number > len(reader.pages):
+            return ""
+        page = reader.pages[page_number - 1]
+        text = page.extract_text()
+        return (text or "").strip()
+    except Exception as e:
+        logger.debug(
+            f"Native PDF-Text-Extraktion Seite {page_number} fehlgeschlagen: {e}"
+        )
+        return ""
 
 
 def extract_page_as_image(
@@ -143,3 +180,51 @@ def create_page_thumbnail(
     thumbnail = image.copy()
     thumbnail.thumbnail(size, Image.Resampling.LANCZOS)
     return thumbnail
+
+
+def create_pdf_native_ocr_result_for_page(
+    db: "Session",
+    document_id: int,
+    document_page_id: int,
+    pdf_path: str | Path,
+    page_number: int,
+) -> None:
+    """
+    Wenn auf der PDF-Seite Text ohne OCR auslesbar ist, ein OCRResult mit
+    einer Vollseiten-Box (source=PDF_NATIVE) anlegen. Kein Commit - Caller
+    übernimmt die Transaktion.
+    """
+    from src.rotary_archiv.core.models import OCRResult, OCRSource
+    from src.rotary_archiv.utils.file_handler import get_file_path
+
+    text = extract_text_from_pdf_page(pdf_path, page_number)
+    if not text:
+        return
+    absolute_pdf_path = get_file_path(str(pdf_path))
+    if not absolute_pdf_path.exists():
+        logger.warning(f"PDF nicht gefunden für Native-Text: {absolute_pdf_path}")
+        return
+    try:
+        page_image = extract_page_as_image(str(absolute_pdf_path), page_number, dpi=200)
+    except Exception as e:
+        logger.warning(
+            f"Seitenbild für PDF-Native-Box nicht erzeugbar (Seite {page_number}): {e}"
+        )
+        return
+    width, height = page_image.size
+    bbox_item = {
+        "text": text,
+        "bbox": [0.0, 0.0, 1.0, 1.0],
+        "bbox_pixel": [0, 0, width, height],
+        "box_type": "ocr",
+    }
+    ocr_result = OCRResult(
+        document_id=document_id,
+        document_page_id=document_page_id,
+        source=OCRSource.PDF_NATIVE,
+        text=text,
+        bbox_data=[bbox_item],
+        image_width=width,
+        image_height=height,
+    )
+    db.add(ocr_result)

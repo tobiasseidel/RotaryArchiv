@@ -20,6 +20,9 @@ from src.rotary_archiv.core.models import (
     OCRJobStatus,
     OCRResult,
 )
+from src.rotary_archiv.utils.ocr_result_loading import (
+    get_best_ocr_result_with_bbox_for_page,
+)
 
 router = APIRouter(prefix="/api/quality", tags=["quality"])
 
@@ -681,16 +684,8 @@ def get_page_quality_metrics(page_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND, detail="Seite nicht gefunden"
         )
 
-    # Hole neuestes OCRResult mit bbox_data für diese Seite
-    ocr_result = (
-        db.query(OCRResult)
-        .filter(
-            OCRResult.document_page_id == page_id,
-            OCRResult.bbox_data.isnot(None),
-        )
-        .order_by(OCRResult.created_at.desc())
-        .first()
-    )
+    # Hole bestes OCRResult mit bbox_data für diese Seite (OLLAMA_VISION oder PDF_NATIVE)
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
 
     if not ocr_result:
         raise HTTPException(
@@ -1254,15 +1249,7 @@ def batch_create_persistent_region_jobs(
 
     created_jobs: list[int] = []
     for page in pages:
-        ocr_result = (
-            db.query(OCRResult)
-            .filter(
-                OCRResult.document_page_id == page.id,
-                OCRResult.bbox_data.isnot(None),
-            )
-            .order_by(OCRResult.created_at.desc())
-            .first()
-        )
+        ocr_result = get_best_ocr_result_with_bbox_for_page(db, page.id)
         if not ocr_result or not ocr_result.bbox_data:
             continue
         bbox_list = ocr_result.bbox_data
