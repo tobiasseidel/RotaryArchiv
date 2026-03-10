@@ -28,6 +28,7 @@ from src.rotary_archiv.ocr.job_processor import (  # noqa: E402
     process_ocr_job,
     process_pdf_export_job,
     process_persistent_region_quality_job,
+    process_persistent_region_re_recognize_job,
     process_quality_job,
     process_unit_content_analysis_job,
 )
@@ -107,10 +108,15 @@ async def worker_loop(poll_interval: int = 5):
                 current_job_id = job.id
                 job_type = job.job_type or "ocr"  # Fallback zu "ocr" für alte Jobs
 
-                # Abhängigkeitsprüfung: Quality- und Persistent-Region-Quality-Jobs
+                # Abhängigkeitsprüfung: Quality-, Persistent-Region-Quality- und Re-Recognize-Jobs
                 # warten, bis kein PENDING BBox-Review-Job für dieselbe Seite existiert
                 if (
-                    job_type in ("quality", "persistent_region_quality")
+                    job_type
+                    in (
+                        "quality",
+                        "persistent_region_quality",
+                        "persistent_region_re_recognize",
+                    )
                     and job.document_page_id
                 ):
                     pending_review_job = (
@@ -147,6 +153,10 @@ async def worker_loop(poll_interval: int = 5):
                     elif job_type == "persistent_region_quality":
                         task = asyncio.create_task(  # noqa: RUF006
                             process_persistent_region_quality_job(job.id)
+                        )
+                    elif job_type == "persistent_region_re_recognize":
+                        task = asyncio.create_task(  # noqa: RUF006
+                            process_persistent_region_re_recognize_job(job.id)
                         )
                     elif job_type == "content_analysis":
                         task = asyncio.create_task(  # noqa: RUF006

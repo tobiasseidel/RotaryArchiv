@@ -43,6 +43,25 @@ class BatchCreateJobsResponse(BaseModel):
     job_ids: list[int]
 
 
+class ReRecognizeSingleRequest(BaseModel):
+    """Request für Re-OCR einer einzelnen persistente Region"""
+
+    region_bbox_index: int
+
+
+class ReRecognizeBatchItem(BaseModel):
+    """Ein Eintrag für Batch Re-OCR"""
+
+    page_id: int
+    region_bbox_index: int
+
+
+class ReRecognizeBatchRequest(BaseModel):
+    """Request für Re-OCR mehrerer persistente Regionen"""
+
+    items: list[ReRecognizeBatchItem]
+
+
 @router.get("/config")
 def get_quality_config():
     """
@@ -354,6 +373,7 @@ def _iter_matching_bboxes(
     min_right_pct=None,
     min_width_pct=None,
     max_width_pct=None,
+    box_type_filter=None,
 ):
     """Iteriert über alle BBoxen mit Qualitätsmetriken, gefiltert nach Optionen."""
     for ocr_result, page, document in rows:
@@ -483,6 +503,18 @@ def _iter_matching_bboxes(
             if review_status_filter and review_status not in review_status_filter:
                 continue
 
+            if box_type_filter:
+                bd = bbox_data_list[idx] if idx < len(bbox_data_list) else {}
+                is_persistent = bd.get("persistent_multibox_region") is True
+                is_note = bd.get("box_type") == "note"
+                actual_type = (
+                    "persistent_region"
+                    if is_persistent
+                    else ("note" if is_note else "normal")
+                )
+                if actual_type not in box_type_filter:
+                    continue
+
             # Berechne Positionen als Prozent der Seitenbreite
             left_pct = None
             right_pct = None
@@ -604,6 +636,15 @@ def get_bbox_list(
     max_width_pct: float | None = Query(
         None, description="Filter: Maximale Breite in % der Seitenbreite"
     ),
+    box_type: list[str] | None = Query(
+        None, description="Filter: Box-Art (normal, note, persistent_region)"
+    ),
+    page_number_min: int | None = Query(
+        None, description="Filter: Seitenzahl ab (inklusive)"
+    ),
+    page_number_max: int | None = Query(
+        None, description="Filter: Seitenzahl bis (inklusive)"
+    ),
     limit: int = Query(200, ge=1, le=500, description="Anzahl pro Seite"),
     offset: int = Query(0, ge=0, description="Offset für Paginierung"),
     db: Session = Depends(get_db),
@@ -633,6 +674,10 @@ def get_bbox_list(
         )
         if document_id is not None:
             query = query.filter(DocumentPage.document_id == document_id)
+        if page_number_min is not None:
+            query = query.filter(DocumentPage.page_number >= page_number_min)
+        if page_number_max is not None:
+            query = query.filter(DocumentPage.page_number <= page_number_max)
         rows = query.order_by(DocumentPage.document_id, DocumentPage.page_number).all()
 
         it = _iter_matching_bboxes(
@@ -651,6 +696,7 @@ def get_bbox_list(
             min_right_pct=min_right_pct,
             min_width_pct=min_width_pct,
             max_width_pct=max_width_pct,
+            box_type_filter=box_type if box_type else None,
         )
         all_matching = list(it)
         total = len(all_matching)
@@ -1019,6 +1065,8 @@ def _iter_persistent_regions(rows):
             coverage_ratio = metrics.get("coverage_ratio")
             uncovered_ratio = metrics.get("uncovered_ratio")
             total_dark = metrics.get("total_dark_pixels_region")
+            re_recognition_stages = metrics.get("re_recognition_stages")
+            best_stage_index = metrics.get("best_stage_index")
 
             yield {
                 "document_id": page.document_id,
@@ -1035,6 +1083,8 @@ def _iter_persistent_regions(rows):
                 "children_char_count_sum": sum_chars if children else None,
                 "children_black_pixels_per_char": children_black_pixels_per_char,
                 "children": children,
+                "re_recognition_stages": re_recognition_stages,
+                "best_stage_index": best_stage_index,
             }
 
 
@@ -1294,5 +1344,112 @@ def batch_create_persistent_region_jobs(
         db.flush()
         created_jobs.append(job.id)
 
+    db.commit()
+    return BatchCreateJobsResponse(created=len(created_jobs), job_ids=created_jobs)
+
+
+@router.post(
+    "/pages/{page_id}/persistent-regions/re-recognize",
+    response_model=QualityJobCreateResponse,
+)
+def create_persistent_region_re_recognize_job(
+    page_id: int,
+    body: ReRecognizeSingleRequest,
+    db: Session = Depends(get_db),
+):
+    """Erstellt einen Re-OCR-mehrstufig-Job für eine persistente Region auf der Seite."""
+    page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+    if not page:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Seite nicht gefunden"
+        )
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
+    if not ocr_result or not ocr_result.bbox_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Keine BBox-Daten für diese Seite",
+        )
+    bbox_list = (
+        json.loads(ocr_result.bbox_data)
+        if isinstance(ocr_result.bbox_data, str)
+        else list(ocr_result.bbox_data)
+    )
+    idx = body.region_bbox_index
+    if idx < 0 or idx >= len(bbox_list):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"region_bbox_index {idx} ungültig",
+        )
+    if bbox_list[idx].get("persistent_multibox_region") is not True:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Keine persistente Multibox-Region an diesem Index",
+        )
+    job = OCRJob(
+        document_id=page.document_id,
+        document_page_id=page_id,
+        job_type="persistent_region_re_recognize",
+        status=OCRJobStatus.PENDING,
+        language="deu+eng",
+        use_correction=False,
+        progress=0.0,
+        priority=0,
+        job_params={"region_bbox_index": idx},
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return QualityJobCreateResponse(
+        job_id=job.id,
+        message="Re-OCR-mehrstufig-Job erstellt",
+    )
+
+
+@router.post(
+    "/persistent-regions/re-recognize",
+    response_model=BatchCreateJobsResponse,
+)
+def create_persistent_region_re_recognize_batch(
+    body: ReRecognizeBatchRequest,
+    db: Session = Depends(get_db),
+):
+    """Erstellt Re-OCR-mehrstufig-Jobs für alle angegebenen (page_id, region_bbox_index)."""
+    if not body.items:
+        return BatchCreateJobsResponse(created=0, job_ids=[])
+    created_jobs: list[int] = []
+    for item in body.items:
+        page = db.query(DocumentPage).filter(DocumentPage.id == item.page_id).first()
+        if not page:
+            continue
+        ocr_result = get_best_ocr_result_with_bbox_for_page(db, item.page_id)
+        if not ocr_result or not ocr_result.bbox_data:
+            continue
+        bbox_list = ocr_result.bbox_data
+        if isinstance(bbox_list, str):
+            try:
+                bbox_list = json.loads(bbox_list)
+            except json.JSONDecodeError:
+                continue
+        if not isinstance(bbox_list, list):
+            continue
+        idx = item.region_bbox_index
+        if idx < 0 or idx >= len(bbox_list):
+            continue
+        if bbox_list[idx].get("persistent_multibox_region") is not True:
+            continue
+        job = OCRJob(
+            document_id=page.document_id,
+            document_page_id=item.page_id,
+            job_type="persistent_region_re_recognize",
+            status=OCRJobStatus.PENDING,
+            language="deu+eng",
+            use_correction=False,
+            progress=0.0,
+            priority=0,
+            job_params={"region_bbox_index": idx},
+        )
+        db.add(job)
+        db.flush()
+        created_jobs.append(job.id)
     db.commit()
     return BatchCreateJobsResponse(created=len(created_jobs), job_ids=created_jobs)

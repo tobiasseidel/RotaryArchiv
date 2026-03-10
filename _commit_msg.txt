@@ -1,0 +1,25 @@
+Re-OCR-Bugfixes, BBox-Filter und Inspect Box Manager Panel
+
+Re-OCR persistente Regionen:
+- Fix: ref_w/ref_h aus Bild-Dimensionen als Fallback (statt nur OCR-Result)
+- Fix: deskew_image-ImportError abfangen wenn OpenCV fehlt
+- Fix: Crop-Dimensionen statt Ollama-resize-Dimensionen fuer Koordinaten
+- X-Stretch-Korrekturfaktor (1/0.7) fuer zu schmale Boxen konfigurierbar
+- Neue Boxen erhalten review_status "pending" statt "ocr_done"
+- Mehrstufige Re-Erkennung: DPI, Resize-Limits, Coverage-Schwellwert in Config
+
+BBox-Liste (Frontend + Backend):
+- Filter nach Review-Status "OCR erledigt"
+- Filter nach Box-Typ (Normal, Notiz, Persistente Region)
+- Filter nach Dokument (Dropdown) und exakter Seitenzahl
+
+Inspect Box Manager Panel (neues Feature):
+- Resizable Split-View: Map links, Divider (ziehbar), Panel rechts
+- Box-Liste mit Statistik, Textsuche, Status-/Typ-Filter, Sortierung
+- Bidirektionale Sync: Map-Klick und Listen-Highlight mit Auto-Scroll
+- Multi-Select (Checkboxen, Shift-Bereich, Alle auswaehlen)
+- Batch-Aktionen: Status aendern, Sichtbarkeit, Loeschen
+- Sichtbarkeits-Toggle pro Box (Leaflet-Rect ein/ausblenden)
+- Property-Editor pro Box: editierbare/readonly Felder, JSON-Viewer
+- Dirty-Flag mit Speichern/Verwerfen, PATCH-API erweitert (text, review_status)
+- Fix: display='block' zu display='' damit CSS flex-Layout greift

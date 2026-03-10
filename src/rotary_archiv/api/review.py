@@ -122,13 +122,15 @@ class AddMultipleBBoxesRequest(BaseModel):
 
 
 class UpdateBBoxRequest(BaseModel):
-    """Request-Schema für Aktualisierung der BBox-Koordinaten oder Notiz-Felder"""
+    """Request-Schema für Aktualisierung der BBox-Koordinaten, Status, Text oder Notiz-Felder"""
 
     bbox_pixel: list[
         int
     ] | None = None  # [x1, y1, x2, y2]; optional wenn nur Notiz aktualisiert
     note_author: str | None = None
     note_text: str | None = None
+    review_status: str | None = None
+    text: str | None = None
 
 
 class BBoxRef(BaseModel):
@@ -622,10 +624,12 @@ async def update_bbox(
     """
     has_bbox = request.bbox_pixel is not None and len(request.bbox_pixel) == 4
     has_note = request.note_author is not None or request.note_text is not None
-    if not has_bbox and not has_note:
+    has_status = request.review_status is not None
+    has_text = request.text is not None
+    if not has_bbox and not has_note and not has_status and not has_text:
         raise HTTPException(
             status_code=400,
-            detail="bbox_pixel oder note_author/note_text erforderlich",
+            detail="Mindestens ein Feld zum Aktualisieren erforderlich",
         )
 
     if has_bbox:
@@ -681,6 +685,27 @@ async def update_bbox(
         if request.note_text is not None:
             item["note_text"] = request.note_text
         item["note_updated_at"] = datetime.now().isoformat()
+
+    if has_status:
+        valid_statuses = {
+            "pending",
+            "confirmed",
+            "rejected",
+            "auto_confirmed",
+            "ignored",
+            "new",
+            "ocr_done",
+        }
+        if request.review_status not in valid_statuses:
+            raise HTTPException(
+                status_code=400, detail=f"Ungültiger Status: {request.review_status}"
+            )
+        item["review_status"] = request.review_status
+        if request.review_status in ("confirmed", "rejected"):
+            item["reviewed_at"] = datetime.now().isoformat()
+
+    if has_text:
+        item["text"] = request.text
 
     bbox_list[bbox_index] = item
     ocr_result.bbox_data = bbox_list

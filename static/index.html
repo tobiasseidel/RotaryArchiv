@@ -329,7 +329,7 @@
         /* Inspect-View: unter dem App-Header bis zur Unterkante des Fensters */
         #pageInspectView.active {
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             position: fixed;
             top: 64px;
             left: 0;
@@ -346,13 +346,11 @@
             z-index: 100;
         }
 
-        /* Map-Container: absolut über die ganze View, damit Leaflet volle Höhe bekommt */
+        /* Map-Container: flex-grow, relative fuer Leaflet */
         #pageInspectView.active .map-container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
+            flex: 1;
+            min-width: 200px;
+            position: relative;
             overflow: hidden;
         }
         #pageInspectView.active .map-container #map {
@@ -364,6 +362,157 @@
             width: 100%;
             height: 100%;
         }
+
+        /* Box Manager Panel */
+        #inspectBoxPanel {
+            width: 380px;
+            min-width: 280px;
+            max-width: 50vw;
+            height: 100%;
+            overflow-y: auto;
+            background: #fafafa;
+            border-left: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            font-size: 13px;
+        }
+        #inspectBoxPanel.hidden { display: none; }
+        #inspectBoxPanelDivider {
+            width: 6px;
+            cursor: col-resize;
+            background: #e0e0e0;
+            flex-shrink: 0;
+            transition: background 0.15s;
+        }
+        #inspectBoxPanelDivider:hover,
+        #inspectBoxPanelDivider.dragging { background: #90caf9; }
+        #inspectBoxPanelDivider.hidden { display: none; }
+
+        /* Panel header */
+        .box-panel-header {
+            padding: 8px 10px;
+            border-bottom: 1px solid #ddd;
+            background: #f5f5f5;
+            flex-shrink: 0;
+        }
+        .box-panel-stats { font-size: 12px; color: #555; margin-bottom: 6px; }
+        .box-panel-filters { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+        .box-panel-filters input,
+        .box-panel-filters select {
+            padding: 3px 6px; font-size: 12px; border: 1px solid #ccc; border-radius: 3px;
+        }
+        .box-panel-filters input[type="text"] { flex: 1; min-width: 80px; }
+
+        /* Panel list */
+        .box-panel-list {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        /* Box-Eintrag */
+        .box-panel-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            user-select: none;
+            min-height: 28px;
+        }
+        .box-panel-item:hover { background: #e3f2fd; }
+        .box-panel-item.active { background: #bbdefb; }
+        .box-panel-item.selected { background: #c8e6c9; }
+        .box-panel-item.active.selected { background: #a5d6a7; }
+        .box-panel-item.hidden-box { opacity: 0.45; text-decoration: line-through; }
+        .box-panel-item .bp-checkbox { flex-shrink: 0; width: 14px; height: 14px; }
+        .box-panel-item .bp-vis-toggle {
+            flex-shrink: 0; cursor: pointer; font-size: 14px; width: 18px; text-align: center;
+        }
+        .box-panel-item .bp-color-dot {
+            flex-shrink: 0; width: 10px; height: 10px; border-radius: 50%; border: 1px solid #999;
+        }
+        .box-panel-item .bp-index { flex-shrink: 0; width: 28px; font-size: 11px; color: #888; text-align: right; }
+        .box-panel-item .bp-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+        .box-panel-item .bp-expand { flex-shrink: 0; cursor: pointer; font-size: 12px; width: 18px; text-align: center; }
+
+        /* Batch-Aktionen */
+        .box-panel-batch {
+            padding: 6px 8px;
+            border-top: 1px solid #ddd;
+            background: #fff3e0;
+            flex-shrink: 0;
+            display: none;
+            gap: 4px;
+            flex-wrap: wrap;
+            align-items: center;
+            font-size: 12px;
+        }
+        .box-panel-batch.visible { display: flex; }
+        .box-panel-batch select, .box-panel-batch button { font-size: 12px; padding: 2px 6px; }
+
+        /* Property-Editor */
+        .box-panel-props {
+            display: none;
+            padding: 6px 8px 6px 36px;
+            border-bottom: 1px solid #eee;
+            background: #f9f9f9;
+            font-size: 12px;
+        }
+        .box-panel-props.open { display: block; }
+        .box-prop-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            margin-bottom: 3px;
+        }
+        .box-prop-label {
+            flex-shrink: 0;
+            width: 110px;
+            font-weight: 500;
+            color: #555;
+            padding-top: 2px;
+            font-size: 11px;
+        }
+        .box-prop-label.dirty { font-weight: 700; color: #e65100; }
+        .box-prop-label.dirty::after { content: " \25CF"; color: #ff9800; font-size: 8px; }
+        .box-prop-value {
+            flex: 1;
+            min-width: 0;
+            word-break: break-all;
+        }
+        .box-prop-value.readonly {
+            background: #f0f0f0;
+            padding: 2px 4px;
+            border-radius: 2px;
+            font-family: monospace;
+            font-size: 11px;
+            color: #666;
+        }
+        .box-prop-value input,
+        .box-prop-value select,
+        .box-prop-value textarea {
+            width: 100%;
+            padding: 2px 4px;
+            font-size: 12px;
+            border: 1px solid #ccc;
+            border-radius: 2px;
+            box-sizing: border-box;
+        }
+        .box-prop-value textarea { min-height: 40px; resize: vertical; }
+        .box-prop-json-toggle {
+            cursor: pointer; color: #1976d2; font-size: 11px;
+        }
+        .box-prop-json-content {
+            display: none; padding: 4px; background: #f5f5f5; border-radius: 2px;
+            font-family: monospace; font-size: 10px; white-space: pre-wrap; max-height: 200px; overflow-y: auto;
+        }
+        .box-prop-json-content.open { display: block; }
+        .box-prop-actions {
+            display: none; padding: 4px 0; gap: 6px;
+        }
+        .box-prop-actions.visible { display: flex; }
         /* Dokument/Seite: rechts neben den Leaflet-Zoom-Buttons */
         .inspect-map-overlay {
             position: absolute;
@@ -393,74 +542,10 @@
         }
         .inspect-multibox-overlay .btn { padding: 4px 8px; font-size: 12px; }
 
-        /* Vollbild-Modus: Map füllt gesamten Bildschirm */
-        #pageInspectView:fullscreen {
-            padding: 0;
-            margin: 0;
-            border-radius: 0;
-            max-width: 100%;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        #pageInspectView:fullscreen .map-container {
-            flex: 1;
-            min-height: 0;
-        }
-
-        #pageInspectView:fullscreen .map-container #map {
-            position: absolute;
-            inset: 0;
-            height: 100% !important;
-            width: 100% !important;
-        }
-
-        /* Browser-spezifische Fullscreen-Pseudoklassen */
-        #pageInspectView:-webkit-full-screen {
-            padding: 0;
-            margin: 0;
-            border-radius: 0;
-            max-width: 100%;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        #pageInspectView:-webkit-full-screen .map-container {
-            flex: 1;
-            min-height: 0;
-        }
-
-        #pageInspectView:-webkit-full-screen .map-container #map {
-            position: absolute;
-            inset: 0;
-            height: 100% !important;
-            width: 100% !important;
-        }
-
-        #pageInspectView:-moz-full-screen {
-            padding: 0;
-            margin: 0;
-            border-radius: 0;
-            max-width: 100%;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        #pageInspectView:-moz-full-screen .map-container {
-            flex: 1;
-            min-height: 0;
-        }
-
-        #pageInspectView:-moz-full-screen .map-container #map {
-            position: absolute;
-            inset: 0;
-            height: 100% !important;
-            width: 100% !important;
-        }
-
+        /* Vollbild-Modus: gleiche flex-row-Struktur */
+        #pageInspectView:fullscreen,
+        #pageInspectView:-webkit-full-screen,
+        #pageInspectView:-moz-full-screen,
         #pageInspectView:-ms-fullscreen {
             padding: 0;
             margin: 0;
@@ -468,14 +553,20 @@
             max-width: 100%;
             height: 100vh;
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
         }
 
+        #pageInspectView:fullscreen .map-container,
+        #pageInspectView:-webkit-full-screen .map-container,
+        #pageInspectView:-moz-full-screen .map-container,
         #pageInspectView:-ms-fullscreen .map-container {
             flex: 1;
             min-height: 0;
         }
 
+        #pageInspectView:fullscreen .map-container #map,
+        #pageInspectView:-webkit-full-screen .map-container #map,
+        #pageInspectView:-moz-full-screen .map-container #map,
         #pageInspectView:-ms-fullscreen .map-container #map {
             position: absolute;
             inset: 0;
@@ -1195,6 +1286,7 @@
         </div>
         <div style="margin-bottom: 12px;">
             <button class="btn btn-secondary" onclick="batchCreatePersistentRegionJobs()">Nachberechnen (Jobs für alle Seiten mit Regionen)</button>
+            <button class="btn btn-primary" style="margin-left: 8px;" onclick="startReRecognizeSelection()">Neu erkennen (mehrstufig) für Auswahl</button>
             <span id="persistentRegionsBatchStatus" style="margin-left: 10px;"></span>
         </div>
         <div id="persistentRegionsContainer">
@@ -1297,6 +1389,16 @@
                     <input type="text" id="bboxFilterTextSearch" placeholder="z. B. Wort oder Phrase …" style="width: 100%; max-width: 400px; padding: 6px; box-sizing: border-box;">
                 </div>
                 <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 12px;">Dokument</label>
+                    <select id="bboxFilterDocumentId" style="width: 100%; padding: 6px; box-sizing: border-box;">
+                        <option value="">Alle Dokumente</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display: block; margin-bottom: 4px; font-size: 12px;">Seitenzahl (absolut)</label>
+                    <input type="number" id="bboxFilterPageNumber" placeholder="—" step="1" min="1" style="width: 100%; padding: 6px; box-sizing: border-box;">
+                </div>
+                <div>
                     <label style="display: block; margin-bottom: 4px; font-size: 12px;">Zeichen / 1000 px (min)</label>
                     <input type="number" id="bboxFilterMinChars1k" placeholder="—" step="any" style="width: 100%; padding: 6px; box-sizing: border-box;">
                 </div>
@@ -1371,6 +1473,27 @@
                             <input type="checkbox" id="bboxFilterReviewStatusNew" value="new">
                             <span>Neu</span>
                         </label>
+                        <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                            <input type="checkbox" id="bboxFilterReviewStatusOcrDone" value="ocr_done">
+                            <span>OCR erledigt</span>
+                        </label>
+                    </div>
+                </div>
+                <div style="grid-column: 1 / -1;">
+                    <label style="display: block; margin-bottom: 8px; font-size: 12px; font-weight: 600;">Box-Art (mehrfach auswählbar)</label>
+                    <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+                        <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                            <input type="checkbox" id="bboxFilterBoxTypeNormal" value="normal" checked>
+                            <span>Normal</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                            <input type="checkbox" id="bboxFilterBoxTypeNote" value="note">
+                            <span>Notiz</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                            <input type="checkbox" id="bboxFilterBoxTypePersistentRegion" value="persistent_region">
+                            <span>Persistente Region</span>
+                        </label>
                     </div>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center;">
@@ -1427,12 +1550,12 @@
 
     <!-- Page Inspect View: Buttons werden per JS in den App-Header verschoben -->
     <div id="pageInspectView" class="container" style="display: none;">
-        <div id="inspectBoxPositionsPanel" style="display: none; margin-bottom: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px; max-height: 120px; overflow-y: auto;">
-            <strong>Aktuelle Positionen (x1, y1, x2, y2):</strong>
-            <div id="inspectBoxPositionsList"></div>
-        </div>
         <div class="map-container">
             <div id="map"></div>
+            <div id="inspectBoxPositionsPanel" style="display: none; position: absolute; bottom: 10px; left: 10px; z-index: 2000; padding: 8px; background: rgba(245,245,245,0.95); border-radius: 4px; max-height: 120px; overflow-y: auto; box-shadow: 0 2px 8px rgba(0,0,0,0.12);">
+                <strong>Aktuelle Positionen (x1, y1, x2, y2):</strong>
+                <div id="inspectBoxPositionsList"></div>
+            </div>
             <div id="inspectSubtitle" class="inspect-map-overlay">Seite wird geladen...</div>
             <div id="inspectMultiboxActionsPanel" class="inspect-multibox-overlay">
                 <strong id="inspectMultiboxSelectionCount">0 Boxen ausgewählt</strong>
@@ -1442,6 +1565,53 @@
                     <button class="btn btn-warning" id="inspectMultiboxRecalcBtn" style="margin-left: 4px; background: #ff9800; color: white;">Neu berechnen</button>
                     <button class="btn btn-danger" id="inspectMultiboxDeleteBtn" style="margin-left: 4px;">Löschen</button>
                 </span>
+            </div>
+        </div>
+        <div id="inspectBoxPanelDivider"></div>
+        <div id="inspectBoxPanel">
+            <div class="box-panel-header">
+                <div class="box-panel-stats" id="boxPanelStats" style="display: flex; align-items: center; gap: 6px;">
+                    <input type="checkbox" id="boxPanelSelectAll" title="Alle auswählen" onclick="boxPanelToggleSelectAll(this.checked)" style="margin: 0;">
+                    <span id="boxPanelStatsText">0 Boxen</span>
+                </div>
+                <div class="box-panel-filters">
+                    <input type="text" id="boxPanelFilterText" placeholder="Text…">
+                    <select id="boxPanelFilterStatus">
+                        <option value="">Status</option>
+                        <option value="pending">Ausstehend</option>
+                        <option value="confirmed">Bestätigt</option>
+                        <option value="rejected">Abgelehnt</option>
+                        <option value="auto_confirmed">Auto</option>
+                        <option value="ignored">Ignoriert</option>
+                        <option value="ocr_done">OCR erledigt</option>
+                    </select>
+                    <select id="boxPanelFilterType">
+                        <option value="">Typ</option>
+                        <option value="normal">Normal</option>
+                        <option value="note">Notiz</option>
+                        <option value="region">Region</option>
+                    </select>
+                    <select id="boxPanelSort">
+                        <option value="index">Index</option>
+                        <option value="y_pos">Y-Pos</option>
+                        <option value="status">Status</option>
+                        <option value="text_len">Textlänge</option>
+                    </select>
+                </div>
+            </div>
+            <div class="box-panel-list" id="boxPanelList"></div>
+            <div class="box-panel-batch" id="boxPanelBatch">
+                <span id="boxPanelBatchCount">0 ausgewählt</span>
+                <select id="boxPanelBatchStatus">
+                    <option value="pending">Ausstehend</option>
+                    <option value="confirmed">Bestätigt</option>
+                    <option value="rejected">Abgelehnt</option>
+                    <option value="ignored">Ignoriert</option>
+                </select>
+                <button class="btn btn-primary" onclick="boxPanelBatchChangeStatus()">Status</button>
+                <button class="btn btn-secondary" onclick="boxPanelBatchToggleVis(true)">Einblenden</button>
+                <button class="btn btn-secondary" onclick="boxPanelBatchToggleVis(false)">Ausblenden</button>
+                <button class="btn btn-danger" onclick="boxPanelBatchDelete()">Löschen</button>
             </div>
         </div>
     </div>
@@ -1460,6 +1630,7 @@
                     <button type="button" class="inspect-add-box-option" data-mode="note">Notiz</button>
                 </div>
             </div>
+            <button class="btn btn-secondary" id="toggleBoxPanelBtn" title="Box-Manager ein-/ausblenden" onclick="toggleBoxPanel()">Box-Manager</button>
             <button class="btn btn-secondary" id="editBoxModeBtn" title="Boxen-Positionen und Maße ändern">Boxen bearbeiten</button>
             <button class="btn btn-secondary" id="multiboxSelectBtn" title="Rechteck zeichnen – alle darin liegenden Boxen auswählen">Mehrere auswählen</button>
             <button class="btn btn-secondary" id="measureSkewBtn" title="Schrägwinkel der Seite messen (Hough)">Schräge messen</button>
@@ -2271,6 +2442,27 @@
             loadDeskewOverview();
         }
 
+        async function loadBboxFilterDocumentDropdown() {
+            const sel = document.getElementById('bboxFilterDocumentId');
+            if (!sel) return;
+            try {
+                const response = await fetch(API_BASE + '/api/documents/summary');
+                if (!response.ok) throw new Error('Dokumente konnten nicht geladen werden');
+                const documents = await response.json();
+                const currentVal = sel.value;
+                sel.innerHTML = '<option value="">Alle Dokumente</option>';
+                documents.forEach(function(d) {
+                    const opt = document.createElement('option');
+                    opt.value = d.id;
+                    opt.textContent = (d.title || d.filename || 'Dokument ' + d.id) + ' (ID ' + d.id + ')';
+                    sel.appendChild(opt);
+                });
+                if (currentVal) sel.value = currentVal;
+            } catch (e) {
+                console.error('loadBboxFilterDocumentDropdown', e);
+            }
+        }
+
         function showBboxListView() {
             const importView = document.getElementById('importView');
             const reviewView = document.getElementById('reviewView');
@@ -2318,6 +2510,8 @@
             }
 
             window.location.hash = '#/bbox-list';
+
+            loadBboxFilterDocumentDropdown();
 
             // Füge Enter-Taste Event-Listener für Filter-Felder hinzu
             setupBboxListFilterEnterHandlers();
@@ -3298,7 +3492,8 @@
                 document.getElementById('bboxFilterReviewStatusRejected'),
                 document.getElementById('bboxFilterReviewStatusAutoConfirmed'),
                 document.getElementById('bboxFilterReviewStatusIgnored'),
-                document.getElementById('bboxFilterReviewStatusNew')
+                document.getElementById('bboxFilterReviewStatusNew'),
+                document.getElementById('bboxFilterReviewStatusOcrDone')
             ];
 
             if (min1k && min1k.value !== '') filters.min_chars_per_1k_px = parseFloat(min1k.value);
@@ -3314,8 +3509,23 @@
             if (minWidthPct && minWidthPct.value !== '') filters.min_width_pct = parseFloat(minWidthPct.value);
             if (maxWidthPct && maxWidthPct.value !== '') filters.max_width_pct = parseFloat(maxWidthPct.value);
             if (textSearch && textSearch.value.trim() !== '') filters.text_search = textSearch.value.trim();
+            const docId = document.getElementById('bboxFilterDocumentId');
+            const pageNum = document.getElementById('bboxFilterPageNumber');
+            if (docId && docId.value !== '') filters.document_id = parseInt(docId.value);
+            if (pageNum && pageNum.value !== '') {
+                const pn = parseInt(pageNum.value);
+                filters.page_number_min = pn;
+                filters.page_number_max = pn;
+            }
             const selectedStatuses = reviewStatusCheckboxes.filter(function (cb) { return cb && cb.checked; }).map(function (cb) { return cb.value; });
             if (selectedStatuses.length > 0) filters.review_status = selectedStatuses;
+            const boxTypeCheckboxes = [
+                document.getElementById('bboxFilterBoxTypeNormal'),
+                document.getElementById('bboxFilterBoxTypeNote'),
+                document.getElementById('bboxFilterBoxTypePersistentRegion')
+            ];
+            const selectedBoxTypes = boxTypeCheckboxes.filter(function (cb) { return cb && cb.checked; }).map(function (cb) { return cb.value; });
+            if (selectedBoxTypes.length > 0) filters.box_type = selectedBoxTypes;
 
             return filters;
         }
@@ -3345,7 +3555,8 @@
                 document.getElementById('bboxFilterReviewStatusRejected'),
                 document.getElementById('bboxFilterReviewStatusAutoConfirmed'),
                 document.getElementById('bboxFilterReviewStatusIgnored'),
-                document.getElementById('bboxFilterReviewStatusNew')
+                document.getElementById('bboxFilterReviewStatusNew'),
+                document.getElementById('bboxFilterReviewStatusOcrDone')
             ];
             if (min1k && min1k.value !== '') params.set('min_chars_per_1k_px', min1k.value);
             if (max1k && max1k.value !== '') params.set('max_chars_per_1k_px', max1k.value);
@@ -3360,10 +3571,28 @@
             if (minWidthPct && minWidthPct.value !== '') params.set('min_width_pct', minWidthPct.value);
             if (maxWidthPct && maxWidthPct.value !== '') params.set('max_width_pct', maxWidthPct.value);
             if (textSearch && textSearch.value.trim() !== '') params.set('text_search', textSearch.value.trim());
+            const docId = document.getElementById('bboxFilterDocumentId');
+            const pageNum = document.getElementById('bboxFilterPageNumber');
+            if (docId && docId.value !== '') params.set('document_id', docId.value);
+            if (pageNum && pageNum.value !== '') {
+                params.set('page_number_min', pageNum.value);
+                params.set('page_number_max', pageNum.value);
+            }
             const selectedStatuses = reviewStatusCheckboxes.filter(function (cb) { return cb && cb.checked; }).map(function (cb) { return cb.value; });
             if (selectedStatuses.length > 0) {
                 selectedStatuses.forEach(function (status) {
                     params.append('review_status', status);
+                });
+            }
+            const boxTypeCheckboxes = [
+                document.getElementById('bboxFilterBoxTypeNormal'),
+                document.getElementById('bboxFilterBoxTypeNote'),
+                document.getElementById('bboxFilterBoxTypePersistentRegion')
+            ];
+            const selectedBoxTypes = boxTypeCheckboxes.filter(function (cb) { return cb && cb.checked; }).map(function (cb) { return cb.value; });
+            if (selectedBoxTypes.length > 0) {
+                selectedBoxTypes.forEach(function (bt) {
+                    params.append('box_type', bt);
                 });
             }
             return params;
@@ -3520,7 +3749,9 @@
         }
 
         function resetBboxListFilter() {
-            const ids = ['bboxFilterTextSearch', 'bboxFilterMinChars1k', 'bboxFilterMaxChars1k', 'bboxFilterMinBlackPc', 'bboxFilterMaxBlackPc', 'bboxFilterMinBlackPx', 'bboxFilterMaxBlackPx', 'bboxFilterMinCharCount', 'bboxFilterMaxCharCount', 'bboxFilterMaxLeftPct', 'bboxFilterMinRightPct', 'bboxFilterMinWidthPct', 'bboxFilterMaxWidthPct'];
+            const ids = ['bboxFilterTextSearch', 'bboxFilterPageNumber', 'bboxFilterMinChars1k', 'bboxFilterMaxChars1k', 'bboxFilterMinBlackPc', 'bboxFilterMaxBlackPc', 'bboxFilterMinBlackPx', 'bboxFilterMaxBlackPx', 'bboxFilterMinCharCount', 'bboxFilterMaxCharCount', 'bboxFilterMaxLeftPct', 'bboxFilterMinRightPct', 'bboxFilterMinWidthPct', 'bboxFilterMaxWidthPct'];
+            const docSel = document.getElementById('bboxFilterDocumentId');
+            if (docSel) docSel.value = '';
             ids.forEach(function (id) {
                 const el = document.getElementById(id);
                 if (el) el.value = '';
@@ -3531,12 +3762,22 @@
                 document.getElementById('bboxFilterReviewStatusRejected'),
                 document.getElementById('bboxFilterReviewStatusAutoConfirmed'),
                 document.getElementById('bboxFilterReviewStatusIgnored'),
-                document.getElementById('bboxFilterReviewStatusNew')
+                document.getElementById('bboxFilterReviewStatusNew'),
+                document.getElementById('bboxFilterReviewStatusOcrDone')
             ];
             reviewStatusCheckboxes.forEach(function (cb) {
                 if (cb) {
-                    // Nur "Ausstehend" (pending) ist standardmäßig ausgewählt
                     cb.checked = (cb.value === 'pending');
+                }
+            });
+            const boxTypeCheckboxes = [
+                document.getElementById('bboxFilterBoxTypeNormal'),
+                document.getElementById('bboxFilterBoxTypeNote'),
+                document.getElementById('bboxFilterBoxTypePersistentRegion')
+            ];
+            boxTypeCheckboxes.forEach(function (cb) {
+                if (cb) {
+                    cb.checked = (cb.value === 'normal');
                 }
             });
             bboxListSelectedIds.clear();
@@ -4415,7 +4656,7 @@
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'none';
             if (pageInspectView) {
-                pageInspectView.style.display = 'block';
+                pageInspectView.style.display = '';
                 pageInspectView.classList.add('active');
             }
             moveInspectToolbarToHeader();
@@ -4952,6 +5193,7 @@
                                             map.removeLayer(textMarker);
                                         }
                                     }
+                                    boxPanelOnMapBoxClick(overlayItem.bboxIndex);
                                 });
 
                                 textOverlays.push(overlayItem);
@@ -4961,12 +5203,16 @@
                 }
 
                 // Für Bearbeiten-Modus und Positions-Anzeige: Inspect-Daten bereitstellen
+                const _firstOcrWithBbox = (data.ocr_results || []).find(r => r.bbox_data && r.bbox_data.length > 0);
                 currentInspectData = {
                     page_id: data.page_id,
                     image_width: data.image_width,
                     image_height: data.image_height,
-                    ocr_results: data.ocr_results || []
+                    ocr_results: data.ocr_results || [],
+                    bbox_data: _firstOcrWithBbox ? _firstOcrWithBbox.bbox_data : []
                 };
+
+                boxPanelOnPageLoad();
 
                 // Boxen bearbeiten: Toggle-Button
                 document.getElementById('editBoxModeBtn').onclick = () => {
@@ -6707,6 +6953,474 @@
                 map.doubleClickZoom.enable();
             }
         }
+
+        // ======================== Box Manager Panel ========================
+        let boxPanelVisible = true;
+        let boxPanelActiveIndex = -1;
+        let boxPanelSelectedIndices = new Set();
+        let boxPanelLastClickIndex = -1;
+        let boxPanelDirtyFields = {};
+        let boxPanelOriginalValues = {};
+
+        function toggleBoxPanel() {
+            const panel = document.getElementById('inspectBoxPanel');
+            const divider = document.getElementById('inspectBoxPanelDivider');
+            if (!panel || !divider) return;
+            boxPanelVisible = !boxPanelVisible;
+            if (boxPanelVisible) {
+                panel.classList.remove('hidden');
+                divider.classList.remove('hidden');
+            } else {
+                panel.classList.add('hidden');
+                divider.classList.add('hidden');
+            }
+            if (map) setTimeout(function() { map.invalidateSize(); }, 50);
+        }
+
+        (function initBoxPanelDivider() {
+            let dragging = false;
+            let startX = 0;
+            let startW = 0;
+            document.addEventListener('mousedown', function(e) {
+                if (e.target && e.target.id === 'inspectBoxPanelDivider') {
+                    e.preventDefault();
+                    dragging = true;
+                    startX = e.clientX;
+                    const panel = document.getElementById('inspectBoxPanel');
+                    startW = panel ? panel.offsetWidth : 380;
+                    e.target.classList.add('dragging');
+                }
+            });
+            document.addEventListener('mousemove', function(e) {
+                if (!dragging) return;
+                e.preventDefault();
+                const panel = document.getElementById('inspectBoxPanel');
+                if (!panel) return;
+                const diff = startX - e.clientX;
+                let newW = Math.max(280, Math.min(window.innerWidth * 0.5, startW + diff));
+                panel.style.width = newW + 'px';
+                if (map) map.invalidateSize();
+            });
+            document.addEventListener('mouseup', function() {
+                if (!dragging) return;
+                dragging = false;
+                const div = document.getElementById('inspectBoxPanelDivider');
+                if (div) div.classList.remove('dragging');
+                if (map) map.invalidateSize();
+            });
+        })();
+
+        function boxPanelGetStatusColor(status) {
+            switch ((status || '').toLowerCase()) {
+                case 'confirmed': return '#000';
+                case 'rejected': return '#842029';
+                case 'auto_confirmed': return '#0d6efd';
+                case 'ignored': return '#6c757d';
+                case 'ocr_done': return '#0d9488';
+                case 'new': return '#ff9800';
+                default: return '#3388ff';
+            }
+        }
+
+        function boxPanelGetItemType(bboxItem) {
+            if (bboxItem.persistent_multibox_region === true) return 'region';
+            if (bboxItem.box_type === 'note') return 'note';
+            return 'normal';
+        }
+
+        function boxPanelGetFilteredOverlays() {
+            if (!textOverlays || !textOverlays.length) return [];
+            const filterText = (document.getElementById('boxPanelFilterText') || {}).value || '';
+            const filterStatus = (document.getElementById('boxPanelFilterStatus') || {}).value || '';
+            const filterType = (document.getElementById('boxPanelFilterType') || {}).value || '';
+            const sortBy = (document.getElementById('boxPanelSort') || {}).value || 'index';
+            let items = textOverlays.map(function(ov, idx) { return { ov: ov, idx: idx }; });
+            if (filterText) {
+                const ft = filterText.toLowerCase();
+                items = items.filter(function(it) {
+                    return (it.ov.textContent || '').toLowerCase().indexOf(ft) !== -1;
+                });
+            }
+            if (filterStatus) {
+                items = items.filter(function(it) {
+                    const bd = boxPanelGetBboxData(it.ov);
+                    return (bd.review_status || 'pending') === filterStatus;
+                });
+            }
+            if (filterType) {
+                items = items.filter(function(it) {
+                    const bd = boxPanelGetBboxData(it.ov);
+                    return boxPanelGetItemType(bd) === filterType;
+                });
+            }
+            if (sortBy === 'y_pos') {
+                items.sort(function(a, b) {
+                    const ba = boxPanelGetBboxData(a.ov);
+                    const bb = boxPanelGetBboxData(b.ov);
+                    return ((ba.bbox_pixel || [])[1] || 0) - ((bb.bbox_pixel || [])[1] || 0);
+                });
+            } else if (sortBy === 'status') {
+                items.sort(function(a, b) {
+                    const sa = (boxPanelGetBboxData(a.ov).review_status || 'pending');
+                    const sb = (boxPanelGetBboxData(b.ov).review_status || 'pending');
+                    return sa.localeCompare(sb);
+                });
+            } else if (sortBy === 'text_len') {
+                items.sort(function(a, b) {
+                    return (b.ov.textContent || '').length - (a.ov.textContent || '').length;
+                });
+            }
+            return items;
+        }
+
+        function boxPanelGetBboxData(ov) {
+            if (!currentInspectData || !currentInspectData.bbox_data) return {};
+            var idx = ov.bboxIndex;
+            var bboxData = currentInspectData.bbox_data;
+            if (typeof bboxData === 'string') {
+                try { bboxData = JSON.parse(bboxData); } catch(e) { return {}; }
+            }
+            return (idx >= 0 && idx < bboxData.length) ? bboxData[idx] : {};
+        }
+
+        function boxPanelUpdateStats() {
+            const el = document.getElementById('boxPanelStatsText');
+            if (!el) return;
+            const total = (textOverlays || []).length;
+            let pending = 0;
+            let hiddenCount = 0;
+            (textOverlays || []).forEach(function(ov) {
+                const bd = boxPanelGetBboxData(ov);
+                if ((bd.review_status || 'pending') === 'pending') pending++;
+                if (!ov.visible) hiddenCount++;
+            });
+            el.textContent = total + ' Boxen | ' + pending + ' ausstehend | ' + hiddenCount + ' ausgeblendet';
+        }
+
+        function boxPanelToggleSelectAll(checked) {
+            const items = boxPanelGetFilteredOverlays();
+            if (checked) {
+                items.forEach(function(it) {
+                    var idx = it.ov.bboxIndex !== undefined ? it.ov.bboxIndex : it.idx;
+                    boxPanelSelectedIndices.add(idx);
+                });
+            } else {
+                boxPanelSelectedIndices.clear();
+            }
+            boxPanelRender();
+        }
+
+        function boxPanelRender() {
+            const listEl = document.getElementById('boxPanelList');
+            if (!listEl) return;
+            const items = boxPanelGetFilteredOverlays();
+            let html = '';
+            items.forEach(function(it) {
+                const ov = it.ov;
+                const idx = ov.bboxIndex !== undefined ? ov.bboxIndex : it.idx;
+                const bd = boxPanelGetBboxData(ov);
+                const status = bd.review_status || 'pending';
+                const color = boxPanelGetStatusColor(status);
+                const text = (ov.textContent || bd.text || '').substring(0, 40);
+                const isActive = boxPanelActiveIndex === idx;
+                const isSelected = boxPanelSelectedIndices.has(idx);
+                const isHidden = !ov.visible;
+                let cls = 'box-panel-item';
+                if (isActive) cls += ' active';
+                if (isSelected) cls += ' selected';
+                if (isHidden) cls += ' hidden-box';
+                html += '<div class="' + cls + '" data-bp-idx="' + idx + '" onclick="boxPanelItemClick(event, ' + idx + ')">';
+                html += '<input type="checkbox" class="bp-checkbox" ' + (isSelected ? 'checked' : '') + ' onclick="event.stopPropagation(); boxPanelToggleSelect(event, ' + idx + ')">';
+                html += '<span class="bp-vis-toggle" onclick="event.stopPropagation(); boxPanelToggleVis(' + idx + ')" title="Ein-/Ausblenden">' + (isHidden ? '🔇' : '👁') + '</span>';
+                html += '<span class="bp-color-dot" style="background:' + color + '"></span>';
+                html += '<span class="bp-index">' + idx + '</span>';
+                html += '<span class="bp-text" title="' + escapeHtml(ov.textContent || bd.text || '') + '">' + escapeHtml(text) + '</span>';
+                html += '<span class="bp-expand" onclick="event.stopPropagation(); boxPanelToggleProps(' + idx + ')">&#9660;</span>';
+                html += '</div>';
+                html += '<div class="box-panel-props" id="boxPanelProps_' + idx + '"></div>';
+            });
+            listEl.innerHTML = html;
+            boxPanelUpdateStats();
+            boxPanelUpdateBatch();
+        }
+
+        function boxPanelItemClick(e, idx) {
+            if (e.target.classList.contains('bp-checkbox')) return;
+            boxPanelSetActive(idx);
+            boxPanelHighlightOnMap(idx);
+        }
+
+        function boxPanelSetActive(idx) {
+            boxPanelActiveIndex = idx;
+            document.querySelectorAll('.box-panel-item').forEach(function(el) {
+                el.classList.toggle('active', parseInt(el.dataset.bpIdx) === idx);
+            });
+        }
+
+        function boxPanelScrollToItem(idx) {
+            const listEl = document.getElementById('boxPanelList');
+            if (!listEl) return;
+            const itemEl = listEl.querySelector('.box-panel-item[data-bp-idx="' + idx + '"]');
+            if (itemEl) itemEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+
+        function boxPanelHighlightOnMap(idx) {
+            if (!textOverlays) return;
+            textOverlays.forEach(function(ov) {
+                if (!ov.rect) return;
+                var bIdx = ov.bboxIndex !== undefined ? ov.bboxIndex : -1;
+                if (bIdx === idx) {
+                    ov.rect.setStyle({ color: '#1565c0', weight: 4, fillOpacity: 0.3 });
+                    if (map && ov.rect.getBounds) {
+                        map.panTo(ov.rect.getBounds().getCenter());
+                    }
+                } else {
+                    ov.rect.setStyle(ov.defaultStyle || { color: '#3388ff', weight: 2, fillOpacity: 0.15 });
+                }
+            });
+        }
+
+        function boxPanelOnMapBoxClick(bboxIndex) {
+            boxPanelSetActive(bboxIndex);
+            boxPanelScrollToItem(bboxIndex);
+        }
+
+        function boxPanelToggleSelect(e, idx) {
+            if (e && e.shiftKey && boxPanelLastClickIndex >= 0) {
+                const lo = Math.min(boxPanelLastClickIndex, idx);
+                const hi = Math.max(boxPanelLastClickIndex, idx);
+                for (let i = lo; i <= hi; i++) boxPanelSelectedIndices.add(i);
+            } else {
+                if (boxPanelSelectedIndices.has(idx)) boxPanelSelectedIndices.delete(idx);
+                else boxPanelSelectedIndices.add(idx);
+            }
+            boxPanelLastClickIndex = idx;
+            boxPanelRender();
+        }
+
+        function boxPanelToggleVis(idx) {
+            if (!textOverlays) return;
+            const ov = textOverlays.find(function(o) { return (o.bboxIndex !== undefined ? o.bboxIndex : -1) === idx; });
+            if (!ov) return;
+            ov.visible = !ov.visible;
+            if (ov.rect) {
+                if (ov.visible) {
+                    ov.rect.setStyle(ov.defaultStyle || { color: '#3388ff', weight: 2, fillOpacity: 0.15, opacity: 1 });
+                } else {
+                    ov.rect.setStyle({ opacity: 0, fillOpacity: 0 });
+                }
+            }
+            if (ov.marker) {
+                if (ov.visible) { if (map && !map.hasLayer(ov.marker)) map.addLayer(ov.marker); }
+                else { if (map && map.hasLayer(ov.marker)) map.removeLayer(ov.marker); }
+            }
+            boxPanelRender();
+        }
+
+        function boxPanelUpdateBatch() {
+            const batchEl = document.getElementById('boxPanelBatch');
+            const countEl = document.getElementById('boxPanelBatchCount');
+            if (!batchEl) return;
+            const n = boxPanelSelectedIndices.size;
+            if (n > 0) {
+                batchEl.classList.add('visible');
+                if (countEl) countEl.textContent = n + ' ausgewählt';
+            } else {
+                batchEl.classList.remove('visible');
+            }
+        }
+
+        async function boxPanelBatchChangeStatus() {
+            const sel = document.getElementById('boxPanelBatchStatus');
+            if (!sel || !currentPageData || !currentPageData.page_id) return;
+            const newStatus = sel.value;
+            const indices = Array.from(boxPanelSelectedIndices);
+            if (!indices.length) return;
+            try {
+                await fetch(API_BASE + '/api/review/batch-change-status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bboxes: indices.map(function(idx) { return { page_id: currentPageData.page_id, bbox_index: idx }; }),
+                        new_status: newStatus
+                    })
+                });
+            } catch (err) { console.error('Batch status change error', err); }
+            boxPanelSelectedIndices.clear();
+            await reloadInspectBoxes();
+        }
+
+        function boxPanelBatchToggleVis(show) {
+            boxPanelSelectedIndices.forEach(function(idx) {
+                const ov = textOverlays.find(function(o) { return (o.bboxIndex !== undefined ? o.bboxIndex : -1) === idx; });
+                if (!ov) return;
+                ov.visible = show;
+                if (ov.rect) {
+                    if (show) ov.rect.setStyle(ov.defaultStyle || { color: '#3388ff', weight: 2, fillOpacity: 0.15, opacity: 1 });
+                    else ov.rect.setStyle({ opacity: 0, fillOpacity: 0 });
+                }
+                if (ov.marker) {
+                    if (show) { if (map && !map.hasLayer(ov.marker)) map.addLayer(ov.marker); }
+                    else { if (map && map.hasLayer(ov.marker)) map.removeLayer(ov.marker); }
+                }
+            });
+            boxPanelRender();
+        }
+
+        async function boxPanelBatchDelete() {
+            const indices = Array.from(boxPanelSelectedIndices).sort(function(a, b) { return b - a; });
+            if (!indices.length || !currentPageData || !currentPageData.page_id) return;
+            if (!confirm(indices.length + ' Boxen löschen?')) return;
+            for (const idx of indices) {
+                try {
+                    await fetch(API_BASE + '/api/review/pages/' + currentPageData.page_id + '/bboxes/' + idx, { method: 'DELETE' });
+                } catch (err) { console.error('Batch delete error', err); }
+            }
+            boxPanelSelectedIndices.clear();
+            await reloadInspectBoxes();
+        }
+
+        function boxPanelToggleProps(idx) {
+            const el = document.getElementById('boxPanelProps_' + idx);
+            if (!el) return;
+            if (el.classList.contains('open')) {
+                el.classList.remove('open');
+                el.innerHTML = '';
+                return;
+            }
+            el.classList.add('open');
+            boxPanelRenderProps(idx, el);
+        }
+
+        function boxPanelRenderProps(idx, container) {
+            const ov = textOverlays.find(function(o) { return (o.bboxIndex !== undefined ? o.bboxIndex : -1) === idx; });
+            if (!ov) return;
+            const bd = boxPanelGetBboxData(ov);
+            boxPanelOriginalValues[idx] = JSON.parse(JSON.stringify(bd));
+            if (!boxPanelDirtyFields[idx]) boxPanelDirtyFields[idx] = {};
+            const editableFields = ['text', 'review_status', 'note_author', 'note_text'];
+            const readonlyFields = ['bbox_pixel', 'bbox', 'box_type', 'persistent_multibox_region', 'reviewed_at', 'reviewed_by'];
+            const jsonFields = ['ocr_results', 'differences', 'llm_sight_reviews'];
+            let html = '';
+            editableFields.forEach(function(key) {
+                if (bd[key] === undefined && key !== 'text' && key !== 'review_status') return;
+                const val = bd[key] !== undefined ? bd[key] : '';
+                const dirtyClass = (boxPanelDirtyFields[idx] && boxPanelDirtyFields[idx][key]) ? ' dirty' : '';
+                html += '<div class="box-prop-row">';
+                html += '<span class="box-prop-label' + dirtyClass + '">' + escapeHtml(key) + '</span>';
+                html += '<span class="box-prop-value">';
+                if (key === 'review_status') {
+                    html += '<select onchange="boxPanelPropChanged(' + idx + ', \'' + key + '\', this.value)">';
+                    ['pending','confirmed','rejected','auto_confirmed','ignored','ocr_done','new'].forEach(function(s) {
+                        html += '<option value="' + s + '"' + (val === s ? ' selected' : '') + '>' + s + '</option>';
+                    });
+                    html += '</select>';
+                } else if (key === 'text' || key === 'note_text') {
+                    html += '<textarea onchange="boxPanelPropChanged(' + idx + ', \'' + key + '\', this.value)">' + escapeHtml(String(val)) + '</textarea>';
+                } else {
+                    html += '<input type="text" value="' + escapeHtml(String(val)) + '" onchange="boxPanelPropChanged(' + idx + ', \'' + key + '\', this.value)">';
+                }
+                html += '</span></div>';
+            });
+            readonlyFields.forEach(function(key) {
+                if (bd[key] === undefined) return;
+                html += '<div class="box-prop-row">';
+                html += '<span class="box-prop-label">' + escapeHtml(key) + ' <small style="color:#999">🔒</small></span>';
+                html += '<span class="box-prop-value readonly">' + escapeHtml(JSON.stringify(bd[key])) + '</span>';
+                html += '</div>';
+            });
+            jsonFields.forEach(function(key) {
+                if (!bd[key]) return;
+                html += '<div class="box-prop-row">';
+                html += '<span class="box-prop-label">' + escapeHtml(key) + ' <small style="color:#999">🔒</small></span>';
+                html += '<span class="box-prop-value">';
+                html += '<span class="box-prop-json-toggle" onclick="this.nextElementSibling.classList.toggle(\'open\')">[JSON anzeigen]</span>';
+                html += '<div class="box-prop-json-content">' + escapeHtml(JSON.stringify(bd[key], null, 2)) + '</div>';
+                html += '</span></div>';
+            });
+            html += '<div class="box-prop-actions" id="boxPanelPropActions_' + idx + '">';
+            html += '<button class="btn btn-primary" style="font-size:11px;padding:2px 8px;" onclick="boxPanelSaveProps(' + idx + ')">Speichern</button>';
+            html += '<button class="btn btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="boxPanelDiscardProps(' + idx + ')">Verwerfen</button>';
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function boxPanelPropChanged(idx, key, value) {
+            if (!boxPanelDirtyFields[idx]) boxPanelDirtyFields[idx] = {};
+            const orig = boxPanelOriginalValues[idx] || {};
+            if (String(orig[key] || '') === String(value)) {
+                delete boxPanelDirtyFields[idx][key];
+            } else {
+                boxPanelDirtyFields[idx][key] = value;
+            }
+            const hasDirty = Object.keys(boxPanelDirtyFields[idx]).length > 0;
+            const actionsEl = document.getElementById('boxPanelPropActions_' + idx);
+            if (actionsEl) actionsEl.classList.toggle('visible', hasDirty);
+            const container = document.getElementById('boxPanelProps_' + idx);
+            if (container) {
+                container.querySelectorAll('.box-prop-label').forEach(function(lbl) {
+                    const lkey = lbl.textContent.replace(/\s*🔒\s*$/, '').trim();
+                    lbl.classList.toggle('dirty', !!(boxPanelDirtyFields[idx] && boxPanelDirtyFields[idx][lkey]));
+                });
+            }
+        }
+
+        async function boxPanelSaveProps(idx) {
+            if (!currentPageData || !currentPageData.page_id || !boxPanelDirtyFields[idx]) return;
+            const changes = boxPanelDirtyFields[idx];
+            if (!Object.keys(changes).length) return;
+            try {
+                const resp = await fetch(API_BASE + '/api/review/pages/' + currentPageData.page_id + '/bboxes/' + idx, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(changes)
+                });
+                if (!resp.ok) throw new Error('PATCH failed: ' + resp.status);
+                boxPanelDirtyFields[idx] = {};
+                await reloadInspectBoxes();
+            } catch (err) {
+                alert('Speichern fehlgeschlagen: ' + err.message);
+            }
+        }
+
+        function boxPanelDiscardProps(idx) {
+            boxPanelDirtyFields[idx] = {};
+            const container = document.getElementById('boxPanelProps_' + idx);
+            if (container && container.classList.contains('open')) {
+                boxPanelRenderProps(idx, container);
+            }
+        }
+
+        async function reloadInspectBoxes() {
+            if (!currentPageData || !currentPageData.page_id) return;
+            try {
+                const resp = await fetch(API_BASE + '/api/review/pages/' + currentPageData.page_id);
+                if (!resp.ok) return;
+                const data = await resp.json();
+                currentInspectData = data;
+                if (typeof savedMapView !== 'undefined' && savedMapView) savedMapView = { center: map.getCenter(), zoom: map.getZoom() };
+                loadPageInspect(currentPageData.page_id);
+            } catch (err) { console.error('reloadInspectBoxes', err); }
+        }
+
+        function boxPanelOnPageLoad() {
+            boxPanelActiveIndex = -1;
+            boxPanelSelectedIndices.clear();
+            boxPanelDirtyFields = {};
+            boxPanelOriginalValues = {};
+            setTimeout(function() { boxPanelRender(); }, 100);
+        }
+
+        // Attach filter/sort change handlers
+        ['boxPanelFilterText', 'boxPanelFilterStatus', 'boxPanelFilterType', 'boxPanelSort'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input', function() { boxPanelRender(); });
+                el.addEventListener('change', function() { boxPanelRender(); });
+            }
+        });
+
+        // ======================== End Box Manager Panel ========================
 
         function toggleMultiboxSelectMode() {
             if (inspectEditBoxMode) {
@@ -8592,6 +9306,7 @@
             const items = persistentRegionsList;
             const sortIcon = (key) => '<span class="sort-icon">' + persistentRegionsGetSortIcon(key) + '</span>';
             let html = '<table class="review-table quality-pages-table" style="width: 100%; border-collapse: collapse;"><thead><tr>' +
+                '<th style="padding: 6px; border: 1px solid #ccc; width: 36px;">Ausw.</th>' +
                 '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); persistentRegionsSortColumn(\'document_id\'); return false;">Dokument ' + sortIcon('document_id') + '</th>' +
                 '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); persistentRegionsSortColumn(\'page_id\'); return false;">Seite ' + sortIcon('page_id') + '</th>' +
                 '<th style="padding: 6px; border: 1px solid #ccc;">Region</th>' +
@@ -8600,6 +9315,7 @@
                 '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); persistentRegionsSortColumn(\'child_count\'); return false;">Kinder ' + sortIcon('child_count') + '</th>' +
                 '<th style="padding: 6px; border: 1px solid #ccc;">Schwarze px</th>' +
                 '<th style="padding: 6px; border: 1px solid #ccc; cursor: pointer;" onclick="event.stopPropagation(); persistentRegionsSortColumn(\'children_black_pixels_per_char\'); return false;">Schwarze px/Zeichen (Summe) ' + sortIcon('children_black_pixels_per_char') + '</th>' +
+                '<th style="padding: 6px; border: 1px solid #ccc;">Re-OCR Stufen</th>' +
                 '<th style="padding: 6px; border: 1px solid #ccc;">Aktionen</th>' +
                 '</tr></thead><tbody>';
             items.forEach((item, rowIdx) => {
@@ -8607,9 +9323,20 @@
                 const unc = item.uncovered_ratio != null ? (item.uncovered_ratio * 100).toFixed(1) + '%' : '–';
                 const darkPx = item.total_dark_pixels_region != null ? item.total_dark_pixels_region : '–';
                 const bpcSum = item.children_black_pixels_per_char != null ? item.children_black_pixels_per_char.toFixed(1) : '–';
+                const stages = item.re_recognition_stages || [];
+                const stagesLabel = stages.length ? stages.length + ' Stufe(n)' + (item.best_stage_index != null ? ', beste #' + item.best_stage_index : '') : '–';
                 const detailId = 'persistentRegionDetail_' + rowIdx;
-                html += '<tr data-row-idx="' + rowIdx + '"><td>' + escapeHtml(item.document_title || '') + '</td><td>Seite ' + (item.page_number || '') + '</td><td>#' + (item.region_bbox_index ?? '') + '</td><td>' + cov + '</td><td>' + unc + '</td><td>' + (item.child_count || 0) + '</td><td>' + darkPx + '</td><td>' + bpcSum + '</td><td><a href="#" onclick="showPageInspectInNewTab(' + item.page_id + '); return false;">Inspect</a></td></tr>';
-                html += '<tr id="' + detailId + '" style="display: none;"><td colspan="9" style="padding: 12px; background: #f9f9f9; border-top: none;">';
+                html += '<tr data-row-idx="' + rowIdx + '"><td style="text-align: center;" onclick="event.stopPropagation();"><input type="checkbox" class="persistent-region-select" data-page-id="' + item.page_id + '" data-region-bbox-index="' + (item.region_bbox_index ?? '') + '"></td><td>' + escapeHtml(item.document_title || '') + '</td><td>Seite ' + (item.page_number || '') + '</td><td>#' + (item.region_bbox_index ?? '') + '</td><td>' + cov + '</td><td>' + unc + '</td><td>' + (item.child_count || 0) + '</td><td>' + darkPx + '</td><td>' + bpcSum + '</td><td>' + stagesLabel + '</td><td><button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 12px; margin-right: 4px;" onclick="event.stopPropagation(); startReRecognizeSingle(' + item.page_id + ', ' + (item.region_bbox_index ?? 0) + '); return false;">Neu erkennen (mehrstufig)</button> <a href="#" onclick="event.stopPropagation(); showPageInspectInNewTab(' + item.page_id + '); return false;">Inspect</a></td></tr>';
+                html += '<tr id="' + detailId + '" style="display: none;"><td colspan="11" style="padding: 12px; background: #f9f9f9; border-top: none;">';
+                if (stages.length > 0) {
+                    html += '<strong>Re-OCR Stufen:</strong><table style="width: 100%; margin-top: 8px; margin-bottom: 12px; border-collapse: collapse; font-size: 12px;"><thead><tr style="background: #e9ecef;"><th style="padding: 6px; border: 1px solid #ddd;">Stufe</th><th style="padding: 6px; border: 1px solid #ddd;">Coverage danach</th><th style="padding: 6px; border: 1px solid #ddd;">Kinder danach</th><th style="padding: 6px; border: 1px solid #ddd;">Parameter</th></tr></thead><tbody>';
+                    stages.forEach((s, si) => {
+                        const covAfter = s.coverage_ratio_after != null ? (s.coverage_ratio_after * 100).toFixed(1) + '%' : '–';
+                        const params = s.params ? (s.params.dpi ? 'dpi=' + s.params.dpi : '') + (s.params.masked ? ' masked' : '') + (s.params.preprocess ? ' preprocess' : '') + (s.params.max_size ? ' max_size=' + s.params.max_size : '') : '–';
+                        html += '<tr><td style="padding: 6px; border: 1px solid #ddd;">' + (s.stage ?? si) + '</td><td style="padding: 6px; border: 1px solid #ddd;">' + covAfter + '</td><td style="padding: 6px; border: 1px solid #ddd;">' + (s.child_count_after ?? '–') + '</td><td style="padding: 6px; border: 1px solid #ddd;">' + escapeHtml(params || '–') + '</td></tr>';
+                    });
+                    html += '</tbody></table>';
+                }
                 html += '<strong>Kind-Boxen:</strong><table style="width: 100%; margin-top: 8px; border-collapse: collapse; font-size: 12px;"><thead><tr style="background: #e9ecef;"><th style="padding: 6px; border: 1px solid #ddd;">Box</th><th style="padding: 6px; border: 1px solid #ddd;">Text (Vorschau)</th><th style="padding: 6px; border: 1px solid #ddd;">Zeichen</th><th style="padding: 6px; border: 1px solid #ddd;">Schwarze px</th><th style="padding: 6px; border: 1px solid #ddd;">Schwarze px/Zeichen</th><th style="padding: 6px; border: 1px solid #ddd;">Status</th></tr></thead><tbody>';
                 (item.children || []).forEach(ch => {
                     const rs = getReviewStatusLabel(ch.review_status);
@@ -8712,6 +9439,85 @@
                         statusEl.style.color = '#842029';
                     }
                     showMessage('Fehler: ' + (data.detail || 'Unbekannter Fehler'), 'error');
+                }
+            } catch (error) {
+                if (statusEl) {
+                    statusEl.textContent = 'Fehler: ' + error.message;
+                    statusEl.style.color = '#842029';
+                }
+                showMessage('Fehler: ' + error.message, 'error');
+            }
+        }
+
+        async function startReRecognizeSingle(pageId, regionBboxIndex) {
+            const statusEl = document.getElementById('persistentRegionsBatchStatus');
+            if (statusEl) statusEl.textContent = 'Starte Re-OCR mehrstufig...';
+            try {
+                const response = await fetch(`${API_BASE}/api/quality/pages/${pageId}/persistent-regions/re-recognize`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ region_bbox_index: regionBboxIndex })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    if (statusEl) {
+                        statusEl.textContent = '✓ Job ' + data.job_id + ' erstellt.';
+                        statusEl.style.color = '#0f5132';
+                    }
+                    showMessage('Re-OCR-mehrstufig-Job erstellt (ID: ' + data.job_id + ').', 'success');
+                    setTimeout(() => loadPersistentRegions(), 1500);
+                } else {
+                    if (statusEl) {
+                        statusEl.textContent = 'Fehler: ' + (data.detail || 'Unbekannter Fehler');
+                        statusEl.style.color = '#842029';
+                    }
+                    showMessage('Fehler: ' + (data.detail || data.message || 'Unbekannter Fehler'), 'error');
+                }
+            } catch (error) {
+                if (statusEl) {
+                    statusEl.textContent = 'Fehler: ' + error.message;
+                    statusEl.style.color = '#842029';
+                }
+                showMessage('Fehler: ' + error.message, 'error');
+            }
+        }
+
+        async function startReRecognizeSelection() {
+            const checkboxes = document.querySelectorAll('.persistent-region-select:checked');
+            if (!checkboxes.length) {
+                showMessage('Bitte mindestens eine Region auswählen.', 'warning');
+                return;
+            }
+            const items = [];
+            checkboxes.forEach(cb => {
+                items.push({
+                    page_id: parseInt(cb.getAttribute('data-page-id'), 10),
+                    region_bbox_index: parseInt(cb.getAttribute('data-region-bbox-index'), 10)
+                });
+            });
+            const statusEl = document.getElementById('persistentRegionsBatchStatus');
+            if (statusEl) statusEl.textContent = 'Starte Re-OCR für ' + items.length + ' Region(en)...';
+            try {
+                const response = await fetch(`${API_BASE}/api/quality/persistent-regions/re-recognize`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ items: items })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    if (statusEl) {
+                        statusEl.textContent = '✓ ' + data.created + ' Re-OCR-Jobs erstellt.';
+                        statusEl.style.color = '#0f5132';
+                    }
+                    showMessage(data.created + ' Re-OCR-mehrstufig-Jobs erstellt.', 'success');
+                    checkboxes.forEach(cb => { cb.checked = false; });
+                    setTimeout(() => loadPersistentRegions(), 1500);
+                } else {
+                    if (statusEl) {
+                        statusEl.textContent = 'Fehler: ' + (data.detail || 'Unbekannter Fehler');
+                        statusEl.style.color = '#842029';
+                    }
+                    showMessage('Fehler: ' + (data.detail || data.message || 'Unbekannter Fehler'), 'error');
                 }
             } catch (error) {
                 if (statusEl) {

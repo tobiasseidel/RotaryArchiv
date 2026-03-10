@@ -64,6 +64,26 @@ class Settings(BaseSettings):
     auto_sight_black_pc_max: float = 35
     auto_sight_threshold: float = 0.85
 
+    # Mehrstufige Re-Erkennung persistente Regionen
+    re_recognize_coverage_threshold: float = (
+        0.85  # Abbruch wenn coverage_ratio >= Schwellwert
+    )
+    re_recognize_max_stages: int = 4  # Maximale Anzahl Stufen (0..3)
+    re_recognize_dpi_stage1: int = 300  # DPI für Stufe 1 (höhere Auflösung)
+    # Resize-Limits für Ollama Vision beim Re-Recognize (Stufe 3: größeres Bild ans Modell).
+    # Warum Resize: Das Vision-Modell (z. B. DeepSeek-OCR) hat ein begrenztes Context-Window (z. B. 8K).
+    # Große Bilder werden als Base64 gesendet; zu viele Pixel führen zu Fehlern oder Timeout.
+    # Daher werden Bilder oberhalb bestimmter Dimensionen/Dateigröße verkleinert.
+    # Trade-off: Kleineres Bild = weniger Detail, schlechtere Erkennung bei feiner Schrift.
+    # Größeres Bild = bessere Erkennung, aber höheres Risiko für Context-Limit-Fehler und mehr Speicher/Latenz.
+    # max_size = maximale Kantenlänge in Pixel (Breite und Höhe); max_size_mb = maximale Dateigröße in MB.
+    # Überschreitung einer der Grenzen löst Verkleinerung (LANCZOS) aus.
+    # Für Re-Recognize können höhere Limits gewählt werden (z. B. 1500 px, 4 MB), um mehr Detail zu senden.
+    re_recognize_ollama_max_size: int = 1500  # max. Kantenlänge Pixel für Re-Recognize
+    re_recognize_ollama_max_size_mb: float = 4.0  # max. Dateigröße MB für Re-Recognize
+    # Korrekturfaktor X-Richtung: Ollama/Vision liefert oft zu schmale Boxen (z. B. 1/0.7 ≈ 1.43).
+    re_recognize_bbox_x_stretch: float = 1.0 / 0.7
+
     @property
     def database_url(self) -> str:
         """Database Connection URL (PostgreSQL oder SQLite)"""

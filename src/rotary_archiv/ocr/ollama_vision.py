@@ -418,6 +418,8 @@ class OllamaVisionOCR:
         self,
         file_path: str,
         prompt: str | None = None,
+        max_size: int | None = None,
+        max_size_mb: float | None = None,
     ) -> dict[str, Any]:
         """
         Extrahiere Text mit Bounding Boxes aus Datei (PoC)
@@ -425,6 +427,8 @@ class OllamaVisionOCR:
         Args:
             file_path: Pfad zur Datei
             prompt: Optionaler Prompt (Standard-BBox-Prompt wird verwendet wenn None)
+            max_size: Optional maximale Kantenlänge (Pixel); wenn None, Default 1000
+            max_size_mb: Optional max. Dateigröße (MB); wenn None, Default 2.0
 
         Returns:
             Dict mit 'text', 'bbox_data' (rohe JSON-String),
@@ -466,23 +470,24 @@ class OllamaVisionOCR:
             image_bytes = buffer.getvalue()
             image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-            # Bildgröße prüfen und ggf. verkleinern
-            # DeepSeek-OCR hat ein 8K Context-Window, große Bilder können Probleme verursachen
-            # Aggressiveres Resizing für BBox-OCR um Context-Window-Fehler zu vermeiden
+            # Bildgröße prüfen und ggf. verkleinern.
+            # Ausführliche Erklärung: config.py (re_recognize_ollama_max_size / re_recognize_ollama_max_size_mb).
+            # Kurz: Vision-Modell (z. B. DeepSeek-OCR) hat begrenztes Context-Window; große Base64-Bilder
+            # führen zu Fehlern/Timeout. Daher Verkleinerung oberhalb max_size (Kantenlänge px) bzw.
+            # max_size_mb (Dateigröße). Trade-off: Kleineres Bild = weniger Detail; größeres = bessere
+            # Erkennung, aber höheres Fehlerrisiko. Re-Recognize-Job kann höhere Limits aus Config übergeben.
             image_size_mb = len(image_bytes) / (1024 * 1024)
-            max_size = (
-                1000  # Reduziert von 1500 auf 1000 für BBox-OCR (Context-Window-Limit)
-            )
-            max_size_mb = 2  # Reduziert von 5MB auf 2MB für BBox-OCR
+            _max_size = max_size if max_size is not None else 1000
+            _max_size_mb = max_size_mb if max_size_mb is not None else 2.0
 
             # Resize wenn Bild zu groß ist (Dimensionen oder Dateigröße)
             # WICHTIG: Resize IMMER für BBox-OCR, da Context-Window sehr begrenzt ist
             if (
-                image_size_mb > max_size_mb
-                or image_width > max_size
-                or image_height > max_size
+                image_size_mb > _max_size_mb
+                or image_width > _max_size
+                or image_height > _max_size
             ):
-                ratio = min(max_size / image_width, max_size / image_height, 1.0)
+                ratio = min(_max_size / image_width, _max_size / image_height, 1.0)
                 new_width = int(image_width * ratio)
                 new_height = int(image_height * ratio)
                 image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)

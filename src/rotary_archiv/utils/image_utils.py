@@ -349,3 +349,113 @@ def crop_bbox_from_image_file(
 
     image = Image.open(image_path_obj)
     return crop_bbox_from_image(image, bbox_pixel, padding)
+
+
+def crop_region_from_page(
+    page_image: "Image.Image", region_bbox_pixel: list[int]
+) -> "Image.Image":
+    """
+    Schneidet die Region (persistente Multibox-Region) aus dem Seitenbild aus.
+
+    Args:
+        page_image: PIL Image der ganzen Seite
+        region_bbox_pixel: [x1, y1, x2, y2] in Seitenkoordinaten
+
+    Returns:
+        Ausgeschnittenes PIL Image (Region-Crop)
+
+    Raises:
+        ImportError: Wenn PIL nicht verfügbar
+        ValueError: Wenn region_bbox_pixel ungültig
+    """
+    if not PIL_AVAILABLE:
+        raise ImportError("PIL/Pillow ist nicht installiert")
+    if not region_bbox_pixel or len(region_bbox_pixel) != 4:
+        raise ValueError(f"region_bbox_pixel muss 4 Werte haben: {region_bbox_pixel!r}")
+    w, h = page_image.size
+    x1 = max(0, min(region_bbox_pixel[0], w))
+    y1 = max(0, min(region_bbox_pixel[1], h))
+    x2 = max(0, min(region_bbox_pixel[2], w))
+    y2 = max(0, min(region_bbox_pixel[3], h))
+    if x1 >= x2 or y1 >= y2:
+        raise ValueError(f"Ungültige Region nach Clipping: {x1},{y1},{x2},{y2}")
+    return page_image.crop((x1, y1, x2, y2)).copy()
+
+
+def mask_region_crop_with_white(
+    crop_image: "Image.Image",
+    region_x1: int,
+    region_y1: int,
+    child_bboxes: list[dict],
+) -> "Image.Image":
+    """
+    Übermalt alle Kind-Boxen auf dem Region-Crop mit Weiß (255).
+    Kind-Boxen werden von Seitenkoordinaten in Crop-Koordinaten umgerechnet.
+
+    Args:
+        crop_image: PIL Image des Region-Crops (wird verändert und zurückgegeben)
+        region_x1: X-Koordinate der Region auf der Seite (linker Rand)
+        region_y1: Y-Koordinate der Region auf der Seite (oberer Rand)
+        child_bboxes: Liste von Dicts mit "bbox_pixel" [x1,y1,x2,y2] in Seitenkoordinaten
+
+    Returns:
+        Dasselbe crop_image mit weißen Rechtecken über den Kind-Boxen
+    """
+    if not PIL_AVAILABLE:
+        raise ImportError("PIL/Pillow ist nicht installiert")
+    from PIL import ImageDraw
+
+    crop_w, crop_h = crop_image.size
+    draw = ImageDraw.Draw(crop_image)
+    if crop_image.mode == "RGB":
+        fill_white: int | tuple[int, ...] = (255, 255, 255)
+    elif crop_image.mode == "RGBA":
+        fill_white = (255, 255, 255, 255)
+    else:
+        fill_white = 255
+    for ch in child_bboxes:
+        bp = ch.get("bbox_pixel")
+        if not bp or len(bp) != 4:
+            continue
+        cx1, cy1, cx2, cy2 = bp
+        cc1 = max(0, min(cx1 - region_x1, crop_w))
+        cc2 = max(0, min(cx2 - region_x1, crop_w))
+        cr1 = max(0, min(cy1 - region_y1, crop_h))
+        cr2 = max(0, min(cy2 - region_y1, crop_h))
+        if cc1 >= cc2 or cr1 >= cr2:
+            continue
+        draw.rectangle([cc1, cr1, cc2, cr2], fill=fill_white, outline=fill_white)
+    return crop_image
+
+
+def preprocess_for_ocr(image: "Image.Image", method: str = "contrast") -> "Image.Image":
+    """
+    Bildvorverarbeitung für bessere OCR-Erkennung (z. B. Schreibmaschinenschrift).
+
+    Args:
+        image: PIL Image (RGB oder Graustufen)
+        method: "contrast" = Kontrast verstärken (PIL ImageEnhance),
+                "binarize" = Otsu-Binarisierung (OpenCV, Graustufen → Schwarz/Weiß)
+
+    Returns:
+        Neues PIL Image (RGB bei contrast, Graustufen L bei binarize)
+    """
+    if not PIL_AVAILABLE:
+        raise ImportError("PIL/Pillow ist nicht installiert")
+    if method == "contrast":
+        from PIL import ImageEnhance
+
+        gray = image.convert("L") if image.mode != "L" else image
+        enhancer = ImageEnhance.Contrast(gray)
+        enhanced = enhancer.enhance(1.5)
+        return enhanced.convert("RGB")
+    if method == "binarize":
+        if not CV2_AVAILABLE or np is None:
+            logger.warning(
+                "OpenCV/NumPy nicht verfügbar, preprocess_for_ocr(binarize) liefert Graustufen"
+            )
+            return (image.convert("L") if image.mode != "L" else image).convert("RGB")
+        img = np.array(image.convert("L"))
+        thresh, binary = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        return Image.fromarray(binary).convert("RGB")
+    raise ValueError(f"Unbekannte Methode: {method!r}")

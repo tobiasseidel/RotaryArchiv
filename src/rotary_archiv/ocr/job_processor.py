@@ -47,6 +47,11 @@ from src.rotary_archiv.utils.bbox_reading_order import (
     get_text_in_reading_order,
 )
 from src.rotary_archiv.utils.file_handler import ensure_exports_dir, get_file_path
+from src.rotary_archiv.utils.image_utils import (
+    crop_region_from_page,
+    mask_region_crop_with_white,
+    preprocess_for_ocr,
+)
 from src.rotary_archiv.utils.ocr_result_loading import (
     get_best_ocr_result_with_bbox_for_page,
     get_pdf_native_text_for_page,
@@ -2371,6 +2376,489 @@ async def process_persistent_region_quality_job(job_id: int) -> None:
                 db.commit()
         logger.exception("Persistent-Region-Quality Job %s fehlgeschlagen", job_id)
 
+    finally:
+        db.close()
+
+
+def _re_recognize_crop_boxes_to_page(
+    detected_bboxes: list[dict],
+    crop_image_width: int,
+    crop_image_height: int,
+    x1_region: int,
+    y1_region: int,
+    scale_to_ref: float,
+    x_stretch: float = 1.0,
+) -> list[dict]:
+    """
+    Transformiert erkannte BBoxen (normalisiert 0-1, inhaltlich auf unseren Crop bezogen)
+    in Seitenkoordinaten (Referenz-DPI). crop_image_width/height = unser Crop (nicht das
+    ggf. von Ollama verkleinerte Bild). scale_to_ref = Faktor Crop-DPI → Referenz (z. B. 300/200).
+    x_stretch: Korrekturfaktor X-Richtung (z. B. 1/0.7), da Vision-Modelle oft zu schmale Boxen liefern.
+    """
+
+    new_bboxes = []
+    for det in detected_bboxes:
+        bbox_norm = det.get("bbox")
+        text = (det.get("text") or "").strip()
+        if not bbox_norm or len(bbox_norm) != 4 or not text:
+            continue
+        x1_n, y1_n, x2_n, y2_n = bbox_norm
+        if x2_n <= x1_n or y2_n <= y1_n:
+            continue
+        x1_crop = int(x1_n * crop_image_width)
+        y1_crop = int(y1_n * crop_image_height)
+        x2_crop = int(x2_n * crop_image_width)
+        y2_crop = int(y2_n * crop_image_height)
+        x1_crop = max(0, min(x1_crop, crop_image_width))
+        x2_crop = max(x1_crop + 1, min(x2_crop, crop_image_width))
+        y1_crop = max(0, min(y1_crop, crop_image_height))
+        y2_crop = max(y1_crop + 1, min(y2_crop, crop_image_height))
+        # x_stretch: Vision-Modelle liefern oft zu schmale Boxen in X (z. B. Faktor 1/0.7)
+        x1_page = int(x1_region + (x1_crop * x_stretch) / scale_to_ref)
+        y1_page = int(y1_region + y1_crop / scale_to_ref)
+        x2_page = int(x1_region + (x2_crop * x_stretch) / scale_to_ref)
+        y2_page = int(y1_region + y2_crop / scale_to_ref)
+        x2_page = max(x1_page + 1, x2_page)
+        y2_page = max(y1_page + 1, y2_page)
+        new_bboxes.append(
+            {
+                "text": text,
+                "bbox_pixel": [x1_page, y1_page, x2_page, y2_page],
+            }
+        )
+    return new_bboxes
+
+
+async def process_persistent_region_re_recognize_job(job_id: int) -> None:
+    """
+    Mehrstufige Re-Erkennung für eine persistente Multibox-Region:
+    Stufe 0: Crop + Weiß übermalen bereits erkannter Kinder, OCR, Übernahme.
+    Stufe 1: Höherer DPI, gleiche Logik.
+    Stufe 2: Vorverarbeitung (Kontrast/Binarisierung).
+    Stufe 3: Höheres Resize-Limit (mehr Detail ans Modell).
+    Nach jeder Stufe: neue Boxen in bbox_data übernehmen, Coverage berechnen,
+    re_recognition_stages speichern. Abbruch bei Coverage >= Schwellwert oder max Stufen.
+    """
+    from PIL import Image
+
+    from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
+
+    db = SessionLocal()
+    job = None
+    try:
+        job = db.query(OCRJob).filter(OCRJob.id == job_id).first()
+        if not job or not job.document_page_id:
+            if job:
+                job.status = OCRJobStatus.FAILED
+                job.error_message = "Job oder document_page_id fehlt"
+                db.commit()
+            return
+
+        params = job.job_params or {}
+        region_bbox_index = params.get("region_bbox_index")
+        if region_bbox_index is None:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "region_bbox_index fehlt in job_params"
+            db.commit()
+            return
+
+        page = (
+            db.query(DocumentPage)
+            .filter(DocumentPage.id == job.document_page_id)
+            .first()
+        )
+        document = db.query(Document).filter(Document.id == job.document_id).first()
+        if not page or not document:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Seite oder Dokument nicht gefunden"
+            db.commit()
+            return
+
+        ocr_result = get_best_ocr_result_with_bbox_for_page(db, job.document_page_id)
+        if not ocr_result or not ocr_result.bbox_data:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Keine BBox-Daten für diese Seite"
+            db.commit()
+            return
+
+        bbox_list = (
+            json.loads(ocr_result.bbox_data)
+            if isinstance(ocr_result.bbox_data, str)
+            else list(ocr_result.bbox_data)
+        )
+        if (
+            region_bbox_index < 0
+            or region_bbox_index >= len(bbox_list)
+            or bbox_list[region_bbox_index].get("persistent_multibox_region")
+            is not True
+        ):
+            job.status = OCRJobStatus.FAILED
+            job.error_message = (
+                f"Ungültige persistente Region bei Index {region_bbox_index}"
+            )
+            db.commit()
+            return
+
+        region_item = bbox_list[region_bbox_index]
+        region_pixel = region_item.get("bbox_pixel")
+        if not region_pixel or len(region_pixel) != 4:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Region bbox_pixel ungültig"
+            db.commit()
+            return
+
+        x1_region, y1_region, x2_region, y2_region = region_pixel
+        ref_w = 0
+        ref_h = 0
+
+        pdf_path = (
+            get_file_path(document.file_path)
+            if document and not page.file_path
+            else None
+        )
+        file_path = get_file_path(page.file_path) if page and page.file_path else None
+
+        def get_children():
+            children = []
+            for idx, b in enumerate(bbox_list):
+                if idx == region_bbox_index:
+                    continue
+                if b.get("box_type") in ("ignore_region", "note"):
+                    continue
+                if b.get("persistent_multibox_region") is True:
+                    continue
+                bp = b.get("bbox_pixel")
+                if not bp or len(bp) != 4:
+                    continue
+                if not _bbox_inside_region(bp, region_pixel):
+                    continue
+                children.append({"index": idx, "bbox_pixel": bp})
+            return children
+
+        # Seitenbild laden (Referenz-DPI)
+        job.current_step = "Lade Seitenbild"
+        job.progress = 5.0
+        db.commit()
+        try:
+            if not page.file_path:
+                pdf_path = get_file_path(document.file_path)
+                if not pdf_path.exists():
+                    raise FileNotFoundError(f"PDF nicht gefunden: {pdf_path}")
+                img_ref = extract_page_as_image(
+                    str(pdf_path), page.page_number, dpi=settings.pdf_extraction_dpi
+                )
+            else:
+                file_path = get_file_path(page.file_path)
+                if not file_path.exists():
+                    raise FileNotFoundError("Seiten-Datei nicht gefunden")
+                if str(file_path).lower().endswith((".png", ".jpg", ".jpeg")):
+                    img_ref = Image.open(file_path).convert("RGB")
+                else:
+                    from pdf2image import convert_from_path
+
+                    kw = {
+                        "first_page": page.page_number,
+                        "last_page": page.page_number,
+                        "dpi": settings.pdf_extraction_dpi,
+                    }
+                    if settings.poppler_path:
+                        pp = Path(settings.poppler_path)
+                        if pp.exists():
+                            kw["poppler_path"] = str(pp)
+                    images = convert_from_path(str(file_path), **kw)
+                    img_ref = images[0] if images else None
+                    if not img_ref:
+                        raise ValueError("PDF konnte nicht konvertiert werden")
+            # Referenzmaße: aus OCR-Ergebnis oder aus dem geladenen Bild (Fallback wenn image_width/height fehlen)
+            ref_w = ocr_result.image_width or (img_ref.size[0] if img_ref else 0)
+            ref_h = ocr_result.image_height or (img_ref.size[1] if img_ref else 0)
+            if not ref_w or not ref_h:
+                job.status = OCRJobStatus.FAILED
+                job.error_message = "OCR-Bilddimensionen fehlen"
+                db.commit()
+                return
+            if page.deskew_angle is not None:
+                try:
+                    from src.rotary_archiv.utils.image_utils import deskew_image
+
+                    img_ref = deskew_image(img_ref, page.deskew_angle)
+                except ImportError as ie:
+                    logger.warning(
+                        "Deskew für Re-OCR übersprungen (OpenCV fehlt): %s", ie
+                    )
+            if img_ref.size != (ref_w, ref_h):
+                img_ref = img_ref.resize((ref_w, ref_h), Image.Resampling.LANCZOS)
+        except Exception as e:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = f"Seitenbild laden: {e!s}"
+            db.commit()
+            return
+
+        coverage_threshold = getattr(settings, "re_recognize_coverage_threshold", 0.85)
+        max_stages = getattr(settings, "re_recognize_max_stages", 4)
+        dpi_stage1 = getattr(settings, "re_recognize_dpi_stage1", 300)
+        re_recognition_stages = []
+        best_stage_index = None
+        best_coverage = -1.0
+        ollama_ocr = OllamaVisionOCR()
+
+        for stage in range(max_stages):
+            job.current_step = f"Re-OCR Stufe {stage}"
+            job.progress = 10.0 + (80.0 * stage / max_stages)
+            db.commit()
+
+            # DPI und Bild für diese Stufe
+            if stage == 0:
+                img = img_ref
+                scale_to_ref = 1.0
+                region_on_img = region_pixel
+            else:
+                try:
+                    if not page.file_path and pdf_path:
+                        img = extract_page_as_image(
+                            str(pdf_path),
+                            page.page_number,
+                            dpi=dpi_stage1,
+                        )
+                    elif file_path and file_path.exists():
+                        if str(file_path).lower().endswith((".png", ".jpg", ".jpeg")):
+                            img = Image.open(file_path).convert("RGB")
+                        else:
+                            from pdf2image import convert_from_path
+
+                            kw = {
+                                "first_page": page.page_number,
+                                "last_page": page.page_number,
+                                "dpi": dpi_stage1,
+                            }
+                            if settings.poppler_path:
+                                pp = Path(settings.poppler_path)
+                                if pp.exists():
+                                    kw["poppler_path"] = str(pp)
+                            images = convert_from_path(str(file_path), **kw)
+                            img = images[0] if images else None
+                    if not img:
+                        raise ValueError("Kein Bild geladen")
+                    if page.deskew_angle is not None:
+                        try:
+                            from src.rotary_archiv.utils.image_utils import deskew_image
+
+                            img = deskew_image(img, page.deskew_angle)
+                        except ImportError:
+                            pass
+                    scale_to_ref = dpi_stage1 / settings.pdf_extraction_dpi
+                    region_on_img = [
+                        int(region_pixel[0] * scale_to_ref),
+                        int(region_pixel[1] * scale_to_ref),
+                        int(region_pixel[2] * scale_to_ref),
+                        int(region_pixel[3] * scale_to_ref),
+                    ]
+                except Exception as e:
+                    logger.warning(
+                        "Stufe %s: Bild höherer DPI fehlgeschlagen: %s",
+                        stage,
+                        e,
+                    )
+                    re_recognition_stages.append(
+                        {
+                            "stage": stage,
+                            "error": str(e),
+                            "coverage_ratio_after": None,
+                            "child_count_after": len(get_children()),
+                        }
+                    )
+                    continue
+
+            crop = crop_region_from_page(img, region_on_img)
+            crop_w, crop_h = crop.size
+            children = get_children()
+            scale_mask = scale_to_ref
+            children_for_mask = []
+            for ch in children:
+                bp = ch.get("bbox_pixel")
+                if not bp or len(bp) != 4:
+                    continue
+                children_for_mask.append(
+                    {
+                        "bbox_pixel": [
+                            int((bp[0] - x1_region) * scale_mask),
+                            int((bp[1] - y1_region) * scale_mask),
+                            int((bp[2] - x1_region) * scale_mask),
+                            int((bp[3] - y1_region) * scale_mask),
+                        ]
+                    }
+                )
+            mask_region_crop_with_white(crop, 0, 0, children_for_mask)
+
+            if stage == 2:
+                crop = preprocess_for_ocr(crop, "contrast")
+
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                crop.save(tmp.name, "PNG")
+                temp_path = tmp.name
+
+            max_sz = None
+            max_mb = None
+            if stage == 3:
+                max_sz = getattr(settings, "re_recognize_ollama_max_size", 1500)
+                max_mb = getattr(settings, "re_recognize_ollama_max_size_mb", 4.0)
+            try:
+                ocr_out = await asyncio.to_thread(
+                    ollama_ocr.extract_text_with_bbox,
+                    temp_path,
+                    None,
+                    max_sz,
+                    max_mb,
+                )
+            finally:
+                Path(temp_path).unlink(missing_ok=True)
+
+            if isinstance(ocr_out, Exception) or ocr_out.get("error"):
+                err = (
+                    str(ocr_out)
+                    if isinstance(ocr_out, Exception)
+                    else ocr_out.get("error", "Unbekannt")
+                )
+                logger.warning("Stufe %s OCR-Fehler: %s", stage, err)
+                re_recognition_stages.append(
+                    {
+                        "stage": stage,
+                        "error": err,
+                        "coverage_ratio_after": None,
+                        "child_count_after": len(get_children()),
+                    }
+                )
+                continue
+
+            detected = ocr_out.get("bbox_list") or []
+            # Normalisierte BBoxen (0-1) beziehen sich inhaltlich auf unseren Crop (crop_w x crop_h).
+            # Ollama kann das Bild verkleinern (image_width/height < crop); dann mit crop_w/crop_h
+            # umrechnen, damit Crop-Pixel und danach Seitenkoordinaten stimmen.
+            x_stretch = getattr(settings, "re_recognize_bbox_x_stretch", 1.0)
+            new_boxes = _re_recognize_crop_boxes_to_page(
+                detected,
+                crop_w,
+                crop_h,
+                x1_region,
+                y1_region,
+                scale_to_ref,
+                x_stretch=x_stretch,
+            )
+
+            for nb in new_boxes:
+                bbox_pixel = nb["bbox_pixel"]
+                norm = [
+                    bbox_pixel[0] / ref_w,
+                    bbox_pixel[1] / ref_h,
+                    bbox_pixel[2] / ref_w,
+                    bbox_pixel[3] / ref_h,
+                ]
+                bbox_list.append(
+                    {
+                        "text": nb["text"],
+                        "bbox": norm,
+                        "bbox_pixel": bbox_pixel,
+                        "review_status": "pending",
+                        "reviewed_at": None,
+                        "reviewed_by": None,
+                        "ocr_results": {
+                            "ollama_vision": {"text": nb["text"], "error": None}
+                        },
+                        "differences": [],
+                    }
+                )
+
+            ocr_result.bbox_data = bbox_list
+            flag_modified(ocr_result, "bbox_data")
+            db.commit()
+
+            children_after = get_children()
+            try:
+                cov_result = compute_region_coverage_and_black_pixels(
+                    img_ref,
+                    region_pixel,
+                    [{"bbox_pixel": c["bbox_pixel"]} for c in children_after],
+                    dark_threshold=200,
+                )
+            except Exception as e:
+                logger.warning("Coverage-Berechnung Stufe %s: %s", stage, e)
+                cov_result = {}
+            cov = cov_result.get("coverage", {})
+            coverage_ratio = cov.get("coverage_ratio")
+            total_dark = cov_result.get("total_dark_pixels_region")
+            re_recognition_stages.append(
+                {
+                    "stage": stage,
+                    "coverage_ratio_after": coverage_ratio,
+                    "total_dark_pixels_region": total_dark,
+                    "child_count_after": len(children_after),
+                    "params": {
+                        "dpi": dpi_stage1
+                        if stage >= 1
+                        else settings.pdf_extraction_dpi,
+                        "masked": True,
+                        "preprocess": stage == 2,
+                        "max_size": max_sz,
+                    },
+                }
+            )
+            if coverage_ratio is not None and coverage_ratio > best_coverage:
+                best_coverage = coverage_ratio
+                best_stage_index = stage
+            if coverage_ratio is not None and coverage_ratio >= coverage_threshold:
+                break
+
+        # quality_metrics.persistent_region_metrics für diese Region aktualisieren
+        qm = ocr_result.quality_metrics or {}
+        if isinstance(qm, str):
+            qm = json.loads(qm)
+        qm = dict(qm)
+        pr_metrics = qm.get("persistent_region_metrics") or []
+        pr_metrics = list(pr_metrics)
+        target = None
+        for m in pr_metrics:
+            if m.get("region_bbox_index") == region_bbox_index:
+                target = m
+                break
+        if target is None:
+            target = {
+                "region_bbox_index": region_bbox_index,
+                "coverage_ratio": None,
+                "uncovered_ratio": None,
+                "total_dark_pixels_region": None,
+                "child_count": len(get_children()),
+                "children": [],
+            }
+            pr_metrics.append(target)
+        target["re_recognition_stages"] = re_recognition_stages
+        target["best_stage_index"] = best_stage_index
+        qm["persistent_region_metrics"] = pr_metrics
+        ocr_result.quality_metrics = qm
+        flag_modified(ocr_result, "quality_metrics")
+        db.commit()
+
+        job.progress = 100.0
+        job.current_step = "Re-OCR abgeschlossen"
+        job.status = OCRJobStatus.COMPLETED
+        job.completed_at = datetime.now()
+        db.commit()
+
+    except Exception as e:
+        if job:
+            db.refresh(job)
+            if job.status not in (
+                OCRJobStatus.CANCELLED,
+                OCRJobStatus.ARCHIVED,
+            ):
+                job.status = OCRJobStatus.FAILED
+                job.error_message = str(e)
+                job.completed_at = datetime.now()
+                db.commit()
+        logger.exception(
+            "Persistent-Region-Re-Recognize Job %s fehlgeschlagen: %s",
+            job_id,
+            e,
+        )
     finally:
         db.close()
 
