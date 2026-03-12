@@ -1449,6 +1449,109 @@ async def get_bbox_crop_preview(
         ) from e
 
 
+@router.get("/pages/{page_id}/bboxes/{bbox_index}/ocr-preview")
+async def get_bbox_ocr_preview(
+    page_id: int,
+    bbox_index: int,
+    db: Session = Depends(get_db),
+):
+    """
+    Zeigt das Bild exakt so, wie es die OCR-Engine sieht:
+    begradigtes Seitenbild, gecroppt auf die BBox-Koordinaten.
+    Kein Padding, kein Rahmen - das reine OCR-Eingabebild.
+    """
+    import tempfile
+
+    from fastapi.responses import FileResponse
+
+    page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+    if not page:
+        raise HTTPException(status_code=404, detail="Seite nicht gefunden")
+
+    document = db.query(Document).filter(Document.id == page.document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
+
+    ocr_result = get_best_ocr_result_with_bbox_for_page(db, page_id)
+    if not ocr_result or not ocr_result.bbox_data:
+        raise HTTPException(status_code=404, detail="Keine BBox-Daten")
+
+    bbox_list = (
+        json.loads(ocr_result.bbox_data)
+        if isinstance(ocr_result.bbox_data, str)
+        else ocr_result.bbox_data
+    )
+    if bbox_index < 0 or bbox_index >= len(bbox_list):
+        raise HTTPException(status_code=404, detail="BBox-Index außerhalb des Bereichs")
+
+    bbox_item = bbox_list[bbox_index]
+    bbox_pixel = bbox_item.get("bbox_pixel")
+    if not bbox_pixel or len(bbox_pixel) != 4:
+        raise HTTPException(status_code=400, detail="Ungültige bbox_pixel")
+
+    try:
+        from src.rotary_archiv.utils.file_handler import get_file_path
+        from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
+
+        ocr_image_width = ocr_result.image_width or 0
+        ocr_image_height = ocr_result.image_height or 0
+
+        if page.file_path:
+            file_path = get_file_path(page.file_path)
+            is_img = str(file_path).lower().endswith((".png", ".jpg", ".jpeg"))
+            if is_img:
+                full_image = Image.open(file_path)
+            else:
+                full_image = extract_page_as_image(
+                    str(file_path), 0, dpi=settings.pdf_extraction_dpi
+                )
+        else:
+            pdf_path = get_file_path(document.file_path)
+            full_image = extract_page_as_image(
+                str(pdf_path), page.page_number, dpi=settings.pdf_extraction_dpi
+            )
+
+        if page.deskew_angle is not None:
+            try:
+                from src.rotary_archiv.utils.image_utils import deskew_image
+
+                full_image = deskew_image(full_image, page.deskew_angle)
+            except ImportError:
+                pass
+
+        if (
+            ocr_image_width
+            and ocr_image_height
+            and (
+                full_image.size[0] != ocr_image_width
+                or full_image.size[1] != ocr_image_height
+            )
+        ):
+            full_image = full_image.resize(
+                (ocr_image_width, ocr_image_height), Image.Resampling.LANCZOS
+            )
+
+        x1, y1, x2, y2 = bbox_pixel
+        x1 = max(0, min(x1, full_image.size[0]))
+        y1 = max(0, min(y1, full_image.size[1]))
+        x2 = max(0, min(x2, full_image.size[0]))
+        y2 = max(0, min(y2, full_image.size[1]))
+        crop = full_image.crop((x1, y1, x2, y2))
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f:
+            crop.save(f.name, "PNG")
+            return FileResponse(
+                f.name,
+                media_type="image/png",
+                filename=f"ocr_preview_{page_id}_{bbox_index}.png",
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OCR-Preview-Fehler: {e!s}") from e
+
+
 @router.post("/pages/{page_id}/bboxes/{bbox_index}/save-reviewed")
 async def save_reviewed_bbox(
     page_id: int,

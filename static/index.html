@@ -362,6 +362,23 @@
             width: 100%;
             height: 100%;
         }
+        #deskewGridOverlay {
+            position: absolute;
+            inset: 0;
+            z-index: 1500;
+            pointer-events: none;
+            display: none;
+            background-image:
+                linear-gradient(rgba(20, 20, 20, 0.08) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(20, 20, 20, 0.08) 1px, transparent 1px),
+                linear-gradient(rgba(20, 20, 20, 0.16) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(20, 20, 20, 0.16) 1px, transparent 1px);
+            background-size: 24px 24px, 24px 24px, 120px 120px, 120px 120px;
+            background-position: 0 0, 0 0, 0 0, 0 0;
+        }
+        #deskewGridOverlay.visible {
+            display: block;
+        }
 
         /* Box Manager Panel */
         #inspectBoxPanel {
@@ -1557,6 +1574,24 @@
                 <div id="inspectBoxPositionsList"></div>
             </div>
             <div id="inspectSubtitle" class="inspect-map-overlay">Seite wird geladen...</div>
+            <div id="deskewGridOverlay" aria-hidden="true"></div>
+            <div id="deskewPopover" style="display:none; position:absolute; top:10px; left:280px; z-index:2002; background:rgba(255,255,255,0.96); padding:10px 14px; border-radius:6px; box-shadow:0 2px 12px rgba(0,0,0,0.18); font-size:13px; min-width:220px;">
+                <div style="font-weight:600; margin-bottom:6px;">Deskew-Winkel</div>
+                <div style="display:flex; gap:6px; align-items:center; margin-bottom:4px;">
+                    <input type="number" id="deskewAngleInput" step="0.01" min="-15" max="15" style="width:80px; padding:3px 6px; font-size:13px; border:1px solid #ccc; border-radius:3px;" oninput="deskewSliderSync(this.value)">
+                    <span style="font-size:12px; color:#888;">Grad</span>
+                </div>
+                <div style="margin-bottom:6px;">
+                    <input type="range" id="deskewAngleSlider" min="-5" max="5" step="0.01" value="0" style="width:100%;" oninput="deskewSliderInput(this.value)">
+                </div>
+                <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                    <button class="btn btn-primary" style="font-size:11px; padding:2px 8px;" onclick="deskewSetAngle()">Speichern</button>
+                    <button class="btn btn-secondary" style="font-size:11px; padding:2px 8px;" onclick="deskewMeasure()">Neu messen</button>
+                    <button class="btn btn-secondary" style="font-size:11px; padding:2px 8px;" onclick="deskewReset()">Zurücksetzen</button>
+                    <button class="btn btn-secondary" style="font-size:11px; padding:2px 8px;" onclick="deskewPopoverClose()">Schließen</button>
+                </div>
+                <div id="deskewPopoverMsg" style="margin-top:6px; font-size:11px; color:#555;"></div>
+            </div>
             <div id="inspectMultiboxActionsPanel" class="inspect-multibox-overlay">
                 <strong id="inspectMultiboxSelectionCount">0 Boxen ausgewählt</strong>
                 <span style="margin-left: 12px;">
@@ -1648,9 +1683,13 @@
         <div class="edit-dialog edit-dialog-bbox" onclick="event.stopPropagation()">
             <h2>OCR-Text bearbeiten</h2>
             <div class="preview-section">
-                <label>Preview der gecroppten Box:</label>
+                <label>Preview der gecroppten Box: <button type="button" style="font-size:11px; padding:1px 6px; margin-left:8px; cursor:pointer;" onclick="toggleOcrPreview()">OCR sieht…</button></label>
                 <div id="previewContainer">
                     <div class="preview-loading">Lade Preview...</div>
+                </div>
+                <div id="ocrPreviewContainer" style="display:none; margin-top:6px;">
+                    <label style="font-size:12px; color:#1565c0;">Bild wie es die OCR sieht (begradigt, ohne Padding):</label>
+                    <div id="ocrPreviewImg" style="max-height:300px; overflow:auto; background:#f5f5f5; border:1px solid #ddd; border-radius:4px; padding:4px;"></div>
                 </div>
             </div>
             <label for="editTextArea">Erkannter Text:</label>
@@ -4809,7 +4848,12 @@
                 }
 
                 const data = await response.json();
-                document.getElementById('inspectSubtitle').textContent = `Dokument ${data.document_id}, Seite ${data.page_number}`;
+                const deskewText = data.deskew_angle !== null && data.deskew_angle !== undefined
+                    ? `Winkel: ${data.deskew_angle.toFixed(2)}°`
+                    : 'kein Deskew';
+                document.getElementById('inspectSubtitle').innerHTML =
+                    `Dokument ${data.document_id}, Seite ${data.page_number} | ` +
+                    `<span id="deskewInfoLink" style="cursor:pointer; text-decoration:underline dotted; color:#1565c0;" onclick="deskewPopoverToggle()" title="Klick: Winkel bearbeiten">${deskewText}</span>`;
 
                 // Speichere aktuelle Seiten-Daten für Navigation
                 currentPageData = {
@@ -5208,6 +5252,7 @@
                     page_id: data.page_id,
                     image_width: data.image_width,
                     image_height: data.image_height,
+                    deskew_angle: data.deskew_angle,
                     ocr_results: data.ocr_results || [],
                     bbox_data: _firstOcrWithBbox ? _firstOcrWithBbox.bbox_data : []
                 };
@@ -5620,6 +5665,129 @@
                 }
             } catch (error) {
                 showMessage('Fehler beim Erstellen des Review-Jobs: ' + error.message, 'error');
+            }
+        }
+
+        function deskewPopoverToggle() {
+            var pop = document.getElementById('deskewPopover');
+            var grid = document.getElementById('deskewGridOverlay');
+            if (!pop) return;
+            if (pop.style.display === 'none') {
+                pop.style.display = 'block';
+                if (grid) grid.classList.add('visible');
+                var inp = document.getElementById('deskewAngleInput');
+                var slider = document.getElementById('deskewAngleSlider');
+                var val = (currentInspectData && currentInspectData.deskew_angle !== null && currentInspectData.deskew_angle !== undefined)
+                    ? currentInspectData.deskew_angle : 0;
+                if (inp) inp.value = val.toFixed(2);
+                if (slider) slider.value = Math.max(-5, Math.min(5, val));
+                document.getElementById('deskewPopoverMsg').textContent = '';
+            } else {
+                deskewPopoverClose();
+            }
+        }
+        function deskewPopoverClose() {
+            var pop = document.getElementById('deskewPopover');
+            if (pop) pop.style.display = 'none';
+            var grid = document.getElementById('deskewGridOverlay');
+            if (grid) grid.classList.remove('visible');
+            deskewLiveRotateReset();
+        }
+        async function deskewSetAngle() {
+            if (!currentPageData || !currentPageData.page_id) return;
+            var inp = document.getElementById('deskewAngleInput');
+            var val = inp ? parseFloat(inp.value) : NaN;
+            if (isNaN(val)) { document.getElementById('deskewPopoverMsg').textContent = 'Ungültiger Wert'; return; }
+            try {
+                var resp = await fetch(API_BASE + '/api/pages/' + currentPageData.page_id + '/deskew-angle', {
+                    method: 'PATCH', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ angle: val })
+                });
+                var data = await resp.json();
+                if (resp.ok) {
+                    document.getElementById('deskewPopoverMsg').textContent = 'Gespeichert: ' + data.deskew_angle + '° — Seite neu laden für aktualisiertes Bild';
+                    currentInspectData.deskew_angle = data.deskew_angle;
+                    deskewLiveRotateReset();
+                    deskewUpdateSubtitle();
+                    boxPanelUpdateStats();
+                } else {
+                    document.getElementById('deskewPopoverMsg').textContent = 'Fehler: ' + (data.detail || 'Unbekannt');
+                }
+            } catch(e) { document.getElementById('deskewPopoverMsg').textContent = 'Fehler: ' + e.message; }
+        }
+        async function deskewReset() {
+            if (!currentPageData || !currentPageData.page_id) return;
+            try {
+                var resp = await fetch(API_BASE + '/api/pages/' + currentPageData.page_id + '/deskew-angle', {
+                    method: 'PATCH', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ angle: null })
+                });
+                var data = await resp.json();
+                if (resp.ok) {
+                    document.getElementById('deskewPopoverMsg').textContent = 'Winkel zurückgesetzt (NULL)';
+                    document.getElementById('deskewAngleInput').value = '';
+                    currentInspectData.deskew_angle = null;
+                    deskewUpdateSubtitle();
+                    boxPanelUpdateStats();
+                }
+            } catch(e) { document.getElementById('deskewPopoverMsg').textContent = 'Fehler: ' + e.message; }
+        }
+        async function deskewMeasure() {
+            if (!currentPageData || !currentPageData.page_id) return;
+            document.getElementById('deskewPopoverMsg').textContent = 'Messe...';
+            try {
+                var resp = await fetch(API_BASE + '/api/pages/' + currentPageData.page_id + '/skew');
+                var data = await resp.json();
+                if (resp.ok) {
+                    var angle = data.angle_deg != null ? data.angle_deg : data.angle;
+                    document.getElementById('deskewAngleInput').value = Number(angle).toFixed(2);
+                    document.getElementById('deskewPopoverMsg').textContent = 'Gemessen: ' + Number(angle).toFixed(2) + '° (noch nicht gespeichert)';
+                } else {
+                    document.getElementById('deskewPopoverMsg').textContent = 'Fehler: ' + (data.detail || 'Unbekannt');
+                }
+            } catch(e) { document.getElementById('deskewPopoverMsg').textContent = 'Fehler: ' + e.message; }
+        }
+        function deskewSliderInput(val) {
+            var num = parseFloat(val);
+            if (isNaN(num)) return;
+            document.getElementById('deskewAngleInput').value = num.toFixed(2);
+            deskewLiveRotate(num);
+        }
+        function deskewSliderSync(val) {
+            var num = parseFloat(val);
+            if (isNaN(num)) return;
+            var slider = document.getElementById('deskewAngleSlider');
+            if (slider) slider.value = Math.max(-5, Math.min(5, num));
+            deskewLiveRotate(num);
+        }
+        function deskewLiveRotate(angle) {
+            var mapEl = document.getElementById('map');
+            if (!mapEl) return;
+            var currentAngle = (currentInspectData && currentInspectData.deskew_angle) || 0;
+            var delta = angle - currentAngle;
+            var tilePane = mapEl.querySelector('.leaflet-map-pane');
+            if (tilePane) {
+                tilePane.style.transform = 'rotate(' + (-delta) + 'deg)';
+                tilePane.style.transformOrigin = 'center center';
+            }
+        }
+        function deskewLiveRotateReset() {
+            var mapEl = document.getElementById('map');
+            if (!mapEl) return;
+            var tilePane = mapEl.querySelector('.leaflet-map-pane');
+            if (tilePane) {
+                tilePane.style.transform = '';
+                tilePane.style.transformOrigin = '';
+            }
+        }
+
+        function deskewUpdateSubtitle() {
+            var el = document.getElementById('deskewInfoLink');
+            if (!el) return;
+            if (currentInspectData && currentInspectData.deskew_angle !== null && currentInspectData.deskew_angle !== undefined) {
+                el.textContent = 'Winkel: ' + currentInspectData.deskew_angle.toFixed(2) + '°';
+            } else {
+                el.textContent = 'kein Deskew';
             }
         }
 
@@ -6387,10 +6555,33 @@
 
                 // Zeige Dialog
                 document.getElementById('editDialogOverlay').classList.add('active');
+                setTimeout(function() {
+                    var ta = document.getElementById('editTextArea');
+                    if (ta) { ta.focus(); ta.setSelectionRange(0, 0); }
+                }, 50);
             } catch (error) {
                 console.error('Fehler beim Öffnen des Edit-Dialogs:', error);
                 showMessage('Fehler: ' + error.message, 'error');
             }
+        }
+
+        function toggleOcrPreview() {
+            var container = document.getElementById('ocrPreviewContainer');
+            var imgDiv = document.getElementById('ocrPreviewImg');
+            if (!container || !imgDiv) return;
+            if (container.style.display !== 'none') {
+                container.style.display = 'none';
+                return;
+            }
+            container.style.display = 'block';
+            if (currentEditPageId === null || currentEditBboxIndex === null) return;
+            imgDiv.innerHTML = '<span style="color:#888; font-size:12px;">Lade OCR-Vorschau...</span>';
+            var url = API_BASE + '/api/review/pages/' + currentEditPageId + '/bboxes/' + currentEditBboxIndex + '/ocr-preview?t=' + Date.now();
+            var img = document.createElement('img');
+            img.style.maxWidth = '100%';
+            img.onload = function() { imgDiv.innerHTML = ''; imgDiv.appendChild(img); };
+            img.onerror = function() { imgDiv.innerHTML = '<span style="color:#842029; font-size:12px;">Fehler beim Laden</span>'; };
+            img.src = url;
         }
 
         function closeEditDialog(event) {
@@ -6410,6 +6601,13 @@
                 try { sessionStorage.removeItem('editDialogBboxListContext'); } catch (e) {}
             }
         }
+
+        document.getElementById('editTextArea').addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                saveReviewedTextAndNext();
+            }
+        });
 
         async function recalcBBoxOCR() {
             const pageId = currentEditPageId;
@@ -6509,8 +6707,8 @@
                     if (ocrResult.bbox_data && ocrResult.bbox_data.length > 0) {
                         ocrResult.bbox_data.forEach((bboxItem, index) => {
                             const reviewStatus = bboxItem.review_status || 'pending';
-                            // Nur ungeprüfte Boxes (pending oder auto_confirmed, aber nicht confirmed, rejected, ignored)
-                            if (reviewStatus === 'pending' || reviewStatus === 'auto_confirmed') {
+                            if (bboxItem.persistent_multibox_region) return;
+                            if (reviewStatus === 'pending' || reviewStatus === 'auto_confirmed' || reviewStatus === 'ocr_done' || reviewStatus === 'new') {
                                 allBBoxes.push({ index, bboxItem, ocrResult });
                             }
                         });
@@ -7094,7 +7292,11 @@
                 if ((bd.review_status || 'pending') === 'pending') pending++;
                 if (!ov.visible) hiddenCount++;
             });
-            el.textContent = total + ' Boxen | ' + pending + ' ausstehend | ' + hiddenCount + ' ausgeblendet';
+            var angleInfo = '';
+            if (currentInspectData && currentInspectData.deskew_angle !== null && currentInspectData.deskew_angle !== undefined) {
+                angleInfo = ' | ' + currentInspectData.deskew_angle.toFixed(2) + '°';
+            }
+            el.textContent = total + ' Boxen | ' + pending + ' ausstehend | ' + hiddenCount + ' ausgeblendet' + angleInfo;
         }
 
         function boxPanelToggleSelectAll(checked) {
@@ -7129,7 +7331,7 @@
                 if (isActive) cls += ' active';
                 if (isSelected) cls += ' selected';
                 if (isHidden) cls += ' hidden-box';
-                html += '<div class="' + cls + '" data-bp-idx="' + idx + '" onclick="boxPanelItemClick(event, ' + idx + ')">';
+                html += '<div class="' + cls + '" data-bp-idx="' + idx + '" onclick="boxPanelItemClick(event, ' + idx + ')" ondblclick="boxPanelItemDblClick(event, ' + idx + ')">';
                 html += '<input type="checkbox" class="bp-checkbox" ' + (isSelected ? 'checked' : '') + ' onclick="event.stopPropagation(); boxPanelToggleSelect(event, ' + idx + ')">';
                 html += '<span class="bp-vis-toggle" onclick="event.stopPropagation(); boxPanelToggleVis(' + idx + ')" title="Ein-/Ausblenden">' + (isHidden ? '🔇' : '👁') + '</span>';
                 html += '<span class="bp-color-dot" style="background:' + color + '"></span>';
@@ -7148,6 +7350,17 @@
             if (e.target.classList.contains('bp-checkbox')) return;
             boxPanelSetActive(idx);
             boxPanelHighlightOnMap(idx);
+        }
+
+        function boxPanelItemDblClick(e, idx) {
+            e.preventDefault();
+            if (!currentPageData || !currentPageData.page_id) return;
+            var ov = textOverlays.find(function(o) { return (o.bboxIndex !== undefined ? o.bboxIndex : -1) === idx; });
+            if (ov && ov.boxType === 'note') {
+                openNoteDialogForEditWithData(currentPageData.page_id, idx);
+            } else {
+                editBBox(currentPageData.page_id, idx);
+            }
         }
 
         function boxPanelSetActive(idx) {

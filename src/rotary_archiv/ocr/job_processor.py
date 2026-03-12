@@ -1498,6 +1498,20 @@ async def process_multibox_region(
         crop_img_height_for_prompt = None
         try:
             crop_img_check = PILImage.open(crop_path_obj)
+            if page.deskew_angle is not None:
+                try:
+                    from src.rotary_archiv.utils.image_utils import deskew_image
+
+                    crop_img_check = deskew_image(crop_img_check, page.deskew_angle)
+                    logger.debug(
+                        "[Multibox-Region] Deskew angewendet: %.4f°",
+                        page.deskew_angle,
+                    )
+                except ImportError as ie:
+                    logger.warning(
+                        "Deskew für Multibox-Region übersprungen (OpenCV fehlt): %s",
+                        ie,
+                    )
             crop_img_size = crop_img_check.size
             crop_img_width_for_prompt = crop_img_size[0]
             crop_img_height_for_prompt = crop_img_size[1]
@@ -1513,10 +1527,27 @@ async def process_multibox_region(
         # WICHTIG: Keine Prompt-Änderungen - der ursprüngliche Prompt funktioniert
         # Das Problem liegt in der Transformation, nicht im Prompt
 
+        ocr_image_path = str(crop_path_obj)
+        if page.deskew_angle is not None and crop_img_check is not None:
+            import tempfile
+
+            _tmp = tempfile.NamedTemporaryFile(
+                delete=False, suffix=".png", prefix="multibox_deskewed_"
+            )
+            crop_img_check.save(_tmp.name, "PNG")
+            ocr_image_path = _tmp.name
+            logger.debug(
+                "[Multibox-Region] Deskewed Crop gespeichert: %s", ocr_image_path
+            )
+
         ollama_ocr = OllamaVisionOCR()
         ocr_result_data = await asyncio.to_thread(
-            ollama_ocr.extract_text_with_bbox, str(crop_path_obj)
+            ollama_ocr.extract_text_with_bbox, ocr_image_path
         )
+
+        if ocr_image_path != str(crop_path_obj):
+            with contextlib.suppress(Exception):
+                Path(ocr_image_path).unlink(missing_ok=True)
 
         if isinstance(ocr_result_data, Exception) or ocr_result_data.get("error"):
             error_msg = (
@@ -2644,8 +2675,11 @@ async def process_persistent_region_re_recognize_job(job_id: int) -> None:
                             from src.rotary_archiv.utils.image_utils import deskew_image
 
                             img = deskew_image(img, page.deskew_angle)
-                        except ImportError:
-                            pass
+                        except ImportError as ie:
+                            logger.warning(
+                                "Deskew für Re-OCR Stufe 1+ übersprungen (OpenCV fehlt): %s",
+                                ie,
+                            )
                     scale_to_ref = dpi_stage1 / settings.pdf_extraction_dpi
                     region_on_img = [
                         int(region_pixel[0] * scale_to_ref),

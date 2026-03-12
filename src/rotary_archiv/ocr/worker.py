@@ -91,13 +91,51 @@ async def worker_loop(poll_interval: int = 5):
     while not shutdown_requested:
         db = SessionLocal()
         try:
-            # Hole nächsten PENDING-Job (sortiert nach Priorität, dann nach Erstellungsdatum)
-            job = (
+            # Hole PENDING-Jobs (sortiert nach Priorität, dann nach Erstellungsdatum)
+            # und nimm den ersten, der nicht durch eine bekannte Abhängigkeit blockiert ist.
+            pending_jobs = (
                 db.query(OCRJob)
                 .filter(OCRJob.status == OCRJobStatus.PENDING)
                 .order_by(OCRJob.priority.asc(), OCRJob.created_at.asc())
-                .first()
+                .all()
             )
+
+            job = None
+            blocked_jobs: list[dict[str, int | str | None]] = []
+            for candidate in pending_jobs:
+                candidate_job_type = candidate.job_type or "ocr"
+                if (
+                    candidate_job_type
+                    in (
+                        "quality",
+                        "persistent_region_quality",
+                        "persistent_region_re_recognize",
+                    )
+                    and candidate.document_page_id
+                ):
+                    pending_review_job = (
+                        db.query(OCRJob)
+                        .filter(
+                            OCRJob.document_page_id == candidate.document_page_id,
+                            OCRJob.job_type == "bbox_review",
+                            OCRJob.status == OCRJobStatus.PENDING,
+                            OCRJob.id != candidate.id,
+                        )
+                        .first()
+                    )
+                    if pending_review_job:
+                        blocked_jobs.append(
+                            {
+                                "job_id": candidate.id,
+                                "job_type": candidate_job_type,
+                                "document_id": candidate.document_id,
+                                "document_page_id": candidate.document_page_id,
+                                "blocking_job_id": pending_review_job.id,
+                            }
+                        )
+                        continue
+                job = candidate
+                break
 
             if job:
                 # Prüfe Shutdown vor Job-Start
@@ -107,37 +145,6 @@ async def worker_loop(poll_interval: int = 5):
 
                 current_job_id = job.id
                 job_type = job.job_type or "ocr"  # Fallback zu "ocr" für alte Jobs
-
-                # Abhängigkeitsprüfung: Quality-, Persistent-Region-Quality- und Re-Recognize-Jobs
-                # warten, bis kein PENDING BBox-Review-Job für dieselbe Seite existiert
-                if (
-                    job_type
-                    in (
-                        "quality",
-                        "persistent_region_quality",
-                        "persistent_region_re_recognize",
-                    )
-                    and job.document_page_id
-                ):
-                    pending_review_job = (
-                        db.query(OCRJob)
-                        .filter(
-                            OCRJob.document_page_id == job.document_page_id,
-                            OCRJob.job_type == "bbox_review",
-                            OCRJob.status == OCRJobStatus.PENDING,
-                            OCRJob.id != job.id,  # Nicht der aktuelle Job
-                        )
-                        .first()
-                    )
-                    if pending_review_job:
-                        logger.debug(
-                            f"[{job_type.upper()}] Überspringe Job {job.id} für Seite {job.document_page_id}: "
-                            f"BBox-Review-Job {pending_review_job.id} ist noch PENDING"
-                        )
-                        # Job bleibt PENDING und wird beim nächsten Durchlauf erneut geprüft
-                        # (Session wird im finally-Block geschlossen)
-                        await asyncio.sleep(1)  # Kurze Pause vor erneutem Polling
-                        continue
 
                 logger.info(
                     f"[{job_type.upper()}] Starte Job {job.id} (Dokument {job.document_id}, Seite {job.document_page_id or 'N/A'})"
@@ -231,6 +238,11 @@ async def worker_loop(poll_interval: int = 5):
                 finally:
                     current_job_id = None
             else:
+                if blocked_jobs:
+                    logger.info(
+                        "Alle priorisierten PENDING-Jobs sind derzeit blockiert; erster blockierter Job: %s",
+                        blocked_jobs[0],
+                    )
                 # Keine Jobs vorhanden, warte (mit Shutdown-Check)
                 if shutdown_requested:
                     logger.info("Shutdown angefordert, beende Worker-Loop")

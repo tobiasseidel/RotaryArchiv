@@ -893,6 +893,31 @@ def get_page_skew_debug(page_id: int, db: Session = Depends(get_db)):
     return debug_info
 
 
+class SetDeskewAngleRequest(BaseModel):
+    angle: float | None = None
+
+
+@router.patch("/{page_id}/deskew-angle")
+def set_deskew_angle(
+    page_id: int,
+    request: SetDeskewAngleRequest,
+    db: Session = Depends(get_db),
+):
+    """Setzt oder entfernt den Deskew-Winkel einer Seite manuell."""
+    page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+    if not page:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Seite nicht gefunden"
+        )
+    page.deskew_angle = round(request.angle, 4) if request.angle is not None else None
+    db.commit()
+    return {
+        "success": True,
+        "page_id": page_id,
+        "deskew_angle": page.deskew_angle,
+    }
+
+
 @router.get("/{page_id}/deskewed-image")
 def get_deskewed_page_image(page_id: int, db: Session = Depends(get_db)):
     """
@@ -1198,6 +1223,7 @@ def get_page_inspect(
         image_url=image_url,
         image_width=image_width,
         image_height=image_height,
+        deskew_angle=page.deskew_angle,
         ocr_results=ocr_result_responses,
     )
 

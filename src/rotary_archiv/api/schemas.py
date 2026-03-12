@@ -361,6 +361,9 @@ class PageInspectResponse(BaseModel):
     image_url: str = Field(description="URL zum Seitenbild")
     image_width: int = Field(description="Bildbreite in Pixeln")
     image_height: int = Field(description="Bildhöhe in Pixeln")
+    deskew_angle: float | None = Field(
+        None, description="Deskew-Winkel in Grad (None = nicht gemessen)"
+    )
     ocr_results: list[OCRResultResponse] = Field(
         description="OCR-Ergebnisse mit Bounding Boxes"
     )
