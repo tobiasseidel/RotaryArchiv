@@ -1653,14 +1653,17 @@
     <!-- Inspect-Controls werden bei Öffnen der Inspect-View in den Header verschoben (Slot für DOM) -->
     <div id="inspectControlsSource" style="display: none;">
         <div class="inspect-controls">
-            <button class="btn btn-secondary" id="prevPageBtn" style="display: none;">← Vorherige Seite</button>
-            <button class="btn btn-secondary" id="nextPageBtn" style="display: none;">Nächste Seite →</button>
+            <button class="btn btn-secondary" id="prevDocBtn" style="display: none;" title="Vorheriges Dokument (letzte Seite)">&lt;&lt;</button>
+            <button class="btn btn-secondary" id="prevPageBtn" style="display: none;" title="Vorherige Seite">&lt;</button>
+            <button class="btn btn-secondary" id="nextPageBtn" style="display: none;" title="Nächste Seite">&gt;</button>
+            <button class="btn btn-secondary" id="nextDocBtn" style="display: none;" title="Nächstes Dokument (erste Seite)">&gt;&gt;</button>
             <div class="inspect-add-box-wrapper" id="addBoxWrapper">
                 <button class="btn btn-success" type="button" id="addBoxMainBtn" title="Box hinzufügen">+</button>
                 <div id="addBoxDropdown" class="inspect-add-box-dropdown" style="display: none;">
                     <button type="button" class="inspect-add-box-option" data-mode="single">Eine Box (+1)</button>
                     <button type="button" class="inspect-add-box-option" data-mode="multiple">Mehrere Boxen (+X)</button>
                     <button type="button" class="inspect-add-box-option" data-mode="persistent_multibox">Persistente Multibox-Region (+X behalten)</button>
+                    <button type="button" class="inspect-add-box-option" data-mode="manual">Manuelle Box</button>
                     <button type="button" class="inspect-add-box-option" data-mode="ignore_region">Ignore-Bereich</button>
                     <button type="button" class="inspect-add-box-option" data-mode="note">Notiz</button>
                 </div>
@@ -1674,7 +1677,6 @@
             <button class="btn btn-secondary" id="qualityBtn" title="Qualitätsmetriken für diese Seite anzeigen">Qualität</button>
             <button class="btn btn-primary" id="exportPdfBtn" title="Seite als PDF mit durchsuchbarem Text exportieren">Als PDF exportieren</button>
             <button class="btn btn-primary" id="createReviewJobBtn" style="display: none;">Review-Job erstellen</button>
-            <button class="btn btn-secondary" id="backBtn">Zurück</button>
         </div>
     </div>
 
@@ -1783,6 +1785,7 @@
         let inspectSelectedBBoxIndices = new Set();
         let isAddingIgnoreRegion = false;
         let isAddingNoteBox = false;
+        let isAddingManualBox = false;
         let isAddingPersistentMultibox = false;
         let pendingNoteBoxBounds = null;
 
@@ -4811,6 +4814,7 @@
                 inspectMultiboxSelectMode = false;
                 isAddingIgnoreRegion = false;
                 isAddingNoteBox = false;
+                isAddingManualBox = false;
                 isAddingPersistentMultibox = false;
                 pendingNoteBoxBounds = null;
                 document.getElementById('inspectMultiboxActionsPanel').style.display = 'none';
@@ -5322,16 +5326,6 @@
                 };
                 updateMapSize();
 
-                // Zurück-Button
-                document.getElementById('backBtn').onclick = () => {
-                    // Gehe zurück zur Review-Seite wenn von dort gekommen
-                    if (window.location.hash.includes('/inspect')) {
-                        showReviewView();
-                    } else {
-                        showImportView();
-                    }
-                };
-
                 // Box hinzufügen: ein +-Button mit Dropdown
                 const addBoxMainBtn = document.getElementById('addBoxMainBtn');
                 const addBoxDropdown = document.getElementById('addBoxDropdown');
@@ -5344,6 +5338,7 @@
                     else if (isAddingPersistentMultibox) toggleAddPersistentMultiboxMode();
                     else if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
                     else if (isAddingNoteBox) toggleAddNoteBoxMode();
+                    else if (isAddingManualBox) toggleAddManualBoxMode();
                     else {
                         addBoxDropdown.style.display = addBoxDropdown.style.display === 'none' ? 'block' : 'none';
                     }
@@ -5360,6 +5355,8 @@
                             toggleAddMultipleBBoxMode();
                         } else if (mode === 'persistent_multibox') {
                             toggleAddPersistentMultiboxMode();
+                        } else if (mode === 'manual') {
+                            toggleAddManualBoxMode();
                         } else if (mode === 'ignore_region') {
                             toggleAddIgnoreRegionMode();
                         } else if (mode === 'note') {
@@ -5377,60 +5374,105 @@
         }
 
         async function updatePageNavigationButtons(documentId, currentPageNumber) {
-            // Hole alle Seiten des Dokuments
+            const prevDocBtn = document.getElementById('prevDocBtn');
+            const prevPageBtn = document.getElementById('prevPageBtn');
+            const nextPageBtn = document.getElementById('nextPageBtn');
+            const nextDocBtn = document.getElementById('nextDocBtn');
+
+            function hideAllNav() {
+                if (prevDocBtn) prevDocBtn.style.display = 'none';
+                if (prevPageBtn) prevPageBtn.style.display = 'none';
+                if (nextPageBtn) nextPageBtn.style.display = 'none';
+                if (nextDocBtn) nextDocBtn.style.display = 'none';
+            }
+
             try {
-                const response = await fetch(`${API_BASE}/api/pages/document/${documentId}`);
-                if (!response.ok) {
-                    // Wenn Fehler, verstecke Buttons
-                    document.getElementById('prevPageBtn').style.display = 'none';
-                    document.getElementById('nextPageBtn').style.display = 'none';
+                const [pagesRes, summaryRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/pages/document/${documentId}`),
+                    fetch(`${API_BASE}/api/documents/summary`)
+                ]);
+                if (!pagesRes.ok) {
+                    hideAllNav();
                     return;
                 }
-
-                const data = await response.json();
-                const pages = data.pages || [];
-
-                // Sortiere nach page_number
-                pages.sort((a, b) => a.page_number - b.page_number);
-
-                // Finde aktuelle Seite
+                const data = await pagesRes.json();
+                const pages = (data.pages || []).slice().sort((a, b) => a.page_number - b.page_number);
                 const currentIndex = pages.findIndex(p => p.page_number === currentPageNumber);
 
-                // Prüfe ob es eine vorherige/nächste Seite gibt
-                const hasPrev = currentIndex > 0;
-                const hasNext = currentIndex < pages.length - 1;
+                const documents = summaryRes.ok ? await summaryRes.json() : [];
+                const docIndex = documents.findIndex(d => d.id === documentId);
+                const hasPrevDoc = docIndex > 0;
+                const hasNextDoc = docIndex >= 0 && docIndex < documents.length - 1;
+                const hasPrevPage = currentIndex > 0;
+                const hasNextPage = currentIndex >= 0 && currentIndex < pages.length - 1;
 
-                const prevBtn = document.getElementById('prevPageBtn');
-                const nextBtn = document.getElementById('nextPageBtn');
-
-                if (prevBtn) {
-                    if (hasPrev) {
-                        prevBtn.style.display = 'inline-block';
-                        prevBtn.onclick = () => {
-                            const prevPage = pages[currentIndex - 1];
-                            window.location.hash = `#/page/${prevPage.id}/inspect`;
-                        };
-                    } else {
-                        prevBtn.style.display = 'none';
+                let prevDocLastPageId = null;
+                let nextDocFirstPageId = null;
+                if (hasPrevDoc) {
+                    const r = await fetch(`${API_BASE}/api/pages/document/${documents[docIndex - 1].id}`);
+                    if (r.ok) {
+                        const j = await r.json();
+                        const pgs = (j.pages || []).slice().sort((a, b) => a.page_number - b.page_number);
+                        if (pgs.length) prevDocLastPageId = pgs[pgs.length - 1].id;
+                    }
+                }
+                if (hasNextDoc) {
+                    const r = await fetch(`${API_BASE}/api/pages/document/${documents[docIndex + 1].id}`);
+                    if (r.ok) {
+                        const j = await r.json();
+                        const pgs = (j.pages || []).slice().sort((a, b) => a.page_number - b.page_number);
+                        if (pgs.length) nextDocFirstPageId = pgs[0].id;
                     }
                 }
 
-                if (nextBtn) {
-                    if (hasNext) {
-                        nextBtn.style.display = 'inline-block';
-                        nextBtn.onclick = () => {
-                            const nextPage = pages[currentIndex + 1];
-                            window.location.hash = `#/page/${nextPage.id}/inspect`;
-                        };
+                if (prevDocBtn) {
+                    if (hasPrevDoc && prevDocLastPageId != null) {
+                        prevDocBtn.style.display = 'inline-block';
+                        prevDocBtn.onclick = () => { window.location.hash = `#/page/${prevDocLastPageId}/inspect`; };
                     } else {
-                        nextBtn.style.display = 'none';
+                        prevDocBtn.style.display = 'none';
+                    }
+                }
+
+                if (prevPageBtn) {
+                    if (hasPrevPage) {
+                        prevPageBtn.style.display = 'inline-block';
+                        prevPageBtn.onclick = () => {
+                            window.location.hash = `#/page/${pages[currentIndex - 1].id}/inspect`;
+                        };
+                    } else if (hasPrevDoc && prevDocLastPageId != null) {
+                        prevPageBtn.style.display = 'inline-block';
+                        prevPageBtn.onclick = () => { window.location.hash = `#/page/${prevDocLastPageId}/inspect`; };
+                    } else {
+                        prevPageBtn.style.display = 'none';
+                    }
+                }
+
+                if (nextPageBtn) {
+                    if (hasNextPage) {
+                        nextPageBtn.style.display = 'inline-block';
+                        nextPageBtn.onclick = () => {
+                            window.location.hash = `#/page/${pages[currentIndex + 1].id}/inspect`;
+                        };
+                    } else if (hasNextDoc && nextDocFirstPageId != null) {
+                        nextPageBtn.style.display = 'inline-block';
+                        nextPageBtn.onclick = () => { window.location.hash = `#/page/${nextDocFirstPageId}/inspect`; };
+                    } else {
+                        nextPageBtn.style.display = 'none';
+                    }
+                }
+
+                if (nextDocBtn) {
+                    if (hasNextDoc && nextDocFirstPageId != null) {
+                        nextDocBtn.style.display = 'inline-block';
+                        nextDocBtn.onclick = () => { window.location.hash = `#/page/${nextDocFirstPageId}/inspect`; };
+                    } else {
+                        nextDocBtn.style.display = 'none';
                     }
                 }
             } catch (error) {
                 console.error('Fehler beim Aktualisieren der Navigation-Buttons:', error);
-                // Verstecke Buttons bei Fehler
-                document.getElementById('prevPageBtn').style.display = 'none';
-                document.getElementById('nextPageBtn').style.display = 'none';
+                hideAllNav();
             }
         }
 
@@ -6353,6 +6395,8 @@
         // Globale Variablen für Edit-Dialog
         let currentEditPageId = null;
         let currentEditBboxIndex = null;
+        /** Vorgeladenes Preview-Bild für die nächste Box (schnellerer Übergang bei &Next). */
+        let preloadedNextBboxPreview = null;
         let currentNoteEditPageId = null;
         let currentNoteEditBboxIndex = null;
         let currentBboxData = null;
@@ -6591,6 +6635,7 @@
                 currentEditBboxIndex = null;
                 currentBboxData = null;
                 editDialogBboxListContext = null;
+                preloadedNextBboxPreview = null;
                 try { sessionStorage.removeItem('editDialogBboxListContext'); } catch (e) {}
             } else if (!event) {
                 document.getElementById('editDialogOverlay').classList.remove('active');
@@ -6598,6 +6643,7 @@
                 currentEditBboxIndex = null;
                 currentBboxData = null;
                 editDialogBboxListContext = null;
+                preloadedNextBboxPreview = null;
                 try { sessionStorage.removeItem('editDialogBboxListContext'); } catch (e) {}
             }
         }
@@ -6672,8 +6718,21 @@
 
         async function loadBboxPreview(pageId, bboxIndex) {
             const previewContainer = document.getElementById('previewContainer');
-            previewContainer.innerHTML = '<div class="preview-loading">Lade Preview...</div>';
 
+            // Vorgeladenes Bild verwenden, wenn es zur angeforderten Box passt → sofort anzeigen
+            if (preloadedNextBboxPreview && preloadedNextBboxPreview.pageId === pageId && preloadedNextBboxPreview.bboxIndex === bboxIndex) {
+                const img = preloadedNextBboxPreview.img;
+                preloadedNextBboxPreview = null;
+                previewContainer.innerHTML = '';
+                img.className = 'preview-image';
+                img.alt = 'BBox Preview';
+                previewContainer.appendChild(img);
+                preloadNextBboxPreview();
+                return;
+            }
+            preloadedNextBboxPreview = null;
+
+            previewContainer.innerHTML = '<div class="preview-loading">Lade Preview...</div>';
             try {
                 const previewUrl = `${API_BASE}/api/review/pages/${pageId}/bboxes/${bboxIndex}/crop-preview?padding=60&border=1`;
                 const img = document.createElement('img');
@@ -6683,14 +6742,51 @@
                 img.onload = () => {
                     previewContainer.innerHTML = '';
                     previewContainer.appendChild(img);
+                    preloadNextBboxPreview();
                 };
                 img.onerror = () => {
                     previewContainer.innerHTML = '<div class="preview-loading" style="color: #842029;">Fehler beim Laden des Previews</div>';
+                    preloadNextBboxPreview();
                 };
             } catch (error) {
                 console.error('Fehler beim Laden des Previews:', error);
                 previewContainer.innerHTML = '<div class="preview-loading" style="color: #842029;">Fehler beim Laden des Previews</div>';
+                preloadNextBboxPreview();
             }
+        }
+
+        /** Lädt das Bild der nächsten Box im Hintergrund, damit &Next sofort wechseln kann. */
+        function preloadNextBboxPreview() {
+            let nextPageId = null;
+            let nextBboxIndex = null;
+            if (editDialogBboxListContext && editDialogBboxListContext.items && editDialogBboxListContext.items.length) {
+                const nextIndex = editDialogBboxListContext.currentIndex + 1;
+                if (nextIndex < editDialogBboxListContext.items.length) {
+                    const nextItem = editDialogBboxListContext.items[nextIndex];
+                    nextPageId = nextItem.page_id;
+                    nextBboxIndex = nextItem.bbox_index;
+                }
+            }
+            if (nextPageId === null || nextBboxIndex === null) {
+                findNextUnreviewedBBox(currentEditPageId, currentEditBboxIndex).then(function(nextBBox) {
+                    if (nextBBox) preloadNextBboxPreviewFor(nextBBox.pageId, nextBBox.bboxIndex);
+                }).catch(function() {});
+                return;
+            }
+            preloadNextBboxPreviewFor(nextPageId, nextBboxIndex);
+        }
+
+        function preloadNextBboxPreviewFor(pageId, bboxIndex) {
+            if (pageId == null || bboxIndex == null) return;
+            const url = `${API_BASE}/api/review/pages/${pageId}/bboxes/${bboxIndex}/crop-preview?padding=60&border=1`;
+            const img = new Image();
+            img.onload = function() {
+                preloadedNextBboxPreview = { pageId: pageId, bboxIndex: bboxIndex, img: img };
+            };
+            img.onerror = function() {
+                preloadedNextBboxPreview = null;
+            };
+            img.src = url;
         }
 
         async function findNextUnreviewedBBox(pageId, currentBboxIndex) {
@@ -6787,69 +6883,66 @@
         }
 
         async function saveReviewedTextAndNext() {
-            // Speichere IDs GANZ AM ANFANG, bevor irgendetwas anderes passiert
+            // IDs und Text GANZ AM ANFANG sichern (Dialog wechselt gleich)
             const pageId = currentEditPageId;
             const bboxIndex = currentEditBboxIndex;
+            const reviewedText = document.getElementById('editTextArea').value.trim();
 
             if (pageId === null || bboxIndex === null) {
                 showMessage('Keine BBox zum Speichern ausgewählt', 'error');
                 console.error('currentEditPageId:', currentEditPageId, 'currentEditBboxIndex:', currentEditBboxIndex);
                 return;
             }
-
-            const reviewedText = document.getElementById('editTextArea').value.trim();
             if (!reviewedText) {
                 showMessage('Bitte geben Sie einen Text ein', 'error');
                 return;
             }
 
-            try {
-                // Speichere den aktuellen Text
-                const response = await fetch(`${API_BASE}/api/review/pages/${pageId}/bboxes/${bboxIndex}/save-reviewed`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        reviewed_text: reviewedText
-                    })
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
-                    showMessage('Fehler: ' + (errorData.detail || 'Unbekannter Fehler'), 'error');
-                    console.error('Save error:', errorData);
-                    return;
+            // Nächste Box ermitteln (vor dem Wechsel)
+            let nextBBox = null;
+            if (editDialogBboxListContext && editDialogBboxListContext.items && editDialogBboxListContext.items.length) {
+                const nextIndex = editDialogBboxListContext.currentIndex + 1;
+                if (nextIndex < editDialogBboxListContext.items.length) {
+                    const nextItem = editDialogBboxListContext.items[nextIndex];
+                    nextBBox = { pageId: nextItem.page_id, bboxIndex: nextItem.bbox_index };
                 }
-
-                const result = await response.json();
-
-                await updateBBoxStatus(pageId, bboxIndex);
-
-                // Nächste Box: zuerst aus der BBox-Liste (wenn Kontext gesetzt), sonst nächste auf der Seite
-                let nextBBox = null;
-                if (editDialogBboxListContext && editDialogBboxListContext.items && editDialogBboxListContext.items.length) {
-                    const nextIndex = editDialogBboxListContext.currentIndex + 1;
-                    if (nextIndex < editDialogBboxListContext.items.length) {
-                        const nextItem = editDialogBboxListContext.items[nextIndex];
-                        nextBBox = { pageId: nextItem.page_id, bboxIndex: nextItem.bbox_index };
-                    }
-                }
-                if (!nextBBox) {
-                    nextBBox = await findNextUnreviewedBBox(pageId, bboxIndex);
-                }
-
-                if (nextBBox) {
-                    await editBBox(nextBBox.pageId, nextBBox.bboxIndex);
-                    showMessage('Text gespeichert - nächste Box geöffnet', 'success');
-                } else {
-                    showMessage('Text gespeichert - keine weitere Box in der Liste', 'success');
-                    closeEditDialog();
-                }
-            } catch (error) {
-                console.error('Fehler beim Speichern:', error);
-                showMessage('Fehler beim Speichern: ' + error.message, 'error');
             }
+            if (!nextBBox) {
+                nextBBox = await findNextUnreviewedBBox(pageId, bboxIndex);
+            }
+
+            // Sofort Bildwechsel: nächste Box anzeigen (Speichern kommt danach im Hintergrund)
+            if (nextBBox) {
+                editBBox(nextBBox.pageId, nextBBox.bboxIndex);
+                showMessage('Nächste Box – Speichern im Hintergrund', 'success');
+            } else {
+                closeEditDialog();
+                showMessage('Keine weitere Box – Speichern im Hintergrund', 'success');
+            }
+
+            // Speichern entkoppelt im Hintergrund (blockiert den Bildwechsel nicht)
+            fetch(`${API_BASE}/api/review/pages/${pageId}/bboxes/${bboxIndex}/save-reviewed`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reviewed_text: reviewedText })
+            })
+                .then(function (response) {
+                    if (!response.ok) {
+                        return response.json().catch(function () { return { detail: 'Unbekannter Fehler' }; })
+                            .then(function (errorData) { throw new Error(errorData.detail || 'HTTP ' + response.status); });
+                    }
+                    return response.json();
+                })
+                .then(function () {
+                    return updateBBoxStatus(pageId, bboxIndex);
+                })
+                .then(function () {
+                    showMessage('Vorherige Box gespeichert', 'success');
+                })
+                .catch(function (err) {
+                    console.error('Fehler beim Speichern (Hintergrund):', err);
+                    showMessage('Fehler beim Speichern: ' + (err.message || err), 'error');
+                });
         }
 
         function toggleAddBBoxMode() {
@@ -6877,6 +6970,7 @@
                 }
             }
             if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
+            if (isAddingManualBox) toggleAddManualBoxMode();
             if (isAddingNoteBox) toggleAddNoteBoxMode();
             // Beim Aktivieren des Zeichen-Modus: Bearbeiten-Modus beenden
             if (!isAddingBBox && inspectEditBoxMode) {
@@ -6943,6 +7037,7 @@
                 }
             }
             if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
+            if (isAddingManualBox) toggleAddManualBoxMode();
             if (isAddingNoteBox) toggleAddNoteBoxMode();
             if (isAddingPersistentMultibox) toggleAddPersistentMultiboxMode();
 
@@ -7005,6 +7100,7 @@
             }
             if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
             if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
+            if (isAddingManualBox) toggleAddManualBoxMode();
             if (isAddingNoteBox) toggleAddNoteBoxMode();
 
             isAddingPersistentMultibox = !isAddingPersistentMultibox;
@@ -7055,6 +7151,7 @@
             if (isAddingBBox) toggleAddBBoxMode();
             if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
             if (isAddingPersistentMultibox) toggleAddPersistentMultiboxMode();
+            if (isAddingManualBox) toggleAddManualBoxMode();
             if (isAddingNoteBox) toggleAddNoteBoxMode();
 
             isAddingIgnoreRegion = !isAddingIgnoreRegion;
@@ -7101,6 +7198,7 @@
             if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
             if (isAddingPersistentMultibox) toggleAddPersistentMultiboxMode();
             if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
+            if (isAddingManualBox) toggleAddManualBoxMode();
 
             isAddingNoteBox = !isAddingNoteBox;
             const btn = document.getElementById('addBoxMainBtn');
@@ -7131,6 +7229,52 @@
                 if (drawingRectangle && map) { map.removeLayer(drawingRectangle); drawingRectangle = null; }
                 drawingStartPoint = null;
                 pendingNoteBoxBounds = null;
+            }
+        }
+
+        function toggleAddManualBoxMode() {
+            if (inspectMultiboxSelectMode) {
+                inspectMultiboxSelectMode = false;
+                clearMultiboxSelection();
+                const mb = document.getElementById('multiboxSelectBtn');
+                if (mb) { mb.classList.remove('btn-warning'); mb.classList.add('btn-secondary'); mb.textContent = 'Mehrere auswählen'; }
+                if (map) { map.getContainer().classList.remove('drawing-mode'); map.dragging.enable(); map.boxZoom.enable(); map.doubleClickZoom.enable(); }
+            }
+            if (inspectEditBoxMode) setEditBoxMode(false);
+            if (isAddingBBox) toggleAddBBoxMode();
+            if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
+            if (isAddingPersistentMultibox) toggleAddPersistentMultiboxMode();
+            if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
+            if (isAddingNoteBox) toggleAddNoteBoxMode();
+
+            isAddingManualBox = !isAddingManualBox;
+            const btn = document.getElementById('addBoxMainBtn');
+            const drop = document.getElementById('addBoxDropdown');
+            if (isAddingManualBox) {
+                if (drop) drop.style.display = 'none';
+                btn.classList.add('btn-warning');
+                btn.classList.remove('btn-success');
+                btn.textContent = '✕ Abbrechen';
+                if (map) {
+                    map.getContainer().classList.add('drawing-mode');
+                    map.dragging.disable();
+                    map.boxZoom.disable();
+                    map.doubleClickZoom.disable();
+                    map.scrollWheelZoom.enable();
+                }
+            } else {
+                if (drop) drop.style.display = 'none';
+                btn.classList.remove('btn-warning');
+                btn.classList.add('btn-success');
+                btn.textContent = '+';
+                if (map) {
+                    map.getContainer().classList.remove('drawing-mode');
+                    map.dragging.enable();
+                    map.boxZoom.enable();
+                    map.doubleClickZoom.enable();
+                }
+                if (drawingRectangle && map) { map.removeLayer(drawingRectangle); drawingRectangle = null; }
+                drawingStartPoint = null;
             }
         }
 
@@ -7643,6 +7787,7 @@
             if (isAddingMultipleBBoxes) toggleAddMultipleBBoxMode();
             if (isAddingPersistentMultibox) toggleAddPersistentMultiboxMode();
             if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
+            if (isAddingManualBox) toggleAddManualBoxMode();
             if (isAddingNoteBox) toggleAddNoteBoxMode();
 
             inspectMultiboxSelectMode = !inspectMultiboxSelectMode;
@@ -7812,7 +7957,7 @@
         }
 
         function handleMapMouseDown(e) {
-            if (!isAddingBBox && !isAddingMultipleBBoxes && !isAddingPersistentMultibox && !isAddingIgnoreRegion && !isAddingNoteBox && !inspectMultiboxSelectMode) return;
+            if (!isAddingBBox && !isAddingMultipleBBoxes && !isAddingPersistentMultibox && !isAddingIgnoreRegion && !isAddingNoteBox && !isAddingManualBox && !inspectMultiboxSelectMode) return;
 
             // Verhindere Standard-Verhalten (wichtig: vor allem anderen)
             L.DomEvent.stopPropagation(e);
@@ -7840,7 +7985,7 @@
         }
 
         function handleMapMouseMove(e) {
-            if ((!isAddingBBox && !isAddingMultipleBBoxes && !isAddingPersistentMultibox && !isAddingIgnoreRegion && !isAddingNoteBox && !inspectMultiboxSelectMode) || !drawingStartPoint) return;
+            if ((!isAddingBBox && !isAddingMultipleBBoxes && !isAddingPersistentMultibox && !isAddingIgnoreRegion && !isAddingNoteBox && !isAddingManualBox && !inspectMultiboxSelectMode) || !drawingStartPoint) return;
 
             // Verhindere Drag während des Zeichnens
             L.DomEvent.stopPropagation(e);
@@ -7852,7 +7997,7 @@
         }
 
         async function handleMapMouseUp(e) {
-            if ((!isAddingBBox && !isAddingMultipleBBoxes && !isAddingPersistentMultibox && !isAddingIgnoreRegion && !isAddingNoteBox && !inspectMultiboxSelectMode) || !drawingStartPoint) return;
+            if ((!isAddingBBox && !isAddingMultipleBBoxes && !isAddingPersistentMultibox && !isAddingIgnoreRegion && !isAddingNoteBox && !isAddingManualBox && !inspectMultiboxSelectMode) || !drawingStartPoint) return;
 
             // Verhindere Standard-Verhalten
             L.DomEvent.stopPropagation(e);
@@ -7917,6 +8062,10 @@
                 pendingNoteBoxBounds = mapBounds;
                 exitAddNoteBoxMode();
                 openNoteDialogForNew();
+                return;
+            }
+            if (isAddingManualBox) {
+                await addManualBoxFromDrawing(mapBounds);
                 return;
             }
 
@@ -8019,6 +8168,7 @@
             if (!active) {
                 clearEditBoxSelection();
             } else {
+                if (isAddingManualBox) toggleAddManualBoxMode();
                 if (inspectMultiboxSelectMode) {
                     inspectMultiboxSelectMode = false;
                     clearMultiboxSelection();
@@ -8285,6 +8435,59 @@
             } catch (error) {
                 showMessage(`Fehler beim Hinzufügen der Box: ${error.message}`, 'error');
                 console.error('Error adding BBox:', error);
+            }
+        }
+
+        async function addManualBoxFromDrawing(mapBounds) {
+            if (!currentPageData) {
+                showMessage('Keine Seiten-Daten verfügbar', 'error');
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/api/pages/${currentPageData.page_id}/inspect`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                const data = await response.json();
+                let ocrImageWidth = data.image_width, ocrImageHeight = data.image_height;
+                for (const ocrResult of data.ocr_results || []) {
+                    if (ocrResult.image_width && ocrResult.image_height) {
+                        ocrImageWidth = ocrResult.image_width;
+                        ocrImageHeight = ocrResult.image_height;
+                        break;
+                    }
+                }
+                const mapImageWidth = data.image_width, mapImageHeight = data.image_height;
+                const bbox_pixel = convertMapCoordsToBBoxPixel(
+                    mapBounds, ocrImageWidth, ocrImageHeight, mapImageWidth, mapImageHeight
+                );
+                const addResponse = await fetch(`${API_BASE}/api/review/pages/${currentPageData.page_id}/bboxes/add`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bbox_pixel: bbox_pixel, box_type: 'manual' })
+                });
+                if (!addResponse.ok) {
+                    const errorData = await addResponse.json().catch(() => ({ detail: 'Unbekannter Fehler' }));
+                    const msg = typeof errorData.detail === 'string'
+                        ? errorData.detail
+                        : Array.isArray(errorData.detail)
+                            ? errorData.detail.map(function (e) { return e.msg || JSON.stringify(e); }).join('; ')
+                            : JSON.stringify(errorData.detail || 'Fehler beim Hinzufügen der Box');
+                    throw new Error(msg);
+                }
+                const result = await addResponse.json();
+                const bboxIndex = result.bbox_index;
+                toggleAddManualBoxMode();
+                if (map) {
+                    savedMapView = { center: map.getCenter(), zoom: map.getZoom() };
+                }
+                await loadPageInspect(currentPageData.page_id);
+                if (map && savedMapView) {
+                    map.setView(savedMapView.center, savedMapView.zoom);
+                    savedMapView = null;
+                }
+                editBBox(currentPageData.page_id, bboxIndex);
+            } catch (error) {
+                showMessage('Fehler beim Hinzufügen der manuellen Box: ' + error.message, 'error');
+                console.error('Error adding manual BBox:', error);
             }
         }
 

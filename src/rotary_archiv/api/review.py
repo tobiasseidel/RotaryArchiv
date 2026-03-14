@@ -107,7 +107,7 @@ class AddBBoxRequest(BaseModel):
     """Request-Schema für neu hinzugefügte BBox"""
 
     bbox_pixel: list[int]  # [x1, y1, x2, y2] Pixel-Koordinaten
-    box_type: str | None = None  # "ocr" | "ignore_region" | "note"
+    box_type: str | None = None  # "ocr" | "manual" | "ignore_region" | "note"
     note_author: str | None = None
     note_text: str | None = None
 
@@ -1895,10 +1895,10 @@ async def add_new_bbox(
     """
     bbox_pixel = request.bbox_pixel
     box_type = (request.box_type or "ocr").strip() or "ocr"
-    if box_type not in ("ocr", "ignore_region", "note"):
+    if box_type not in ("ocr", "manual", "ignore_region", "note"):
         raise HTTPException(
             status_code=400,
-            detail='box_type muss "ocr", "ignore_region" oder "note" sein',
+            detail='box_type muss "ocr", "manual", "ignore_region" oder "note" sein',
         )
     if box_type == "note" and (not request.note_author or not request.note_text):
         raise HTTPException(
@@ -1963,6 +1963,7 @@ async def add_new_bbox(
             "differences": [],
         }
     else:
+        # "ocr" oder "manual": leere Box, review_status "new"
         new_bbox = {
             "text": "",
             "bbox": bbox_rel,
@@ -1981,15 +1982,17 @@ async def add_new_bbox(
     flag_modified(ocr_result, "bbox_data")
     db.commit()
 
-    if box_type in ("ignore_region", "note"):
+    if box_type in ("ignore_region", "note", "manual"):
         return {
             "success": True,
             "bbox_index": new_bbox_index,
             "job_id": None,
-            "message": "Box hinzugefügt (kein OCR-Job)",
+            "message": "Box hinzugefügt (kein OCR-Job)"
+            if box_type != "manual"
+            else "Manuelle Box hinzugefügt",
         }
 
-    # Erstelle OCR-Job nur für OCR-Boxen
+    # Erstelle OCR-Job nur für OCR-Boxen (box_type "ocr")
     from sqlalchemy import func
 
     min_priority = (
