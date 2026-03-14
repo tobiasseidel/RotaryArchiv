@@ -445,7 +445,7 @@ async def process_bbox_review_job(job_id: int) -> None:
                 bbox_item=bbox_item,
                 pdf_path=pdf_path,
                 page_number=page_number,
-                ocr_models=["tesseract", "ollama_vision"],
+                ocr_models=settings.ocr_engines_enabled,
                 bbox_index=idx,  # Für Debug-Dateinamen
                 native_page_text=native_page_text,
             )

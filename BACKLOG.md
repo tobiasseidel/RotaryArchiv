@@ -3,6 +3,7 @@
 ## Features
 
 ### OCR & Textverarbeitung
+- [ ] Weitere OCR-Engines konfigurierbar (Tesseract ist optional abschaltbar; anderes Modell als Alternative)
 - [ ] OCR-Ergebnis-Vergleich UI (Tesseract vs. Ollama Vision)
 - [ ] OCR-Korrektur mit GPT-Integration
 - [ ] Batch-OCR für mehrere Dokumente

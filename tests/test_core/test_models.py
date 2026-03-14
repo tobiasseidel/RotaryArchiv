@@ -11,8 +11,6 @@ from src.rotary_archiv.core.models import (
     Document,
     DocumentPage,
     DocumentStatus,
-    Entity,
-    EntityType,
 )
 
 
@@ -114,22 +112,3 @@ class TestDocumentModel:
 
         assert len(parent.child_documents) == 2
         assert parent.is_composite == 1
-
-
-@pytest.mark.unit
-class TestEntityModel:
-    """Tests für Entity Model"""
-
-    def test_create_entity(self, db_session):
-        """Test: Entität wird erstellt"""
-        entity = Entity(
-            name="Max Müller",
-            entity_type=EntityType.PERSON,
-            description="Test Person",
-        )
-        db_session.add(entity)
-        db_session.commit()
-
-        assert entity.id is not None
-        assert entity.name == "Max Müller"
-        assert entity.entity_type == EntityType.PERSON

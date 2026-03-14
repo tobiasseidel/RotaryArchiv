@@ -1741,7 +1741,7 @@ async def test_bbox_review(
             bbox_item=bbox_item,
             pdf_path=document.file_path,
             page_number=page.page_number,
-            ocr_models=["tesseract", "ollama_vision"],
+            ocr_models=settings.ocr_engines_enabled,
             bbox_index=bbox_index,  # Für Debug-Dateinamen
         )
     except asyncio.CancelledError:

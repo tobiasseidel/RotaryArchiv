@@ -79,10 +79,13 @@ def get_quality_config():
 def get_quality_stats(db: Session = Depends(get_db)):
     """
     Debug-Endpoint: Zeigt Statistiken zu Qualitätsmetriken.
-
-    Returns:
-        Statistiken: Seiten mit bbox_data, mit/ohne quality_metrics, Job-Status
+    Nur erreichbar, wenn in der Konfiguration DEBUG=True ist.
     """
+    if not settings.debug:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Debug-Endpoint nur bei DEBUG=True verfügbar",
+        )
     from sqlalchemy import func
 
     # Zähle Seiten mit bbox_data

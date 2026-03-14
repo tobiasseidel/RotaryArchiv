@@ -31,8 +31,11 @@ class Settings(BaseSettings):
     )
     pdf_extraction_dpi: int = 200  # DPI für PDF-zu-Bild-Konvertierung (niedriger = schneller, weniger Speicher)
     pdf_extraction_batch_size: int = 50  # Anzahl Seiten pro Batch für große PDFs
-    debug_save_bbox_crops: bool = True  # Speichere ausgeschnittene BBoxes für Debugging
+    debug_save_bbox_crops: bool = False  # Speichere ausgeschnittene BBoxes für Debugging (z.B. .env: DEBUG_SAVE_BBOX_CROPS=true)
     debug_bbox_crops_path: str = "./data/debug/bbox_crops"  # Pfad für Debug-BBox-Bilder
+    tesseract_enabled: bool = (
+        False  # Tesseract OCR einbeziehen (z.B. .env: TESSERACT_ENABLED=true)
+    )
     ollama_base_url: str = Field(
         default="http://localhost:11434",
         validation_alias=AliasChoices("ollama_base_url", "ollama_api_base"),
@@ -100,6 +103,14 @@ class Settings(BaseSettings):
     def fuseki_url(self) -> str:
         """Fuseki SPARQL Endpoint URL"""
         return f"http://{self.fuseki_host}:{self.fuseki_port}/{self.fuseki_dataset}"
+
+    @property
+    def ocr_engines_enabled(self) -> list[str]:
+        """Liste der für BBox-OCR aktivierten Engines (aus tesseract_enabled abgeleitet)."""
+        engines: list[str] = ["ollama_vision"]
+        if self.tesseract_enabled:
+            engines.insert(0, "tesseract")
+        return engines
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -217,7 +217,7 @@ async def process_bbox_ocr(
         }
     """
     if ocr_models is None:
-        ocr_models = ["tesseract", "ollama_vision"]
+        ocr_models = list(settings.ocr_engines_enabled)
 
     results = {}
     temp_files = []

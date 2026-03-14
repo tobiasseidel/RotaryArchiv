@@ -5005,7 +5005,7 @@
                                 const differences = bboxItem.differences || [];
 
                                 if (bboxItem.bbox_pixel && bboxItem.bbox_pixel.length >= 4) {
-                                    const pixel = bboxItem.bbox_pixel; // [x1, y1, x2, y2]
+                                    const pixel = bboxItem.bbox_pixel; // [x1, y1, x2, y2] (PIL/Backend: y=0 oben)
                                     // Stelle sicher, dass min < max
                                     const x_min_ocr = Math.min(pixel[0], pixel[2]);
                                     const x_max_ocr = Math.max(pixel[0], pixel[2]);
@@ -5016,10 +5016,9 @@
                                     x_min = x_min_ocr * scaleX;
                                     x_max = x_max_ocr * scaleX;
 
-                                    // Y-Achse invertieren UND skalieren: OCR hat y=0 unten, Leaflet hat y=0 oben
-                                    // Zuerst invertieren (bezogen auf OCR-Höhe), dann skalieren
-                                    y_min = (ocrImageHeight - y_max_ocr) * scaleY;  // Oben im Leaflet
-                                    y_max = (ocrImageHeight - y_min_ocr) * scaleY;  // Unten im Leaflet
+                                    // Y: Backend und Leaflet CRS.Simple haben y=0 oben, nur skalieren
+                                    y_min = y_min_ocr * scaleY;
+                                    y_max = y_max_ocr * scaleY;
                                 } else if (bboxItem.bbox && bboxItem.bbox.length >= 4) {
                                     // Fallback: Verwende relative Koordinaten
                                     const bbox = bboxItem.bbox; // [x_min_rel, y_min_rel, x_max_rel, y_max_rel]
@@ -5032,9 +5031,9 @@
                                     x_min = x_min_ocr * scaleX;
                                     x_max = x_max_ocr * scaleX;
 
-                                    // Y-Achse invertieren UND skalieren
-                                    y_min = (ocrImageHeight - y_max_ocr) * scaleY;
-                                    y_max = (ocrImageHeight - y_min_ocr) * scaleY;
+                                    // Y: wie bbox_pixel, y=0 oben, nur skalieren
+                                    y_min = y_min_ocr * scaleY;
+                                    y_max = y_max_ocr * scaleY;
                                 } else {
                                     return; // Keine gültigen Koordinaten
                                 }

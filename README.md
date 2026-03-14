@@ -105,21 +105,15 @@ alembic upgrade head
 
 7. **Beide Prozesse starten** (API-Server + Worker):
 
-**Terminal 1 - API-Server:**
-```powershell
-# Windows PowerShell:
-.\start-backend.ps1
+**Start (empfohlen):**
+- **Terminal 1:** `.\start-backend.ps1` – startet den API-Server
+- **Terminal 2:** `.\start-worker.ps1` – startet den OCR-Worker
 
-# Oder manuell:
+**Beenden:** In beiden Terminals mit **Ctrl+C** beenden. Optional: `.\stop-backend.ps1` und `.\stop-worker.ps1`, falls Prozesse ohne Fenster laufen oder der Port 8000 belegt bleibt.
+
+**Manueller Start (ohne Skripte):**
+```powershell
 uvicorn src.rotary_archiv.main:app --host 0.0.0.0 --port 8000
-```
-
-**Terminal 2 - Worker:**
-```powershell
-# Windows PowerShell:
-.\start-worker.ps1
-
-# Oder manuell:
 python -m src.rotary_archiv.ocr.worker
 ```
 
@@ -134,27 +128,45 @@ Der Server läuft dann auf:
 
 Siehe [Worker-Architektur](docs/worker-architektur.md) für Details zur getrennten Architektur.
 
+### Optionale Dienste (Docker)
+
+Für den lokalen Alltag reichen die PS1-Skripte und SQLite. **Docker wird aktuell nicht benötigt.**
+
+Falls du später PostgreSQL oder den Triple Store (Fuseki) nutzen möchtest:
+- `docker-compose up -d` startet Postgres und Fuseki (siehe `docker-compose.yml`).
+- In `.env` dann `POSTGRES_HOST=localhost` setzen und ggf. Fuseki-URL anpassen.
+
 ## Projekt-Struktur
 
 ```
 RotaryArchiv/
-├── src/rotary_archiv/    # Haupt-Code
-│   ├── api/              # FastAPI Endpoints
-│   │   ├── documents.py # Dokument-Upload & CRUD
-│   │   ├── ocr.py       # OCR-Job-Management
-│   │   └── pages.py     # Seiten-Extraktion
-│   ├── core/             # Business Logic, Models
-│   │   ├── models.py    # Datenbank-Models
-│   │   └── database.py  # DB-Setup
-│   ├── ocr/              # OCR Pipeline
-│   │   ├── ollama_vision.py  # Ollama Vision OCR
-│   │   ├── pipeline.py       # OCR-Pipeline
-│   │   └── job_processor.py  # Job-Verarbeitung
-│   └── utils/            # Utilities
-├── alembic/              # DB Migrations
-├── data/                 # Dokumente (nicht in Git)
-└── static/               # Frontend
-    └── index.html        # Minimales Frontend
+├── src/rotary_archiv/       # Haupt-Code
+│   ├── api/                 # FastAPI Endpoints
+│   │   ├── documents.py     # Dokument-Upload, CRUD, DocumentUnits
+│   │   ├── ocr.py           # OCR-Job-Management
+│   │   ├── pages.py         # Seiten-Extraktion
+│   │   ├── review.py       # BBox-Review, OCR-Sichtung
+│   │   ├── quality.py       # Qualitätsmetriken
+│   │   └── settings.py     # App-Einstellungen (OCR-Sichtung, Content-Analyse)
+│   ├── core/                # Business Logic, Models
+│   │   ├── models.py        # Datenbank-Models
+│   │   ├── database.py     # DB-Setup
+│   │   └── triplestore.py   # Triple-Store (vorerst ungenutzt)
+│   ├── ocr/                 # OCR Pipeline
+│   │   ├── ollama_vision.py # Ollama Vision OCR
+│   │   ├── tesseract_ocr.py # Tesseract OCR (optional, siehe Konfiguration)
+│   │   ├── pipeline.py      # OCR-Pipeline
+│   │   ├── bbox_ocr.py      # BBox-OCR (mehrere Engines)
+│   │   ├── job_processor.py # Job-Verarbeitung
+│   │   ├── worker.py        # Worker-Prozess
+│   │   ├── content_analysis_llm.py # Content-Analyse (Einheiten, Personen, Ort)
+│   │   └── llm_sight.py     # LLM-Sichtung für BBoxen
+│   ├── utils/               # Utilities (PDF, Bilder, BBox, Qualität)
+│   └── wikidata/            # Wikidata-Integration (vorerst ungenutzt)
+├── alembic/                 # DB Migrations
+├── data/                    # Dokumente (nicht in Git)
+└── static/                  # Frontend
+    └── index.html           # Minimales Frontend
 ```
 
 ## Workflow
@@ -208,6 +220,11 @@ alembic upgrade head
 
 ## Hinweise
 
+### Konfiguration (optional)
+
+- **Debug-Crops:** Ausgeschnittene BBox-Bilder werden standardmäßig nicht gespeichert. Zum Entwickeln/Debuggen in `.env` setzen: `DEBUG_SAVE_BBOX_CROPS=true`. Speicherort: `./data/debug/bbox_crops` (konfigurierbar über `DEBUG_BBOX_CROPS_PATH`).
+- **Tesseract:** Tesseract OCR ist optional und standardmäßig deaktiviert. Primäre OCR-Engine ist Ollama Vision. Zum Einschalten in `.env`: `TESSERACT_ENABLED=true`. Geplant: Weitere OCR-Engines (z.B. anderes Modell) konfigurierbar.
+
 ### Vorerst nicht verwendete Module
 
 Folgende Module sind im Code vorhanden, werden aber aktuell nicht verwendet:
@@ -218,6 +235,10 @@ Folgende Module sind im Code vorhanden, werden aber aktuell nicht verwendet:
 - `src/rotary_archiv/api/sparql.py` - SPARQL Endpoint
 
 Diese Module können später wieder aktiviert werden.
+
+### Geplante Erweiterungen (Ausblick)
+
+Inhaltliche Erschließung der erkannten Texte: Personen, Orte, Ereignisse katalogisieren und verknüpfen; Anbindung an Triple Store und Wikidata; optional Karten-Ansicht für historische Orte sowie Foto-Sammlung mit Anbindung an Wikimedia Commons. Diese Erweiterungen werden als eigene Schicht auf dem OCR-Kern aufgesetzt, ohne den Kern unnötig zu vergrößern.
 
 ## Lizenz
 
