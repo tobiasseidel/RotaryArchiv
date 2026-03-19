@@ -6,7 +6,7 @@ NOTE: Vorerst nicht verwendet - kann später wieder aktiviert werden
 
 from typing import Any
 
-from src.rotary_archiv.core.models import EntityType
+from src.rotary_archiv.content.entities import EntityType
 from src.rotary_archiv.wikidata.client import WikidataClient
 
 
@@ -37,20 +37,42 @@ class WikidataMatcher:
         # Suche in Wikidata
         results = self.client.search_entity(query, limit=20)
 
-        # Filtere und score Ergebnisse
+        # Score alle Ergebnisse, sortiere nach Score, nimm die besten (kein harter Mindest-Score)
         scored_results = []
         for result in results:
             if "error" in result:
                 continue
 
             score = self._calculate_match_score(name, entity_type, result, context)
+            result["match_score"] = score
+            scored_results.append(result)
 
-            if score > 0.3:  # Mindest-Score
-                result["match_score"] = score
-                scored_results.append(result)
-
-        # Sortiere nach Score
+        # Sortiere nach Score (beste zuerst)
         scored_results.sort(key=lambda x: x.get("match_score", 0), reverse=True)
+
+        # #region agent log
+        import json
+
+        _first = results[0] if results else {}
+        _log = {
+            "sessionId": "983982",
+            "location": "WikidataMatcher.find_matches",
+            "message": "after score filter",
+            "data": {
+                "name": name,
+                "rawCount": len(results),
+                "scoredCount": len(scored_results),
+                "firstLabel": _first.get("label") if "error" not in _first else None,
+            },
+            "timestamp": __import__("time").time() * 1000,
+            "hypothesisId": "B",
+        }
+        try:
+            with open("debug-983982.log", "a", encoding="utf-8") as _f:
+                _f.write(json.dumps(_log, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+        # #endregion
 
         return scored_results[:10]  # Top 10
 
@@ -97,7 +119,7 @@ class WikidataMatcher:
         type_keywords = {
             EntityType.PERSON: ["person", "mensch", "politiker", "schriftsteller"],
             EntityType.PLACE: ["stadt", "ort", "stadtteil", "place"],
-            EntityType.ORGANIZATION: ["organisation", "verein", "club", "gesellschaft"],
+            EntityType.ORGANISATION: ["organisation", "verein", "club", "gesellschaft"],
         }
 
         keywords = type_keywords.get(entity_type, [])

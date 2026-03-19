@@ -10,7 +10,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src.rotary_archiv.api import documents, ocr, pages, quality, review
+from src.rotary_archiv.api import (
+    documents,
+    erschliessung,
+    erschliessung_overview,
+    ocr,
+    pages,
+    quality,
+    review,
+)
 from src.rotary_archiv.api import settings as settings_api
 from src.rotary_archiv.config import settings
 
@@ -59,6 +67,8 @@ if data_dir.exists():
 app.include_router(documents.router)
 app.include_router(ocr.router)
 app.include_router(pages.router)
+app.include_router(erschliessung.router, prefix="/api/pages")
+app.include_router(erschliessung_overview.router)
 app.include_router(review.router)
 app.include_router(quality.router)
 app.include_router(settings_api.router)

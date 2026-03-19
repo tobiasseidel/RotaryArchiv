@@ -617,9 +617,12 @@
             position: relative;
         }
 
-        /* Fadenkreuz-Cursor für Box-Zeichnen */
+        /* Fadenkreuz-Cursor für Box-Zeichnen; Klicks gehen durch bestehende Boxen auf die Karte */
         #map.drawing-mode {
             cursor: crosshair;
+        }
+        #map.drawing-mode .leaflet-interactive {
+            pointer-events: none;
         }
 
         /* Edit Dialog Styles */
@@ -639,6 +642,18 @@
         .edit-dialog-overlay.active {
             display: flex;
         }
+        /* Speziell für "Ort auf Karte setzen": etwas transparenter, fast full-screen */
+        #placeMapDialogOverlay {
+            background: rgba(0, 0, 0, 0.25) !important;
+            z-index: 10020;
+        }
+        .erschliessung-box-tooltip {
+            max-width: 220px;
+            padding: 6px 10px;
+            font-size: 12px;
+            white-space: normal;
+        }
+        .erschliessung-tooltip strong { display: block; margin-bottom: 4px; }
 
         .edit-dialog {
             background: white;
@@ -945,6 +960,7 @@
             <li><a href="#" id="navOcrSight" onclick="showOcrSightSettingsView(); return false;">OCR-Sichtung</a></li>
             <li><a href="#" id="navContentAnalysis" onclick="showContentAnalysisSettingsView(); return false;">Content-Analyse</a></li>
             <li><a href="#" id="navComposedOverview" onclick="showComposedOverviewView(); return false;">Dokumenten-Übersicht</a></li>
+            <li><a href="#" id="navErschliessungOverview" onclick="showErschliessungOverviewView(); return false;">Erschließungs-Daten</a></li>
         </ul>
     </nav>
 
@@ -1040,6 +1056,31 @@
         </div>
         <div id="composedOverviewUnits">
             <p style="color: #666;">Dokument auswählen, um Einheiten anzuzeigen.</p>
+        </div>
+    </div>
+
+    <!-- Erschließungs-Daten (Listen-View) -->
+    <div id="erschliessungOverviewView" class="container" style="display: none;">
+        <h1>Erschließungs-Daten</h1>
+        <p class="subtitle">Personen, Seiten und Boxen durchsuchen</p>
+        <div style="margin-bottom: 16px; padding: 12px; background: #f5f5f5; border-radius: 6px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+            <label style="font-weight: 600;">Dokument:</label>
+            <select id="erschliessungOverviewDocument" style="padding: 6px 10px; min-width: 200px;" onchange="loadErschliessungOverviewPageFilter(); loadErschliessungOverviewContent();">
+                <option value="">Alle</option>
+            </select>
+            <label style="font-weight: 600;">Seite:</label>
+            <select id="erschliessungOverviewPage" style="padding: 6px 10px; min-width: 120px;" onchange="loadErschliessungOverviewContent();">
+                <option value="">Alle</option>
+            </select>
+        </div>
+        <div class="tabs" style="margin-bottom: 16px; border-bottom: 2px solid #ddd;">
+            <button type="button" class="tab-btn active" id="erschliessungOverviewTabPersonen" onclick="switchErschliessungOverviewTab('personen');">Personen</button>
+            <button type="button" class="tab-btn" id="erschliessungOverviewTabSeiten" onclick="switchErschliessungOverviewTab('seiten');">Seiten</button>
+            <button type="button" class="tab-btn" id="erschliessungOverviewTabBoxen" onclick="switchErschliessungOverviewTab('boxen');">Boxen</button>
+            <button type="button" class="tab-btn" id="erschliessungOverviewTabKarte" onclick="switchErschliessungOverviewTab('karte');">Karte</button>
+        </div>
+        <div id="erschliessungOverviewContent">
+            <p style="color: #666;">Lade...</p>
         </div>
     </div>
 
@@ -1666,6 +1707,9 @@
                     <button type="button" class="inspect-add-box-option" data-mode="manual">Manuelle Box</button>
                     <button type="button" class="inspect-add-box-option" data-mode="ignore_region">Ignore-Bereich</button>
                     <button type="button" class="inspect-add-box-option" data-mode="note">Notiz</button>
+                    <button type="button" class="inspect-add-box-option" data-mode="erschliessung_person" style="border-left: 3px solid #1565c0;">Erschließung – Person</button>
+                    <button type="button" class="inspect-add-box-option" data-mode="erschliessung_place" style="border-left: 3px solid #7b1fa2;">Erschließung – Ort</button>
+                    <button type="button" class="inspect-add-box-option" data-mode="erschliessung_beleg" style="border-left: 3px solid #2e7d32;">Erschließung – Beleg</button>
                 </div>
             </div>
             <button class="btn btn-secondary" id="toggleBoxPanelBtn" title="Box-Manager ein-/ausblenden" onclick="toggleBoxPanel()">Box-Manager</button>
@@ -1720,6 +1764,178 @@
             <div class="dialog-buttons">
                 <button type="button" class="btn btn-secondary" onclick="closeNoteDialog()">Abbrechen</button>
                 <button type="button" class="btn btn-primary" id="noteDialogSaveBtn" onclick="saveNoteDialog()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Erschließung Person: Name + Vorschläge (intern / Wikidata) -->
+    <div id="erschliessungPersonDialog" class="edit-dialog-overlay" style="display: none;" onclick="if (event.target === this) closeErschliessungPersonDialog();">
+        <div class="edit-dialog" onclick="event.stopPropagation()" style="max-width: 560px;">
+            <h2>Person zuordnen</h2>
+            <label for="erschliessungPersonName">Name</label>
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <input type="text" id="erschliessungPersonName" placeholder="Name eingeben..." style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                <button type="button" class="btn btn-primary" id="erschliessungPersonSearchBtn" onclick="searchErschliessungPersonSuggestions()">Suchen</button>
+            </div>
+            <p style="font-size: 12px; color: #666; margin-bottom: 8px;">Aus Ihrem Bestand:</p>
+            <div id="erschliessungPersonInternalList" style="min-height: 36px; margin-bottom: 16px; padding: 8px; background: #f5f5f5; border-radius: 4px;"></div>
+            <p style="font-size: 12px; color: #666; margin-bottom: 8px;">Aus Wikidata (zum Übernehmen):</p>
+            <div id="erschliessungPersonWikidataList" style="min-height: 36px; margin-bottom: 16px; padding: 8px; background: #e3f2fd; border-radius: 4px;"></div>
+            <div style="margin-bottom: 12px;">
+                <button type="button" class="btn btn-secondary" id="erschliessungPersonInternalOnlyBtn">Nur intern anlegen</button>
+            </div>
+            <div class="dialog-buttons">
+                <button type="button" class="btn btn-danger" onclick="deleteCurrentErschliessungsBox()" title="Diese Erschließungs-Box entfernen">Box löschen</button>
+                <button type="button" class="btn btn-secondary" onclick="closeErschliessungPersonDialog()">Schließen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Erschließung Ort: Name + Vorschläge (intern / Wikidata), Zur Karte -->
+    <div id="erschliessungPlaceDialog" class="edit-dialog-overlay" style="display: none;" onclick="if (event.target === this) closeErschliessungPlaceDialog();">
+        <div class="edit-dialog" onclick="event.stopPropagation()" style="max-width: 560px;">
+            <h2>Ort zuordnen</h2>
+            <label for="erschliessungPlaceName">Name</label>
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <input type="text" id="erschliessungPlaceName" placeholder="Ort eingeben..." style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                <button type="button" class="btn btn-primary" id="erschliessungPlaceSearchBtn" onclick="searchErschliessungPlaceSuggestions()">Suchen</button>
+            </div>
+            <p style="font-size: 12px; color: #666; margin-bottom: 8px;">Aus Ihrem Bestand:</p>
+            <div id="erschliessungPlaceInternalList" style="min-height: 36px; margin-bottom: 16px; padding: 8px; background: #f5f5f5; border-radius: 4px;"></div>
+            <p style="font-size: 12px; color: #666; margin-bottom: 8px;">Aus Wikidata:</p>
+            <div id="erschliessungPlaceWikidataList" style="min-height: 36px; margin-bottom: 16px; padding: 8px; background: #e8f5e9; border-radius: 4px;"></div>
+            <div style="margin-bottom: 12px;">
+                <button type="button" class="btn btn-secondary" id="erschliessungPlaceInternalOnlyBtn">Nur intern anlegen</button>
+            </div>
+            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">
+                <h3 style="font-size: 15px; margin: 0 0 8px 0; color: #333;">Inhaltliche Anbindung</h3>
+                <label for="erschliessungPlaceRelationProperty">Eigenschaft</label>
+                <select id="erschliessungPlaceRelationProperty" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px;"></select>
+                <label for="erschliessungPlaceRelationObjectName">Objekt (intern)</label>
+                <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                    <input type="text" id="erschliessungPlaceRelationObjectName" placeholder="Person/Event suchen..." style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    <button type="button" class="btn btn-secondary" id="erschliessungPlaceRelationSearchBtn">Suchen</button>
+                </div>
+                <div id="erschliessungPlaceRelationObjectList" style="min-height: 32px; margin-bottom: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px;"></div>
+                <div id="erschliessungPlaceRelationPreview" style="display:none; margin-bottom: 8px; padding: 8px; background: #f0f7ff; border-radius: 4px;"></div>
+                <div id="erschliessungPlaceRelationSourceInfo" style="font-size: 12px; color: #666; margin-bottom: 8px;"></div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button type="button" class="btn btn-primary" id="erschliessungPlaceRelationSaveBtn" disabled>Anbindung speichern</button>
+                    <button type="button" class="btn btn-secondary" id="erschliessungPlaceRelationDeleteBtn" disabled>Anbindung löschen</button>
+                </div>
+            </div>
+            <div class="dialog-buttons">
+                <button type="button" class="btn btn-primary" id="erschliessungPlaceToMapBtn" style="display: none;" onclick="openPlaceOnMapDialog()">Auf Karte setzen</button>
+                <button type="button" class="btn btn-danger" onclick="deleteCurrentErschliessungsBox()" title="Diese Erschließungs-Box entfernen">Box löschen</button>
+                <button type="button" class="btn btn-secondary" onclick="closeErschliessungPlaceDialog()">Schließen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Karte: Ort positionieren (WGS84, OSM + historische Layer) -->
+    <div id="placeMapDialogOverlay" class="edit-dialog-overlay" style="display: none;" onclick="if (event.target === this) closePlaceOnMapDialog();">
+        <div class="edit-dialog" onclick="event.stopPropagation()" style="max-width: 98vw; width: 96vw; height: calc(100vh - 48px); max-height: calc(100vh - 48px); overflow: hidden; display: flex; flex-direction: column; padding: 18px;">
+            <h2>Ort auf Karte setzen</h2>
+            <p id="placeMapDialogPlaceName" style="margin-bottom: 8px;"></p>
+            <div id="placeMapContainer" style="flex: 1; min-height: 0; width: 100%; border: 1px solid #ccc; border-radius: 4px;"></div>
+            <div class="dialog-buttons" style="margin-top: 12px;">
+                <button type="button" class="btn btn-primary" onclick="savePlaceCoordinates()">Position speichern</button>
+                <button type="button" class="btn btn-secondary" onclick="closePlaceOnMapDialog()">Abbrechen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Erschließung: Objekt bearbeiten (interne Daten + Wikidata-Sync) -->
+    <div id="erschliessungEditEntityDialog" class="edit-dialog-overlay" style="display: none;" onclick="if (event.target === this) closeErschliessungEditEntityDialog();">
+        <div class="edit-dialog" onclick="event.stopPropagation()" style="max-width: 560px;">
+            <h2>Objekt bearbeiten</h2>
+            <div id="erschliessungEditEntityImage" style="margin-bottom: 12px; min-height: 0;"></div>
+            <label for="erschliessungEditEntityName">Name</label>
+            <input type="text" id="erschliessungEditEntityName" placeholder="Name" style="width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px;">
+            <div id="erschliessungEditEntityClaimsList" style="margin-bottom: 12px;"></div>
+            <div id="erschliessungEditEntityPlaceActions" style="margin-bottom: 12px; display: none;">
+                <button type="button" class="btn btn-primary" onclick="openPlaceOnMapDialog()">Auf Karte setzen</button>
+            </div>
+            <div id="erschliessungEditEntityPlaceLinkPanel" style="margin-bottom: 12px; display: none; padding: 10px; background: #f8fbff; border: 1px solid #e3eefc; border-radius: 6px;">
+                <h3 style="font-size: 14px; margin: 0 0 8px 0; color: #333;">Inhaltliche Anbindung</h3>
+                <label for="erschliessungEditPlaceRelationProperty">Eigenschaft</label>
+                <select id="erschliessungEditPlaceRelationProperty" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px;"></select>
+                <label for="erschliessungEditPlaceRelationObjectName">Objekt (intern)</label>
+                <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                    <input type="text" id="erschliessungEditPlaceRelationObjectName" placeholder="Person/Event suchen..." style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    <button type="button" class="btn btn-secondary" id="erschliessungEditPlaceRelationSearchBtn">Suchen</button>
+                </div>
+                <div id="erschliessungEditPlaceRelationObjectList" style="min-height: 32px; margin-bottom: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px;"></div>
+                <div id="erschliessungEditPlaceRelationPreview" style="display:none; margin-bottom: 8px; padding: 8px; background: #f0f7ff; border-radius: 4px;"></div>
+                <div id="erschliessungEditPlaceRelationSourceInfo" style="font-size: 12px; color: #666; margin-bottom: 8px;"></div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button type="button" class="btn btn-primary" id="erschliessungEditPlaceRelationSaveBtn" disabled>Anbindung speichern</button>
+                    <button type="button" class="btn btn-secondary" id="erschliessungEditPlaceRelationDeleteBtn" disabled>Anbindung löschen</button>
+                </div>
+            </div>
+            <div style="margin-bottom: 12px;">
+                <button type="button" class="btn btn-primary" id="erschliessungEditEntitySyncBtn" onclick="openErschliessungSyncWikidataDialog()">Von Wikidata synchronisieren</button>
+            </div>
+            <div class="dialog-buttons">
+                <button type="button" class="btn btn-danger" onclick="deleteCurrentErschliessungsBox()" title="Diese Erschließungs-Box entfernen">Box löschen</button>
+                <button type="button" class="btn btn-secondary" onclick="closeErschliessungEditEntityDialog()">Schließen</button>
+                <button type="button" class="btn btn-primary" onclick="saveErschliessungEditEntity()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Von Wikidata synchronisieren (für verknüpfte Box) -->
+    <div id="erschliessungSyncWikidataDialog" class="edit-dialog-overlay" style="display: none;" onclick="if (event.target === this) closeErschliessungSyncWikidataDialog();">
+        <div class="edit-dialog" onclick="event.stopPropagation()" style="max-width: 560px; max-height: 90vh; display: flex; flex-direction: column;">
+            <h2>Von Wikidata synchronisieren</h2>
+            <p style="font-size: 13px; color: #666; margin-bottom: 8px;">Wikidata-ID der Person (z. B. Q123).</p>
+            <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <input type="text" id="erschliessungSyncWikidataId" placeholder="Q123" style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                <button type="button" class="btn btn-secondary" onclick="loadErschliessungSyncPreview()">Laden</button>
+            </div>
+            <div id="erschliessungSyncPreviewArea" style="flex: 1; overflow-y: auto; margin-bottom: 12px; min-height: 120px; display: none;">
+                <div id="erschliessungSyncEntityInfo" style="margin-bottom: 12px; padding: 10px; background: #e3f2fd; border-radius: 4px;"></div>
+                <p style="font-size: 12px; color: #666; margin-bottom: 6px;">Eigenschaften übernehmen (auswählen):</p>
+                <div id="erschliessungSyncPropertiesList" style="margin-bottom: 12px; padding: 8px; background: #f5f5f5; border-radius: 4px; max-height: 200px; overflow-y: auto;"></div>
+                <p style="font-size: 12px; color: #666; margin-bottom: 6px;">Verknüpfte Bilder:</p>
+                <div id="erschliessungSyncImagesList" style="padding: 8px; background: #f0f7ff; border-radius: 4px; min-height: 40px;"></div>
+            </div>
+            <div id="erschliessungSyncLoading" style="display: none; color: #666; margin-bottom: 12px;">Lade Wikidata-Daten…</div>
+            <div class="dialog-buttons">
+                <button type="button" class="btn btn-secondary" onclick="closeErschliessungSyncWikidataDialog()">Abbrechen</button>
+                <button type="button" class="btn btn-primary" id="erschliessungSyncSaveBtn" onclick="saveErschliessungSyncWikidata()" disabled>Synchronisieren</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Erschließung Beleg: Subjekt, Prädikat, Objekt -->
+    <div id="erschliessungBelegDialog" class="edit-dialog-overlay" style="display: none;" onclick="if (event.target === this) closeErschliessungBelegDialog();">
+        <div class="edit-dialog" onclick="event.stopPropagation()" style="max-width: 560px;">
+            <h2>Beleg – Aussage mit Referenz</h2>
+            <label for="erschliessungBelegSubject">Subjekt (z. B. Person-URI)</label>
+            <input type="text" id="erschliessungBelegSubject" placeholder="rotary:Person_..." style="width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px;">
+            <label for="erschliessungBelegPredicate">Prädikat (z. B. Mitglied von)</label>
+            <input type="text" id="erschliessungBelegPredicate" placeholder="rotary:mitgliedVon oder URI" style="width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px;">
+            <label for="erschliessungBelegObject">Objekt (z. B. Club-URI)</label>
+            <input type="text" id="erschliessungBelegObject" placeholder="rotary:Organisation_..." style="width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px;">
+            <div class="dialog-buttons">
+                <button type="button" class="btn btn-danger" onclick="deleteCurrentErschliessungsBox()" title="Diese Erschließungs-Box entfernen">Box löschen</button>
+                <button type="button" class="btn btn-secondary" onclick="closeErschliessungBelegDialog()">Abbrechen</button>
+                <button type="button" class="btn btn-primary" onclick="saveErschliessungBeleg()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Wikidata-Import: Objekt-Infos + Eigenschaften zur Auswahl -->
+    <div id="wikidataImportDialog" class="edit-dialog-overlay" style="display: none;" onclick="if (event.target === this) closeWikidataImportDialog();">
+        <div class="edit-dialog" onclick="event.stopPropagation()" style="max-width: 560px;">
+            <h2>Wikidata-Objekt übernehmen</h2>
+            <div id="wikidataImportEntityInfo" style="margin-bottom: 16px; padding: 12px; background: #e3f2fd; border-radius: 4px;"></div>
+            <p style="font-size: 12px; color: #666; margin-bottom: 8px;">Eigenschaften, die intern übernommen werden sollen:</p>
+            <div id="wikidataImportClaimsList" style="min-height: 24px; margin-bottom: 16px; padding: 8px; background: #f5f5f5; border-radius: 4px;"></div>
+            <div class="dialog-buttons">
+                <button type="button" class="btn btn-secondary" onclick="closeWikidataImportDialog()">Abbrechen</button>
+                <button type="button" class="btn btn-primary" onclick="saveWikidataImport()">Speichern</button>
             </div>
         </div>
     </div>
@@ -1786,8 +2002,15 @@
         let isAddingIgnoreRegion = false;
         let isAddingNoteBox = false;
         let isAddingManualBox = false;
+        let isAddingErschliessungPerson = false;
+        let isAddingErschliessungPlace = false;
+        let isAddingErschliessungBeleg = false;
         let isAddingPersistentMultibox = false;
         let pendingNoteBoxBounds = null;
+        let erschliessungsBoxen = [];
+        let currentErschliessungsBoxId = null;
+        let currentErschliessungsBoxPageId = null;
+        let currentWikidataImportId = null;
 
         // Quality-Metriken Config
         const qualityBBoxCache = {}; // BBox-Daten pro page_id nach Aufklappen
@@ -2161,6 +2384,8 @@
                 showContentAnalysisSettingsView();
             } else if (hash === '#/composed-overview') {
                 showComposedOverviewView();
+            } else if (hash === '#/erschliessung-overview') {
+                showErschliessungOverviewView();
             } else {
                 showImportView(); // Diese Funktion startet das Polling automatisch
             }
@@ -2275,10 +2500,12 @@
             const bboxListView = document.getElementById('bboxListView');
             const persistentRegionsView = document.getElementById('persistentRegionsView');
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
+            const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
 
             if (importView) importView.style.display = 'block';
             if (reviewView) reviewView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
+            if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'none';
             if (pageInspectView) {
                 pageInspectView.style.display = 'none';
                 pageInspectView.classList.remove('active');
@@ -2306,6 +2533,7 @@
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
             if (navOcrSight) navOcrSight.classList.remove('active');
             if (navComposedOverview) navComposedOverview.classList.remove('active');
+            if (document.getElementById('navErschliessungOverview')) document.getElementById('navErschliessungOverview').classList.remove('active');
 
             // Starte Polling für Queue (falls noch nicht gestartet)
             if (!pollInterval) {
@@ -2326,10 +2554,12 @@
             const persistentRegionsView = document.getElementById('persistentRegionsView');
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
+            const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'block';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
+            if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'none';
             if (pageInspectView) {
                 pageInspectView.style.display = 'none';
                 pageInspectView.classList.remove('active');
@@ -2357,6 +2587,7 @@
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
             if (navOcrSight) navOcrSight.classList.remove('active');
             if (navComposedOverview) navComposedOverview.classList.remove('active');
+            if (document.getElementById('navErschliessungOverview')) document.getElementById('navErschliessungOverview').classList.remove('active');
 
             // Stoppe Queue-Polling wenn Review-View angezeigt wird
             if (pollInterval) {
@@ -2378,6 +2609,7 @@
             const persistentRegionsView = document.getElementById('persistentRegionsView');
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
+            const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -2392,6 +2624,7 @@
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
+            if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -2408,6 +2641,7 @@
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
             if (navOcrSight) navOcrSight.classList.remove('active');
             if (document.getElementById('navComposedOverview')) document.getElementById('navComposedOverview').classList.remove('active');
+            if (document.getElementById('navErschliessungOverview')) document.getElementById('navErschliessungOverview').classList.remove('active');
 
             // Stoppe Queue-Polling wenn Quality-View angezeigt wird
             if (pollInterval) {
@@ -2444,6 +2678,7 @@
             const persistentRegionsView = document.getElementById('persistentRegionsView');
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
+            const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -2458,6 +2693,7 @@
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
+            if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -2474,6 +2710,7 @@
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
             if (navOcrSight) navOcrSight.classList.remove('active');
             if (document.getElementById('navComposedOverview')) document.getElementById('navComposedOverview').classList.remove('active');
+            if (document.getElementById('navErschliessungOverview')) document.getElementById('navErschliessungOverview').classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -2515,6 +2752,7 @@
             const persistentRegionsView = document.getElementById('persistentRegionsView');
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
+            const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -2529,6 +2767,7 @@
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
+            if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -2545,6 +2784,7 @@
             if (navPersistentRegions) navPersistentRegions.classList.remove('active');
             if (navOcrSight) navOcrSight.classList.remove('active');
             if (document.getElementById('navComposedOverview')) document.getElementById('navComposedOverview').classList.remove('active');
+            if (document.getElementById('navErschliessungOverview')) document.getElementById('navErschliessungOverview').classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -2571,6 +2811,7 @@
             const persistentRegionsView = document.getElementById('persistentRegionsView');
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
+            const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -2585,6 +2826,7 @@
             if (persistentRegionsView) persistentRegionsView.style.display = 'block';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
+            if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -2601,6 +2843,7 @@
             if (navPersistentRegions) navPersistentRegions.classList.add('active');
             if (navOcrSight) navOcrSight.classList.remove('active');
             if (document.getElementById('navComposedOverview')) document.getElementById('navComposedOverview').classList.remove('active');
+            if (document.getElementById('navErschliessungOverview')) document.getElementById('navErschliessungOverview').classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -2622,6 +2865,7 @@
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
             const contentAnalysisSettingsView = document.getElementById('contentAnalysisSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
+            const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -2637,6 +2881,7 @@
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'block';
             if (contentAnalysisSettingsView) contentAnalysisSettingsView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
+            if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -2654,6 +2899,7 @@
             if (navOcrSight) navOcrSight.classList.add('active');
             if (document.getElementById('navContentAnalysis')) document.getElementById('navContentAnalysis').classList.remove('active');
             if (document.getElementById('navComposedOverview')) document.getElementById('navComposedOverview').classList.remove('active');
+            if (document.getElementById('navErschliessungOverview')) document.getElementById('navErschliessungOverview').classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -2675,6 +2921,7 @@
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
             const contentAnalysisSettingsView = document.getElementById('contentAnalysisSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
+            const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -2690,6 +2937,7 @@
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
             if (contentAnalysisSettingsView) contentAnalysisSettingsView.style.display = 'block';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
+            if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'none';
 
             const navImport = document.getElementById('navImport');
             const navReview = document.getElementById('navReview');
@@ -2709,6 +2957,7 @@
             if (navOcrSight) navOcrSight.classList.remove('active');
             if (navContentAnalysis) navContentAnalysis.classList.add('active');
             if (navComposedOverview) navComposedOverview.classList.remove('active');
+            if (document.getElementById('navErschliessungOverview')) document.getElementById('navErschliessungOverview').classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -2730,6 +2979,7 @@
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
             const contentAnalysisSettingsView = document.getElementById('contentAnalysisSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
+            const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -2744,6 +2994,7 @@
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
             if (contentAnalysisSettingsView) contentAnalysisSettingsView.style.display = 'none';
+            if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'block';
 
             const navImport = document.getElementById('navImport');
@@ -2764,6 +3015,7 @@
             if (navOcrSight) navOcrSight.classList.remove('active');
             if (navContentAnalysis) navContentAnalysis.classList.remove('active');
             if (navComposedOverview) navComposedOverview.classList.add('active');
+            if (document.getElementById('navErschliessungOverview')) document.getElementById('navErschliessungOverview').classList.remove('active');
 
             if (pollInterval) {
                 clearInterval(pollInterval);
@@ -2772,6 +3024,341 @@
             window.location.hash = '#/composed-overview';
             loadComposedOverviewDocuments();
             loadComposedOverview();
+        }
+
+        var currentErschliessungOverviewTab = 'personen';
+        function showErschliessungOverviewView() {
+            const importView = document.getElementById('importView');
+            const reviewView = document.getElementById('reviewView');
+            const pageInspectView = document.getElementById('pageInspectView');
+            const qualityView = document.getElementById('qualityView');
+            const deskewView = document.getElementById('deskewView');
+            const bboxListView = document.getElementById('bboxListView');
+            const persistentRegionsView = document.getElementById('persistentRegionsView');
+            const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
+            const contentAnalysisSettingsView = document.getElementById('contentAnalysisSettingsView');
+            const composedOverviewView = document.getElementById('composedOverviewView');
+            const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
+
+            if (importView) importView.style.display = 'none';
+            if (reviewView) reviewView.style.display = 'none';
+            if (pageInspectView) {
+                pageInspectView.style.display = 'none';
+                pageInspectView.classList.remove('active');
+                restoreHeaderFromInspect();
+            }
+            if (qualityView) qualityView.style.display = 'none';
+            if (deskewView) deskewView.style.display = 'none';
+            if (bboxListView) bboxListView.style.display = 'none';
+            if (persistentRegionsView) persistentRegionsView.style.display = 'none';
+            if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
+            if (contentAnalysisSettingsView) contentAnalysisSettingsView.style.display = 'none';
+            if (composedOverviewView) composedOverviewView.style.display = 'none';
+            if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'block';
+
+            document.querySelectorAll('.nav-menu a').forEach(function(a) { a.classList.remove('active'); });
+            const navErschliessung = document.getElementById('navErschliessungOverview');
+            if (navErschliessung) navErschliessung.classList.add('active');
+
+            window.location.hash = '#/erschliessung-overview';
+            loadErschliessungOverviewDocuments();
+            loadErschliessungOverviewPageFilter();
+            loadErschliessungOverviewContent();
+        }
+        function switchErschliessungOverviewTab(tab) {
+            currentErschliessungOverviewTab = tab;
+            document.querySelectorAll('#erschliessungOverviewView .tab-btn').forEach(function(btn) { btn.classList.remove('active'); });
+            var tabId = tab === 'personen' ? 'Personen' : tab === 'seiten' ? 'Seiten' : tab === 'boxen' ? 'Boxen' : 'Karte';
+            var el = document.getElementById('erschliessungOverviewTab' + tabId);
+            if (el) el.classList.add('active');
+            loadErschliessungOverviewContent();
+        }
+        async function loadErschliessungOverviewDocuments() {
+            const sel = document.getElementById('erschliessungOverviewDocument');
+            if (!sel) return;
+            try {
+                const r = await fetch(API_BASE + '/api/documents/summary');
+                if (!r.ok) throw new Error('Dokumente fehlen');
+                const docs = await r.json();
+                const cur = sel.value;
+                sel.innerHTML = '<option value="">Alle</option>';
+                docs.forEach(function(d) {
+                    var opt = document.createElement('option');
+                    opt.value = d.id;
+                    opt.textContent = (d.filename || 'Dokument ' + d.id) + (d.id ? ' (ID ' + d.id + ')' : '');
+                    sel.appendChild(opt);
+                });
+                if (cur) sel.value = cur;
+            } catch (e) {
+                sel.innerHTML = '<option value="">Fehler</option>';
+            }
+        }
+        async function loadErschliessungOverviewPageFilter() {
+            const docSel = document.getElementById('erschliessungOverviewDocument');
+            const pageSel = document.getElementById('erschliessungOverviewPage');
+            if (!pageSel) return;
+            var docId = docSel ? docSel.value : '';
+            pageSel.innerHTML = '<option value="">Alle</option>';
+            if (!docId) return;
+            try {
+                var url = API_BASE + '/api/erschliessung-overview/pages?document_id=' + encodeURIComponent(docId);
+                const r = await fetch(url);
+                if (!r.ok) return;
+                const data = await r.json();
+                (data.pages || []).forEach(function(p) {
+                    var opt = document.createElement('option');
+                    opt.value = p.page_id;
+                    opt.textContent = 'Seite ' + (p.page_number != null ? p.page_number : p.page_id) + ' (' + (p.box_count || 0) + ' Boxen)';
+                    pageSel.appendChild(opt);
+                });
+            } catch (e) {}
+        }
+        var erschliessungOverviewMap = null;
+        /** SLUB WMS dresden_1911 NativeExtent EPSG:3857 → für Auto-Zoom beim Umschalten */
+        var DRESDEN_1911_LATLNG_BOUNDS = L.latLngBounds(
+            L.CRS.EPSG3857.unproject(L.point(1519940, 6620330)),
+            L.CRS.EPSG3857.unproject(L.point(1539810, 6640260))
+        );
+        function fitMapToDresden1911IfNeeded(map) {
+            var c = map.getCenter();
+            var z = map.getZoom();
+            if (!DRESDEN_1911_LATLNG_BOUNDS.contains(c) || z < 12) {
+                map.fitBounds(DRESDEN_1911_LATLNG_BOUNDS, { padding: [28, 28], maxZoom: 17, animate: true });
+            }
+        }
+        /** SLUB WMS Loschwitz NativeExtent EPSG:3857 (laut GetCapabilities) → für Auto-Zoom */
+        var LOSCHWITZ_LATLNG_BOUNDS = L.latLngBounds(
+            L.CRS.EPSG3857.unproject(L.point(1.53535e+06, 6.62766e+06)),
+            L.CRS.EPSG3857.unproject(L.point(1.54029e+06, 6.63275e+06))
+        );
+        function fitMapToLoschwitzIfNeeded(map) {
+            var c = map.getCenter();
+            var z = map.getZoom();
+            if (!LOSCHWITZ_LATLNG_BOUNDS.contains(c) || z < 12) {
+                map.fitBounds(LOSCHWITZ_LATLNG_BOUNDS, { padding: [24, 24], maxZoom: 18, animate: true });
+            }
+        }
+        function createDresden1911WmsLayer() {
+            var wmsBase = 'https://wms.kartenforum.slub-dresden.de/map/dresden_1911';
+            var extent = 20037508.342789244;
+            /* Leaflet 1.9: getTileUrl in options wird nicht verwendet (nur Prototype.template(_url)).
+               Daher müssen wir getTileUrl auf der Instanz überschreiben. */
+            var layer = L.tileLayer(wmsBase, {
+                attribution: '&copy; SLUB Dresden / Kartenforum',
+                tileSize: 256,
+                maxZoom: 18,
+                minZoom: 0
+            });
+            layer.getTileUrl = function (coords) {
+                var z = coords.z, x = coords.x, y = coords.y;
+                var n = Math.pow(2, z);
+                var range = extent * 2;
+                var minx = (x / n) * range - extent;
+                var maxx = ((x + 1) / n) * range - extent;
+                var maxy = extent - (y / n) * range;
+                var miny = extent - ((y + 1) / n) * range;
+                var bbox = minx + ',' + miny + ',' + maxx + ',' + maxy;
+                var url = wmsBase + '?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=dresden_1911&CRS=EPSG%3A3857&BBOX=' + bbox + '&WIDTH=256&HEIGHT=256&FORMAT=image%2Fpng&TRANSPARENT=TRUE';
+                return url;
+            };
+            return layer;
+        }
+        function createLoschwitzWmsLayer() {
+            var wmsBase = 'https://wms.kartenforum.slub-dresden.de/map/10010546';
+            var extent = 20037508.342789244;
+            // Leaflet 1.9: getTileUrl in options wird nicht verwendet → Instanz überschreiben.
+            var layer = L.tileLayer(wmsBase, {
+                attribution: '&copy; SLUB Dresden / Kartenforum',
+                tileSize: 256,
+                maxZoom: 18,
+                minZoom: 0
+            });
+            layer.getTileUrl = function (coords) {
+                var z = coords.z, x = coords.x, y = coords.y;
+                var n = Math.pow(2, z);
+                var range = extent * 2;
+                var minx = (x / n) * range - extent;
+                var maxx = ((x + 1) / n) * range - extent;
+                var maxy = extent - (y / n) * range;
+                var miny = extent - ((y + 1) / n) * range;
+                var bbox = minx + ',' + miny + ',' + maxx + ',' + maxy;
+                return wmsBase + '?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=10010546&CRS=EPSG%3A3857&BBOX=' + bbox + '&WIDTH=256&HEIGHT=256&FORMAT=image%2Fpng&TRANSPARENT=TRUE';
+            };
+            return layer;
+        }
+        async function loadErschliessungOverviewContent() {
+            const container = document.getElementById('erschliessungOverviewContent');
+            if (!container) return;
+            if (erschliessungOverviewMap) {
+                erschliessungOverviewMap.remove();
+                erschliessungOverviewMap = null;
+            }
+            const docSel = document.getElementById('erschliessungOverviewDocument');
+            const pageSel = document.getElementById('erschliessungOverviewPage');
+            var docId = docSel ? docSel.value : '';
+            var pageId = pageSel ? pageSel.value : '';
+            var params = [];
+            if (docId) params.push('document_id=' + encodeURIComponent(docId));
+            if (pageId) params.push('page_id=' + encodeURIComponent(pageId));
+            var qs = params.length ? '?' + params.join('&') : '';
+
+            container.innerHTML = '<p style="color:#666;">Lade...</p>';
+            try {
+                if (currentErschliessungOverviewTab === 'personen') {
+                    var r = await fetch(API_BASE + '/api/erschliessung-overview/entities' + qs);
+                    if (!r.ok) throw new Error('Entities fehlen');
+                    var data = await r.json();
+                    renderErschliessungOverviewPersonen(container, data.entities || []);
+                } else if (currentErschliessungOverviewTab === 'seiten') {
+                    var r = await fetch(API_BASE + '/api/erschliessung-overview/pages' + (docId ? '?document_id=' + encodeURIComponent(docId) : ''));
+                    if (!r.ok) throw new Error('Seiten fehlen');
+                    var data = await r.json();
+                    renderErschliessungOverviewSeiten(container, data.pages || []);
+                } else if (currentErschliessungOverviewTab === 'karte') {
+                    var r = await fetch(API_BASE + '/api/erschliessung-overview/places' + qs);
+                    if (!r.ok) throw new Error('Orte fehlen');
+                    var data = await r.json();
+                    renderErschliessungOverviewKarte(container, data.places || []);
+                } else {
+                    var r = await fetch(API_BASE + '/api/erschliessung-overview/boxes' + qs);
+                    if (!r.ok) throw new Error('Boxen fehlen');
+                    var data = await r.json();
+                    renderErschliessungOverviewBoxen(container, data.boxes || []);
+                }
+            } catch (e) {
+                container.innerHTML = '<p style="color:#c62828;">Fehler: ' + escapeHtml(e.message) + '</p>';
+            }
+        }
+        function renderErschliessungOverviewKarte(container, places) {
+            if (places.length === 0) {
+                container.innerHTML = '<p style="color:#666;">Keine Orte mit Koordinaten. Setzen Sie Orte über „Erschließung – Ort“ und „Auf Karte setzen“.</p>';
+                return;
+            }
+            container.innerHTML = '<div id="erschliessungOverviewMapContainer" style="height:500px; width:100%; border:1px solid #ccc; border-radius:4px;"></div>';
+            var mapEl = document.getElementById('erschliessungOverviewMapContainer');
+            if (!mapEl || typeof L === 'undefined') {
+                container.innerHTML = '<p style="color:#666;">Keine Karte (Leaflet nicht geladen?).</p>';
+                return;
+            }
+            var center = [51.05, 13.74];
+            var zoom = 11;
+            if (places.length === 1) {
+                center = [places[0].lat, places[0].lon];
+                zoom = 14;
+            }
+            erschliessungOverviewMap = L.map('erschliessungOverviewMapContainer', { crs: L.CRS.EPSG3857 });
+            if (places.length > 1) {
+                var bounds = L.latLngBounds(places.map(function(p) { return [p.lat, p.lon]; }));
+                erschliessungOverviewMap.fitBounds(bounds, { padding: [20, 20] });
+            } else {
+                erschliessungOverviewMap.setView(center, zoom);
+            }
+            var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' });
+            var dresden1911Layer = createDresden1911WmsLayer();
+            var loschwitzLayer = createLoschwitzWmsLayer();
+            osmLayer.addTo(erschliessungOverviewMap);
+            var layerControl = L.control.layers(
+                { 'OpenStreetMap': osmLayer, 'Dresden 1911 (SLUB)': dresden1911Layer, 'Loschwitz (SLUB)': loschwitzLayer },
+                {},
+                { collapsed: true }
+            ).addTo(erschliessungOverviewMap);
+            erschliessungOverviewMap.on('baselayerchange', function (e) {
+                if (e.layer === dresden1911Layer) fitMapToDresden1911IfNeeded(erschliessungOverviewMap);
+                if (e.layer === loschwitzLayer) fitMapToLoschwitzIfNeeded(erschliessungOverviewMap);
+            });
+            places.forEach(function(p) {
+                var popupHtml = '<strong>' + escapeHtml(p.name || p.place_id || '') + '</strong>';
+                if (p.main_image_url) popupHtml += '<br><img src="' + escapeHtml(p.main_image_url) + '" alt="" style="max-width:120px; max-height:80px; margin-top:6px;">';
+                if (p.page_ids && p.page_ids.length) popupHtml += '<br>' + p.page_ids.slice(0, 3).map(function(pid) { return '<a href="#/page/' + pid + '/inspect">Seite ' + pid + '</a>'; }).join(' ');
+                var marker = L.marker([p.lat, p.lon]).addTo(erschliessungOverviewMap);
+                marker.bindPopup(popupHtml);
+            });
+        }
+        function renderErschliessungOverviewPersonen(container, entities) {
+            if (!entities.length) {
+                container.innerHTML = '<p style="color:#666;">Keine Personen gefunden.</p>';
+                return;
+            }
+            var html = '<div style="display:flex; flex-wrap:wrap; gap:16px;">';
+            entities.forEach(function(e) {
+                var img = (e.main_image_url && e.main_image_url.trim()) ? '<img src="' + escapeHtml(e.main_image_url) + '" alt="" style="width:64px; height:64px; object-fit:cover; border-radius:8px;">' : '<div style="width:64px; height:64px; background:#e0e0e0; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#666; font-size:11px;">?</div>';
+                var name = escapeHtml(e.name || e.entity_uri || '');
+                var pageLinks = (e.page_ids || []).slice(0, 3).map(function(pid) {
+                    return '<a href="#/page/' + pid + '/inspect" style="font-size:12px; margin-right:6px;">Seite ' + pid + '</a>';
+                }).join('');
+                html += '<div class="erschliessung-overview-person-card" data-entity-id="' + escapeHtml(e.entity_id || '') + '" style="border:1px solid #ddd; border-radius:8px; padding:12px; min-width:200px; max-width:280px; cursor:pointer; background:#fff;">';
+                html += '<div style="display:flex; gap:12px; align-items:flex-start;">';
+                html += '<div>' + img + '</div>';
+                html += '<div style="flex:1; min-width:0;"><strong>' + name + '</strong><div style="margin-top:4px;">' + pageLinks + '</div></div>';
+                html += '</div>';
+                html += '<div class="erschliessung-overview-person-details" style="display:none; margin-top:12px; padding-top:12px; border-top:1px solid #eee; font-size:13px;"></div>';
+                html += '</div>';
+            });
+            html += '</div>';
+            container.innerHTML = html;
+            container.querySelectorAll('.erschliessung-overview-person-card').forEach(function(card) {
+                card.addEventListener('click', function(ev) {
+                    if (ev.target.tagName === 'A') return;
+                    var detailsEl = card.querySelector('.erschliessung-overview-person-details');
+                    if (!detailsEl) return;
+                    if (detailsEl.style.display !== 'none') {
+                        detailsEl.style.display = 'none';
+                        return;
+                    }
+                    var entityId = card.getAttribute('data-entity-id');
+                    if (!entityId) return;
+                    detailsEl.style.display = 'block';
+                    if (!detailsEl.dataset.loaded) {
+                        detailsEl.innerHTML = 'Lade...';
+                        fetch(API_BASE + '/api/erschliessung-overview/entities/' + encodeURIComponent(entityId))
+                            .then(function(r) { return r.ok ? r.json() : null; })
+                            .then(function(d) {
+                                if (!d) { detailsEl.innerHTML = 'Fehler beim Laden'; return; }
+                                detailsEl.dataset.loaded = '1';
+                                var cv = d.claim_values || {};
+                                var cvl = d.claim_value_labels || {};
+                                var pl = d.property_labels || {};
+                                var parts = [];
+                                Object.keys(cv).forEach(function(propId) {
+                                    var vals = cv[propId];
+                                    if (!Array.isArray(vals)) vals = vals != null ? [vals] : [];
+                                    var label = (pl[propId] || propId);
+                                    vals.forEach(function(v) {
+                                        var display = (cvl[propId] && cvl[propId][v]) ? cvl[propId][v] : v;
+                                        parts.push('<div style="margin-bottom:4px;"><strong>' + escapeHtml(label) + '</strong>: ' + escapeHtml(display) + '</div>');
+                                    });
+                                });
+                                detailsEl.innerHTML = parts.length ? parts.join('') : '<span style="color:#888;">Keine Eigenschaften</span>';
+                            })
+                            .catch(function() { detailsEl.innerHTML = 'Fehler'; });
+                    }
+                });
+            });
+        }
+        function renderErschliessungOverviewSeiten(container, pages) {
+            if (!pages.length) {
+                container.innerHTML = '<p style="color:#666;">Keine Seiten mit Erschließungs-Boxen.</p>';
+                return;
+            }
+            var html = '<table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#f5f5f5;"><th style="padding:8px; text-align:left;">Dokument</th><th style="padding:8px;">Seite</th><th style="padding:8px;">Boxen</th><th style="padding:8px;"></th></tr></thead><tbody>';
+            pages.forEach(function(p) {
+                html += '<tr><td style="padding:8px;">' + escapeHtml(p.document_title || '') + '</td><td style="padding:8px;">' + (p.page_number != null ? p.page_number : p.page_id) + '</td><td style="padding:8px;">' + (p.box_count || 0) + '</td><td style="padding:8px;"><a href="#/page/' + p.page_id + '/inspect">Öffnen</a></td></tr>';
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+        function renderErschliessungOverviewBoxen(container, boxes) {
+            if (!boxes.length) {
+                container.innerHTML = '<p style="color:#666;">Keine Boxen gefunden.</p>';
+                return;
+            }
+            var html = '<table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#f5f5f5;"><th style="padding:8px;">Seite</th><th style="padding:8px;">Dokument</th><th style="padding:8px;">Typ</th><th style="padding:8px;">Name / Person</th><th style="padding:8px;"></th></tr></thead><tbody>';
+            boxes.forEach(function(b) {
+                var img = (b.main_image_url && b.main_image_url.trim()) ? '<img src="' + escapeHtml(b.main_image_url) + '" alt="" style="width:32px; height:32px; object-fit:cover; border-radius:4px; vertical-align:middle;">' : '';
+                html += '<tr><td style="padding:8px;">' + b.page_id + '</td><td style="padding:8px;">' + escapeHtml(b.document_title || '') + '</td><td style="padding:8px;">' + escapeHtml(b.box_type || '') + '</td><td style="padding:8px;">' + img + ' ' + escapeHtml(b.name || b.entity_uri || '') + '</td><td style="padding:8px;"><a href="#/page/' + b.page_id + '/inspect">Seite</a></td></tr>';
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
         }
 
         async function loadComposedOverviewDocuments() {
@@ -4815,6 +5402,9 @@
                 isAddingIgnoreRegion = false;
                 isAddingNoteBox = false;
                 isAddingManualBox = false;
+                isAddingErschliessungPerson = false;
+                isAddingErschliessungPlace = false;
+                isAddingErschliessungBeleg = false;
                 isAddingPersistentMultibox = false;
                 pendingNoteBoxBounds = null;
                 document.getElementById('inspectMultiboxActionsPanel').style.display = 'none';
@@ -4852,6 +5442,7 @@
                 }
 
                 const data = await response.json();
+                window._lastInspectData = data;
                 const deskewText = data.deskew_angle !== null && data.deskew_angle !== undefined
                     ? `Winkel: ${data.deskew_angle.toFixed(2)}°`
                     : 'kein Deskew';
@@ -5038,11 +5629,13 @@
                                     return; // Keine gültigen Koordinaten
                                 }
 
-                                // Mit CRS.Simple: [y, x] Koordinaten
-                                // y geht von oben (0) nach unten (image_height)
+                                // Mit CRS.Simple: [y, x]; y-Achse zeigt nach OBEN. Backend/PIL: y=0 oben.
+                                // Umrechnung: leaflet_y = mapImageHeight - image_y
+                                const leafletYTop = mapImageHeight - y_max;   // Bild-Oben (kleines y) -> Karten-Oben (großes y)
+                                const leafletYBottom = mapImageHeight - y_min;
                                 const rectBounds = [
-                                    [y_min, x_min],  // Obere linke Ecke [y, x]
-                                    [y_max, x_max]   // Untere rechte Ecke [y, x]
+                                    [leafletYTop, x_min],
+                                    [leafletYBottom, x_max]
                                 ];
 
                                 const boxType = bboxItem.box_type || 'ocr';
@@ -5163,8 +5756,8 @@
                                 rect.bindPopup(popupContent, popupOpts);
                                 rect.addTo(map);
 
-                                // Erstelle Text-Overlay für OCR-Text mit Leaflet Marker
-                                const centerY = (y_min + y_max) / 2;
+                                // Erstelle Text-Overlay für OCR-Text mit Leaflet Marker (gleiche Leaflet-Y-Konvention wie rectBounds)
+                                const centerY = (leafletYTop + leafletYBottom) / 2;
                                 const centerX = (x_min + x_max) / 2;
 
                                 // Text-Overlay: bei persistenter Multibox nie; bei Notiz-Boxen nie (nur leichte Transparenz), sonst immer
@@ -5338,6 +5931,8 @@
                     else if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
                     else if (isAddingNoteBox) toggleAddNoteBoxMode();
                     else if (isAddingManualBox) toggleAddManualBoxMode();
+                    else if (isAddingErschliessungPerson) toggleErschliessungPersonMode();
+                    else if (isAddingErschliessungBeleg) toggleErschliessungBelegMode();
                     else {
                         addBoxDropdown.style.display = addBoxDropdown.style.display === 'none' ? 'block' : 'none';
                     }
@@ -5360,9 +5955,19 @@
                             toggleAddIgnoreRegionMode();
                         } else if (mode === 'note') {
                             toggleAddNoteBoxMode();
+                        } else if (mode === 'erschliessung_person') {
+                            toggleErschliessungPersonMode();
+                        } else if (mode === 'erschliessung_place') {
+                            toggleErschliessungPlaceMode();
+                        } else if (mode === 'erschliessung_beleg') {
+                            toggleErschliessungBelegMode();
                         }
                     };
                 });
+
+                // Erschließungs-Boxen laden und auf der Karte zeichnen
+                await loadErschliessungsBoxen(data.page_id);
+                drawErschliessungsBoxenOnMap();
 
                 // Initialisiere Box-Zeichnen-Modus
                 setupBBoxDrawing();
@@ -7152,6 +7757,9 @@
             if (isAddingPersistentMultibox) toggleAddPersistentMultiboxMode();
             if (isAddingManualBox) toggleAddManualBoxMode();
             if (isAddingNoteBox) toggleAddNoteBoxMode();
+            if (isAddingErschliessungPerson) { isAddingErschliessungPerson = false; updateErschliessungModeUI(); }
+            if (isAddingErschliessungPlace) { isAddingErschliessungPlace = false; updateErschliessungModeUI(); }
+            if (isAddingErschliessungBeleg) { isAddingErschliessungBeleg = false; updateErschliessungModeUI(); }
 
             isAddingIgnoreRegion = !isAddingIgnoreRegion;
             const btn = document.getElementById('addBoxMainBtn');
@@ -7198,6 +7806,9 @@
             if (isAddingPersistentMultibox) toggleAddPersistentMultiboxMode();
             if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
             if (isAddingManualBox) toggleAddManualBoxMode();
+            if (isAddingErschliessungPerson) { isAddingErschliessungPerson = false; updateErschliessungModeUI(); }
+            if (isAddingErschliessungPlace) { isAddingErschliessungPlace = false; updateErschliessungModeUI(); }
+            if (isAddingErschliessungBeleg) { isAddingErschliessungBeleg = false; updateErschliessungModeUI(); }
 
             isAddingNoteBox = !isAddingNoteBox;
             const btn = document.getElementById('addBoxMainBtn');
@@ -7245,6 +7856,9 @@
             if (isAddingPersistentMultibox) toggleAddPersistentMultiboxMode();
             if (isAddingIgnoreRegion) toggleAddIgnoreRegionMode();
             if (isAddingNoteBox) toggleAddNoteBoxMode();
+            if (isAddingErschliessungPerson) { isAddingErschliessungPerson = false; updateErschliessungModeUI(); }
+            if (isAddingErschliessungPlace) { isAddingErschliessungPlace = false; updateErschliessungModeUI(); }
+            if (isAddingErschliessungBeleg) { isAddingErschliessungBeleg = false; updateErschliessungModeUI(); }
 
             isAddingManualBox = !isAddingManualBox;
             const btn = document.getElementById('addBoxMainBtn');
@@ -7956,7 +8570,7 @@
         }
 
         function handleMapMouseDown(e) {
-            if (!isAddingBBox && !isAddingMultipleBBoxes && !isAddingPersistentMultibox && !isAddingIgnoreRegion && !isAddingNoteBox && !isAddingManualBox && !inspectMultiboxSelectMode) return;
+            if (!isAddingBBox && !isAddingMultipleBBoxes && !isAddingPersistentMultibox && !isAddingIgnoreRegion && !isAddingNoteBox && !isAddingManualBox && !isAddingErschliessungPerson && !isAddingErschliessungPlace && !isAddingErschliessungBeleg && !inspectMultiboxSelectMode) return;
 
             // Verhindere Standard-Verhalten (wichtig: vor allem anderen)
             L.DomEvent.stopPropagation(e);
@@ -7984,7 +8598,7 @@
         }
 
         function handleMapMouseMove(e) {
-            if ((!isAddingBBox && !isAddingMultipleBBoxes && !isAddingPersistentMultibox && !isAddingIgnoreRegion && !isAddingNoteBox && !isAddingManualBox && !inspectMultiboxSelectMode) || !drawingStartPoint) return;
+            if ((!isAddingBBox && !isAddingMultipleBBoxes && !isAddingPersistentMultibox && !isAddingIgnoreRegion && !isAddingNoteBox && !isAddingManualBox && !isAddingErschliessungPerson && !isAddingErschliessungPlace && !isAddingErschliessungBeleg && !inspectMultiboxSelectMode) || !drawingStartPoint) return;
 
             // Verhindere Drag während des Zeichnens
             L.DomEvent.stopPropagation(e);
@@ -7996,7 +8610,7 @@
         }
 
         async function handleMapMouseUp(e) {
-            if ((!isAddingBBox && !isAddingMultipleBBoxes && !isAddingPersistentMultibox && !isAddingIgnoreRegion && !isAddingNoteBox && !isAddingManualBox && !inspectMultiboxSelectMode) || !drawingStartPoint) return;
+            if ((!isAddingBBox && !isAddingMultipleBBoxes && !isAddingPersistentMultibox && !isAddingIgnoreRegion && !isAddingNoteBox && !isAddingManualBox && !isAddingErschliessungPerson && !isAddingErschliessungPlace && !isAddingErschliessungBeleg && !inspectMultiboxSelectMode) || !drawingStartPoint) return;
 
             // Verhindere Standard-Verhalten
             L.DomEvent.stopPropagation(e);
@@ -8065,6 +8679,18 @@
             }
             if (isAddingManualBox) {
                 await addManualBoxFromDrawing(mapBounds);
+                return;
+            }
+            if (isAddingErschliessungPerson) {
+                await addErschliessungsBoxFromDrawing(mapBounds, 'entity', 'person');
+                return;
+            }
+            if (isAddingErschliessungPlace) {
+                await addErschliessungsBoxFromDrawing(mapBounds, 'entity', 'place');
+                return;
+            }
+            if (isAddingErschliessungBeleg) {
+                await addErschliessungsBoxFromDrawing(mapBounds, 'beleg', null);
                 return;
             }
 
@@ -8487,6 +9113,1080 @@
             } catch (error) {
                 showMessage('Fehler beim Hinzufügen der manuellen Box: ' + error.message, 'error');
                 console.error('Error adding manual BBox:', error);
+            }
+        }
+
+        function toggleErschliessungPersonMode() {
+            if (isAddingErschliessungBeleg) toggleErschliessungBelegMode();
+            if (isAddingErschliessungPlace) toggleErschliessungPlaceMode();
+            isAddingErschliessungPerson = !isAddingErschliessungPerson;
+            updateErschliessungModeUI();
+        }
+        function toggleErschliessungPlaceMode() {
+            if (isAddingErschliessungBeleg) toggleErschliessungBelegMode();
+            if (isAddingErschliessungPerson) toggleErschliessungPersonMode();
+            isAddingErschliessungPlace = !isAddingErschliessungPlace;
+            updateErschliessungModeUI();
+        }
+        function toggleErschliessungBelegMode() {
+            if (isAddingErschliessungPerson) toggleErschliessungPersonMode();
+            if (isAddingErschliessungPlace) toggleErschliessungPlaceMode();
+            isAddingErschliessungBeleg = !isAddingErschliessungBeleg;
+            updateErschliessungModeUI();
+        }
+        function updateErschliessungModeUI() {
+            const btn = document.getElementById('addBoxMainBtn');
+            const drop = document.getElementById('addBoxDropdown');
+            if (drop) drop.style.display = 'none';
+            if (!btn) return;
+            if (isAddingErschliessungPerson) {
+                btn.classList.remove('btn-success'); btn.classList.add('btn-warning');
+                btn.textContent = 'Person-Box zeichnen (klicken zum Abbrechen)';
+                if (map) {
+                    map.getContainer().classList.add('drawing-mode');
+                    map.dragging.disable();
+                    map.boxZoom.disable();
+                    map.doubleClickZoom.disable();
+                }
+            } else if (isAddingErschliessungPlace) {
+                btn.classList.remove('btn-success'); btn.classList.add('btn-warning');
+                btn.textContent = 'Ort-Box zeichnen (klicken zum Abbrechen)';
+                if (map) {
+                    map.getContainer().classList.add('drawing-mode');
+                    map.dragging.disable();
+                    map.boxZoom.disable();
+                    map.doubleClickZoom.disable();
+                }
+            } else if (isAddingErschliessungBeleg) {
+                btn.classList.remove('btn-success'); btn.classList.add('btn-warning');
+                btn.textContent = 'Beleg-Box zeichnen (klicken zum Abbrechen)';
+                if (map) {
+                    map.getContainer().classList.add('drawing-mode');
+                    map.dragging.disable();
+                    map.boxZoom.disable();
+                    map.doubleClickZoom.disable();
+                }
+            } else {
+                btn.classList.remove('btn-warning'); btn.classList.add('btn-success');
+                btn.textContent = '+';
+                if (map) {
+                    map.getContainer().classList.remove('drawing-mode');
+                    map.dragging.enable();
+                    map.boxZoom.enable();
+                    map.doubleClickZoom.enable();
+                    if (drawingRectangle && map) { map.removeLayer(drawingRectangle); drawingRectangle = null; }
+                    drawingStartPoint = null;
+                }
+            }
+        }
+
+        async function addErschliessungsBoxFromDrawing(mapBounds, box_type, entity_type) {
+            if (!currentPageData) {
+                showMessage('Keine Seiten-Daten verfügbar', 'error');
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/api/pages/${currentPageData.page_id}/inspect`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                const data = await response.json();
+                let ocrImageWidth = data.image_width, ocrImageHeight = data.image_height;
+                for (const ocrResult of data.ocr_results || []) {
+                    if (ocrResult.image_width && ocrResult.image_height) {
+                        ocrImageWidth = ocrResult.image_width;
+                        ocrImageHeight = ocrResult.image_height;
+                        break;
+                    }
+                }
+                const bbox_pixel = convertMapCoordsToBBoxPixel(
+                    mapBounds, ocrImageWidth, ocrImageHeight, data.image_width, data.image_height
+                );
+                const bbox = [
+                    bbox_pixel[0] / ocrImageWidth,
+                    bbox_pixel[1] / ocrImageHeight,
+                    bbox_pixel[2] / ocrImageWidth,
+                    bbox_pixel[3] / ocrImageHeight
+                ];
+                const body = { bbox, box_type };
+                if (entity_type) body.entity_type = entity_type;
+                const addResponse = await fetch(`${API_BASE}/api/pages/${currentPageData.page_id}/erschliessung/boxes`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!addResponse.ok) {
+                    const err = await addResponse.json().catch(() => ({}));
+                    throw new Error(err.detail || addResponse.statusText);
+                }
+                const box = await addResponse.json();
+                if (isAddingErschliessungPerson) toggleErschliessungPersonMode();
+                if (isAddingErschliessungPlace) toggleErschliessungPlaceMode();
+                if (isAddingErschliessungBeleg) toggleErschliessungBelegMode();
+                if (map) savedMapView = { center: map.getCenter(), zoom: map.getZoom() };
+                await loadErschliessungsBoxen(currentPageData.page_id);
+                if (map && savedMapView) {
+                    map.setView(savedMapView.center, savedMapView.zoom);
+                    savedMapView = null;
+                }
+                if (box_type === 'entity' && entity_type === 'person') {
+                    openErschliessungPersonDialog(currentPageData.page_id, box.id);
+                } else if (box_type === 'entity' && entity_type === 'place') {
+                    openErschliessungPlaceDialog(currentPageData.page_id, box.id);
+                } else if (box_type === 'beleg') {
+                    openErschliessungBelegDialog(currentPageData.page_id, box.id);
+                }
+            } catch (error) {
+                showMessage('Fehler Erschließungs-Box: ' + error.message, 'error');
+                console.error('Error adding ErschliessungsBox:', error);
+            }
+        }
+
+        async function loadErschliessungsBoxen(pageId) {
+            if (pageId == null || pageId === undefined) return;
+            try {
+                const r = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes`);
+                if (!r.ok) return;
+                erschliessungsBoxen = await r.json();
+                drawErschliessungsBoxenOnMap();
+            } catch (e) {
+                erschliessungsBoxen = [];
+            }
+        }
+        function drawErschliessungsBoxenOnMap() {
+            if (!window.erschliessungsBoxOverlays) window.erschliessungsBoxOverlays = [];
+            window.erschliessungsBoxOverlays.forEach(function (o) {
+                if (map && map.hasLayer(o)) map.removeLayer(o);
+            });
+            window.erschliessungsBoxOverlays = [];
+            if (!map || !currentPageData || !erschliessungsBoxen.length) return;
+            const pageId = currentPageData.page_id;
+            const inspectData = window._lastInspectData;
+            if (!inspectData || !inspectData.image_width || !inspectData.image_height) return;
+            const mapW = inspectData.image_width, mapH = inspectData.image_height;
+            const ocrResult = inspectData.ocr_results && inspectData.ocr_results[0];
+            const ocrImageWidth = (ocrResult && ocrResult.image_width) ? ocrResult.image_width : mapW;
+            const ocrImageHeight = (ocrResult && ocrResult.image_height) ? ocrResult.image_height : mapH;
+            const scaleX = (mapW / ocrImageWidth) * 0.7;
+            const scaleY = mapH / ocrImageHeight;
+            erschliessungsBoxen.forEach(function (eb) {
+                const b = eb.bbox;
+                if (!b || b.length !== 4) return;
+                // bbox ist normalisiert in OCR-Raum. X auf Karte: x_ocr * scaleX (wie Bestandsboxen), Y: OCR y=0 unten → Leaflet y=0 oben
+                const x_ocr1 = b[0] * ocrImageWidth, x_ocr2 = b[2] * ocrImageWidth;
+                const y_ocr1 = b[1] * ocrImageHeight, y_ocr2 = b[3] * ocrImageHeight;
+                const x1 = x_ocr1 * scaleX, x2 = x_ocr2 * scaleX;
+                const leafletYTop = mapH - y_ocr2 * scaleY;
+                const leafletYBottom = mapH - y_ocr1 * scaleY;
+                const rectBounds = [[leafletYTop, x1], [leafletYBottom, x2]];
+                const rect = L.rectangle(rectBounds, {
+                    color: eb.box_type === 'beleg' ? '#2e7d32' : '#1565c0',
+                    weight: 2,
+                    fillOpacity: 0.15
+                });
+                rect.erschliessungsBox = eb;
+                rect.on('click', function () {
+                    if (eb.box_type === 'entity') {
+                        if (eb.entity_type === 'place') {
+                            if (eb.entity_uri) openErschliessungEditEntityDialog(pageId, eb.id);
+                            else openErschliessungPlaceDialog(pageId, eb.id);
+                        } else {
+                            if (eb.entity_uri) openErschliessungEditEntityDialog(pageId, eb.id);
+                            else openErschliessungPersonDialog(pageId, eb.id);
+                        }
+                    } else if (eb.box_type === 'beleg') openErschliessungBelegDialog(pageId, eb.id, true);
+                });
+                var tooltipSummary = (eb.name || 'Unbenannt') + (eb.entity_uri ? ' (verknüpft)' : ' (nicht zugeordnet)');
+                var imgPart = (eb.main_image_url) ? '<img src="' + escapeHtml(eb.main_image_url) + '" alt="" style="max-width:80px; max-height:60px; margin-top:4px; display:block;">' : '<small>Bild: intern oder später aus Commons</small>';
+                var tooltipContent = '<div class="erschliessung-tooltip"><strong>' + escapeHtml(tooltipSummary) + '</strong><br>' + imgPart + '</div>';
+                rect.bindTooltip(tooltipContent, { permanent: false, direction: 'top', className: 'erschliessung-box-tooltip', offset: [0, -8] });
+                map.addLayer(rect);
+                window.erschliessungsBoxOverlays.push(rect);
+            });
+        }
+        function openErschliessungPersonDialog(pageId, boxId, viewOnly) {
+            currentErschliessungsBoxPageId = pageId;
+            currentErschliessungsBoxId = boxId;
+            const d = document.getElementById('erschliessungPersonDialog');
+            if (!d) return;
+            document.getElementById('erschliessungPersonName').value = '';
+            document.getElementById('erschliessungPersonInternalList').innerHTML = '';
+            document.getElementById('erschliessungPersonWikidataList').innerHTML = '';
+            const internalOnlyBtn = document.getElementById('erschliessungPersonInternalOnlyBtn');
+            if (internalOnlyBtn) internalOnlyBtn.onclick = function () { assignErschliessungPerson(null, null, true); };
+            d.style.display = 'block';
+            if (viewOnly) {
+                document.getElementById('erschliessungPersonSearchBtn').style.display = 'none';
+                document.getElementById('erschliessungPersonName').disabled = true;
+            } else {
+                document.getElementById('erschliessungPersonSearchBtn').style.display = 'inline-block';
+                document.getElementById('erschliessungPersonName').disabled = false;
+            }
+        }
+        function closeErschliessungPersonDialog() {
+            document.getElementById('erschliessungPersonDialog').style.display = 'none';
+            currentErschliessungsBoxId = null;
+            currentErschliessungsBoxPageId = null;
+        }
+
+        function fillErschliessungEditEntityForm(data) {
+            document.getElementById('erschliessungEditEntityName').value = data.name || '';
+            var imgEl = document.getElementById('erschliessungEditEntityImage');
+            if (data.main_image_url) {
+                imgEl.innerHTML = '<img src="' + escapeHtml(data.main_image_url) + '" alt="" style="max-width:120px; max-height:120px; border-radius:4px;">';
+            } else {
+                imgEl.innerHTML = '';
+            }
+            var placeActions = document.getElementById('erschliessungEditEntityPlaceActions');
+            var syncBtn = document.getElementById('erschliessungEditEntitySyncBtn');
+            var placeLinkPanel = document.getElementById('erschliessungEditEntityPlaceLinkPanel');
+            if (data.entity_type === 'place') {
+                if (placeActions) placeActions.style.display = 'block';
+                if (syncBtn) syncBtn.style.display = 'none';
+                if (placeLinkPanel) placeLinkPanel.style.display = 'block';
+                initErschliessungEditPlaceRelationUI(currentErschliessungsBoxPageId, currentErschliessungsBoxId);
+            } else {
+                if (placeActions) placeActions.style.display = 'none';
+                if (syncBtn) syncBtn.style.display = 'inline-block';
+                if (placeLinkPanel) placeLinkPanel.style.display = 'none';
+            }
+            var claim_values = data.claim_values || {};
+            var claim_value_labels = data.claim_value_labels || {};
+            var property_labels = data.property_labels || {};
+            var listEl = document.getElementById('erschliessungEditEntityClaimsList');
+            listEl.innerHTML = '';
+            Object.keys(claim_values).forEach(function (prop_id) {
+                var label = property_labels[prop_id] || prop_id;
+                var vals = claim_values[prop_id];
+                if (!Array.isArray(vals)) vals = vals != null && vals !== '' ? [String(vals)] : [];
+                vals.forEach(function (value) {
+                    value = String(value || '').trim();
+                    var isQId = /^Q\d+$/.test(value);
+                    var wLink = isQId ? ' <a href="https://www.wikidata.org/wiki/' + escapeHtml(value) + '" target="_blank" rel="noopener" title="In Wikidata öffnen">[W]</a>' : '';
+                    var labelsByVal = claim_value_labels[prop_id];
+                    var displayLabel = (labelsByVal && labelsByVal[value]) ? labelsByVal[value] : '';
+                    var row = document.createElement('div');
+                    row.className = 'erschliessung-edit-claim-row';
+                    row.style.marginBottom = '14px';
+                    row.style.padding = '10px';
+                    row.style.background = '#f9f9f9';
+                    row.style.borderRadius = '6px';
+                    row.style.border = '1px solid #eee';
+                    row.dataset.propId = prop_id;
+                    if (isQId) {
+                        var anzeigeHinweis = displayLabel ? '<div style="font-size:12px; color:#2e7d32; margin-bottom:6px;">Aktuell angezeigt als: <strong>' + escapeHtml(displayLabel) + '</strong></div>' : '';
+                        row.innerHTML =
+                            '<div style="font-size:13px; font-weight:600; color:#333; margin-bottom:6px;">' + escapeHtml(label) + ' <span style="font-weight:400; color:#888;">(' + escapeHtml(prop_id) + ')</span>' + wLink + '</div>' +
+                            anzeigeHinweis +
+                            '<div style="font-size:11px; color:#666; margin-bottom:4px;">ID (Q-ID)</div>' +
+                            '<input type="text" class="erschliessung-edit-claim-value" data-prop-id="' + escapeHtml(prop_id) + '" value="' + escapeHtml(value) + '" placeholder="z. B. Q183" style="width:100%; padding:6px 8px; border:1px solid #ccc; border-radius:4px; margin-bottom:8px;">' +
+                            '<div style="font-size:11px; color:#666; margin-bottom:4px;">Anzeigename (wird überall angezeigt, unabhängig von Wikidata)</div>' +
+                            '<input type="text" class="erschliessung-edit-claim-label" data-prop-id="' + escapeHtml(prop_id) + '" value="' + escapeHtml(displayLabel) + '" placeholder="z. B. Deutschland" style="width:100%; padding:6px 8px; border:1px solid #ccc; border-radius:4px;">';
+                    } else {
+                        row.innerHTML =
+                            '<div style="font-size:13px; font-weight:600; color:#333; margin-bottom:6px;">' + escapeHtml(label) + ' <span style="font-weight:400; color:#888;">(' + escapeHtml(prop_id) + ')</span></div>' +
+                            '<div style="font-size:11px; color:#666; margin-bottom:4px;">Wert</div>' +
+                            '<input type="text" class="erschliessung-edit-claim-value" data-prop-id="' + escapeHtml(prop_id) + '" value="' + escapeHtml(value) + '" placeholder="Wert" style="width:100%; padding:6px 8px; border:1px solid #ccc; border-radius:4px;">';
+                    }
+                    listEl.appendChild(row);
+                });
+            });
+        }
+        function openErschliessungEditEntityDialog(pageId, boxId) {
+            currentErschliessungsBoxPageId = pageId;
+            currentErschliessungsBoxId = boxId;
+            const d = document.getElementById('erschliessungEditEntityDialog');
+            if (!d) return;
+            d.style.display = 'flex';
+            document.getElementById('erschliessungEditEntityName').value = '';
+            document.getElementById('erschliessungEditEntityClaimsList').innerHTML = '';
+            document.getElementById('erschliessungEditEntityImage').innerHTML = '';
+            var panel = document.getElementById('erschliessungEditEntityPlaceLinkPanel');
+            if (panel) panel.style.display = 'none';
+            var relationList = document.getElementById('erschliessungEditPlaceRelationObjectList');
+            if (relationList) relationList.innerHTML = '';
+            var relationPreview = document.getElementById('erschliessungEditPlaceRelationPreview');
+            if (relationPreview) { relationPreview.style.display = 'none'; relationPreview.innerHTML = ''; }
+            fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes/${boxId}/entity-details`)
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (data) {
+                    if (!data) return;
+                    fillErschliessungEditEntityForm(data);
+                })
+                .catch(function () {});
+        }
+        function closeErschliessungEditEntityDialog() {
+            const el = document.getElementById('erschliessungEditEntityDialog');
+            if (el) el.style.display = 'none';
+            currentErschliessungsBoxId = null;
+            currentErschliessungsBoxPageId = null;
+        }
+        async function saveErschliessungEditEntity() {
+            if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
+            var name = (document.getElementById('erschliessungEditEntityName').value || '').trim();
+            if (!name) { showMessage('Name eingeben', 'error'); return; }
+            var claim_values = {};
+            var claim_value_labels = {};
+            document.querySelectorAll('#erschliessungEditEntityClaimsList .erschliessung-edit-claim-row').forEach(function (row) {
+                var propId = row.dataset.propId;
+                if (!propId) return;
+                var valueInput = row.querySelector('.erschliessung-edit-claim-value');
+                var labelInput = row.querySelector('.erschliessung-edit-claim-label');
+                var val = valueInput ? (valueInput.value || '').trim() : '';
+                if (val) {
+                    if (!claim_values[propId]) claim_values[propId] = [];
+                    claim_values[propId].push(val);
+                    if (labelInput) {
+                        var lab = (labelInput.value || '').trim();
+                        if (lab) {
+                            if (!claim_value_labels[propId]) claim_value_labels[propId] = {};
+                            claim_value_labels[propId][val] = lab;
+                        }
+                    }
+                }
+            });
+            try {
+                const r = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/entity-details`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name, claim_values: claim_values, claim_value_labels: claim_value_labels })
+                });
+                if (!r.ok) throw new Error((await r.json().catch(function () { return {}; })).detail || r.statusText);
+                var pageId = currentErschliessungsBoxPageId;
+                closeErschliessungEditEntityDialog();
+                await loadErschliessungsBoxen(pageId);
+                showMessage('Objekt gespeichert', 'success');
+            } catch (e) {
+                showMessage('Fehler: ' + e.message, 'error');
+            }
+        }
+
+        var lastErschliessungSyncPreview = null;
+        function openErschliessungSyncWikidataDialog() {
+            var pageId = currentErschliessungsBoxPageId;
+            var boxId = currentErschliessungsBoxId;
+            if (!pageId || !boxId) return;
+            document.getElementById('erschliessungSyncWikidataId').value = '';
+            document.getElementById('erschliessungSyncPreviewArea').style.display = 'none';
+            document.getElementById('erschliessungSyncLoading').style.display = 'none';
+            document.getElementById('erschliessungSyncSaveBtn').disabled = true;
+            lastErschliessungSyncPreview = null;
+            document.getElementById('erschliessungSyncWikidataDialog').style.display = 'flex';
+            fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes/${boxId}/entity-details`)
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (data) {
+                    if (data && data.wikidata_id) {
+                        document.getElementById('erschliessungSyncWikidataId').value = data.wikidata_id;
+                        loadErschliessungSyncPreview();
+                    }
+                })
+                .catch(function () {});
+        }
+        function closeErschliessungSyncWikidataDialog() {
+            document.getElementById('erschliessungSyncWikidataDialog').style.display = 'none';
+        }
+        async function loadErschliessungSyncPreview() {
+            var pageId = currentErschliessungsBoxPageId;
+            if (!pageId) return;
+            var wikidataId = (document.getElementById('erschliessungSyncWikidataId').value || '').trim();
+            if (!wikidataId) { showMessage('Wikidata-ID eingeben', 'error'); return; }
+            document.getElementById('erschliessungSyncLoading').style.display = 'block';
+            document.getElementById('erschliessungSyncPreviewArea').style.display = 'none';
+            try {
+                var r = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/wikidata-sync-preview?wikidata_id=${encodeURIComponent(wikidataId)}`);
+                if (!r.ok) throw new Error((await r.json().catch(function () { return {}; })).detail || r.statusText);
+                var data = await r.json();
+                lastErschliessungSyncPreview = data;
+                var entity = data.entity || {};
+                document.getElementById('erschliessungSyncEntityInfo').innerHTML =
+                    '<strong>' + escapeHtml(entity.label || wikidataId) + '</strong>' +
+                    (entity.description ? '<br><span style="color:#666;">' + escapeHtml(entity.description) + '</span>' : '') +
+                    (entity.url ? '<br><a href="' + escapeHtml(entity.url) + '" target="_blank" rel="noopener">Wikidata</a>' : '');
+                var props = data.properties || [];
+                var propsHtml = props.length ? props.map(function (p) {
+                    var val = p.value != null ? String(p.value) : '';
+                    var valLabel = (p.value_type === 'entity' && p.value_label) ? p.value_label : null;
+                    var valUrl = p.value_url || null;
+                    var line = '<label style="display:block; margin-bottom:6px;"><input type="checkbox" class="sync-property-cb" data-prop-id="' + escapeHtml(p.prop_id) + '" data-value="' + escapeHtml(val) + '"> ' + escapeHtml(p.label) + ': ';
+                    if (valUrl && valLabel != null) {
+                        line += '<span class="sync-prop-value" data-show="label" data-label="' + escapeHtml(valLabel) + '" data-id="' + escapeHtml(val) + '">' + escapeHtml(valLabel) + '</span> <a href="' + escapeHtml(valUrl) + '" target="_blank" rel="noopener" title="In Wikidata öffnen" style="font-size:11px;">[W]</a> <button type="button" class="sync-prop-toggle-id" style="font-size:10px; padding:0 4px;">ID</button>';
+                    } else {
+                        line += escapeHtml(val);
+                    }
+                    line += '</label>';
+                    return line;
+                }).join('') : '<span style="color:#888;">Keine Properties.</span>';
+                document.getElementById('erschliessungSyncPropertiesList').innerHTML = propsHtml;
+                document.querySelectorAll('.sync-prop-toggle-id').forEach(function (btn) {
+                    btn.onclick = function (e) {
+                        e.preventDefault();
+                        var span = btn.previousElementSibling && btn.previousElementSibling.previousElementSibling;
+                        if (span && span.classList && span.classList.contains('sync-prop-value')) {
+                            var show = span.getAttribute('data-show');
+                            var label = span.getAttribute('data-label');
+                            var id = span.getAttribute('data-id');
+                            if (show === 'label') { span.textContent = id; span.setAttribute('data-show', 'id'); btn.title = 'Als Text anzeigen'; }
+                            else { span.textContent = label; span.setAttribute('data-show', 'label'); btn.title = 'Als Objekt-ID anzeigen'; }
+                        }
+                    };
+                });
+                var images = data.images || [];
+                var imgsHtml = images.length ? images.map(function (img, idx) {
+                    return '<div style="display:inline-block; margin:4px; vertical-align:top; text-align:center;"><img src="' + escapeHtml(img.thumb_url) + '" alt="" style="max-width:80px; max-height:80px; display:block; margin-bottom:4px;"><br><button type="button" class="btn btn-secondary" style="font-size:11px; padding:2px 8px;" onclick="setErschliessungMainImage(\'' + escapeHtml(img.thumb_url.replace(/'/g, "\\'")) + '\')">Als Hauptbild</button></div>';
+                }).join('') : '<span style="color:#888;">Keine Bilder.</span>';
+                document.getElementById('erschliessungSyncImagesList').innerHTML = imgsHtml;
+                document.getElementById('erschliessungSyncLoading').style.display = 'none';
+                document.getElementById('erschliessungSyncPreviewArea').style.display = 'block';
+                document.getElementById('erschliessungSyncSaveBtn').disabled = false;
+            } catch (e) {
+                document.getElementById('erschliessungSyncLoading').style.display = 'none';
+                showMessage('Fehler: ' + e.message, 'error');
+            }
+        }
+        async function setErschliessungMainImage(thumbUrl) {
+            if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
+            var pageId = currentErschliessungsBoxPageId;
+            var boxId = currentErschliessungsBoxId;
+            try {
+                var detailsRes = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes/${boxId}/entity-details`);
+                if (!detailsRes.ok) return;
+                var data = await detailsRes.json();
+                var name = data.name || '';
+                var claim_values = data.claim_values || {};
+                var claim_value_labels = data.claim_value_labels || {};
+                var r = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes/${boxId}/entity-details`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name, claim_values: claim_values, claim_value_labels: claim_value_labels, main_image_url: thumbUrl })
+                });
+                if (!r.ok) throw new Error((await r.json().catch(function () { return {}; })).detail || r.statusText);
+                showMessage('Hauptbild gesetzt', 'success');
+                if (document.getElementById('erschliessungEditEntityName')) {
+                    var detailsRes2 = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes/${boxId}/entity-details`);
+                    if (detailsRes2.ok) {
+                        var d = await detailsRes2.json();
+                        fillErschliessungEditEntityForm(d);
+                    }
+                }
+            } catch (e) {
+                showMessage('Fehler: ' + e.message, 'error');
+            }
+        }
+        async function saveErschliessungSyncWikidata() {
+            if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
+            var wikidataId = (document.getElementById('erschliessungSyncWikidataId').value || '').trim();
+            if (!wikidataId) { showMessage('Wikidata-ID eingeben (z. B. Q123)', 'error'); return; }
+            var selectedClaims = [];
+            document.querySelectorAll('#erschliessungSyncPropertiesList .sync-property-cb:checked').forEach(function (cb) {
+                if (cb.dataset.propId != null && cb.dataset.value != null)
+                    selectedClaims.push({ prop_id: cb.dataset.propId, value: cb.dataset.value });
+            });
+            var body = { wikidata_id: wikidataId };
+            if (selectedClaims.length) body.selected_claims = selectedClaims;
+            try {
+                const r = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/sync-from-wikidata`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!r.ok) throw new Error((await r.json().catch(function () { return {}; })).detail || r.statusText);
+                closeErschliessungSyncWikidataDialog();
+                var pageId = currentErschliessungsBoxPageId;
+                var boxId = currentErschliessungsBoxId;
+                await loadErschliessungsBoxen(pageId);
+                var detailsRes = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes/${boxId}/entity-details`);
+                if (detailsRes.ok) {
+                    var data = await detailsRes.json();
+                    fillErschliessungEditEntityForm(data);
+                }
+                showMessage('Von Wikidata synchronisiert', 'success');
+            } catch (e) {
+                showMessage('Fehler: ' + e.message, 'error');
+            }
+        }
+
+        async function deleteCurrentErschliessungsBox() {
+            if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
+            if (!confirm('Diese Erschließungs-Box wirklich löschen? Dies kann nicht rückgängig gemacht werden.')) return;
+            const pageId = currentErschliessungsBoxPageId;
+            try {
+                const r = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes/${currentErschliessungsBoxId}`, { method: 'DELETE' });
+                if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+                closeErschliessungPersonDialog();
+                closeErschliessungPlaceDialog();
+                closeErschliessungEditEntityDialog();
+                closeErschliessungSyncWikidataDialog();
+                closeErschliessungBelegDialog();
+                currentErschliessungsBoxId = null;
+                currentErschliessungsBoxPageId = null;
+                await loadErschliessungsBoxen(pageId);
+                showMessage('Erschließungs-Box gelöscht', 'success');
+            } catch (e) {
+                showMessage('Fehler beim Löschen: ' + e.message, 'error');
+            }
+        }
+        async function searchErschliessungPersonSuggestions() {
+            const name = (document.getElementById('erschliessungPersonName').value || '').trim();
+            if (!name || !currentErschliessungsBoxPageId) return;
+            try {
+                const [internalRes, wikidataRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/entity-suggestions?name=${encodeURIComponent(name)}&entity_type=person`),
+                    fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/wikidata-matches?name=${encodeURIComponent(name)}&entity_type=person`)
+                ]);
+                const internal = internalRes.ok ? (await internalRes.json()).suggestions || [] : [];
+                const wikidata = wikidataRes.ok ? (await wikidataRes.json()).matches || [] : [];
+                let html = internal.length ? internal.map(function (s) {
+                    return '<button type="button" class="erschliessung-suggestion-btn" data-uri="' + escapeHtml(s.uri) + '" data-source="internal">' + escapeHtml(s.name || s.uri) + '</button>';
+                }).join('') : '<span style="color:#888;">Keine Treffer</span>';
+                document.getElementById('erschliessungPersonInternalList').innerHTML = html;
+                html = wikidata.length ? wikidata.map(function (m) {
+                    return '<button type="button" class="erschliessung-suggestion-btn" data-id="' + escapeHtml(m.id || '') + '" data-source="wikidata">' + escapeHtml(m.label || m.id) + (m.description ? ' – ' + escapeHtml(m.description) : '') + '</button>';
+                }).join('') : '<span style="color:#888;">Keine Treffer</span>';
+                document.getElementById('erschliessungPersonWikidataList').innerHTML = html;
+                document.querySelectorAll('#erschliessungPersonDialog .erschliessung-suggestion-btn').forEach(function (btn) {
+                    btn.onclick = function () {
+                        if (btn.dataset.source === 'wikidata') openWikidataImportDialog(btn.dataset.id);
+                        else assignErschliessungPerson(btn.dataset.uri, null);
+                    };
+                });
+            } catch (e) {
+                showMessage('Fehler beim Laden der Vorschläge: ' + e.message, 'error');
+            }
+        }
+        async function assignErschliessungPerson(entity_uri, wikidata_id, internalOnly) {
+            if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
+            let body;
+            if (internalOnly) {
+                const name = (document.getElementById('erschliessungPersonName').value || '').trim();
+                if (!name) { showMessage('Name eingeben für „Nur intern“', 'error'); return; }
+                body = { name: name };
+            } else {
+                body = entity_uri ? { entity_uri: entity_uri } : { wikidata_id: wikidata_id };
+            }
+            try {
+                const r = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/assign`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+                var pageIdForReload = currentErschliessungsBoxPageId;
+                closeErschliessungPersonDialog();
+                await loadErschliessungsBoxen(pageIdForReload);
+                showMessage('Person zugeordnet', 'success');
+            } catch (e) {
+                showMessage('Fehler: ' + e.message, 'error');
+            }
+        }
+
+        function openErschliessungPlaceDialog(pageId, boxId) {
+            currentErschliessungsBoxPageId = pageId;
+            currentErschliessungsBoxId = boxId;
+            currentPlaceRelationSelectedSubjectUri = null;
+            const d = document.getElementById('erschliessungPlaceDialog');
+            if (!d) return;
+            document.getElementById('erschliessungPlaceName').value = '';
+            document.getElementById('erschliessungPlaceInternalList').innerHTML = '';
+            document.getElementById('erschliessungPlaceWikidataList').innerHTML = '';
+            document.getElementById('erschliessungPlaceToMapBtn').style.display = 'none';
+            document.getElementById('erschliessungPlaceRelationObjectList').innerHTML = '';
+            document.getElementById('erschliessungPlaceRelationPreview').style.display = 'none';
+            document.getElementById('erschliessungPlaceRelationObjectName').value = '';
+            document.getElementById('erschliessungPlaceRelationSaveBtn').disabled = true;
+            var placeDeleteBtn = document.getElementById('erschliessungPlaceRelationDeleteBtn');
+            if (placeDeleteBtn) placeDeleteBtn.disabled = true;
+            document.getElementById('erschliessungPlaceRelationSourceInfo').textContent = 'Quelle: Seite ' + pageId + ', Box ' + boxId;
+            const internalOnlyBtn = document.getElementById('erschliessungPlaceInternalOnlyBtn');
+            if (internalOnlyBtn) internalOnlyBtn.onclick = function () { assignErschliessungPlace(null, null, true); };
+            var relationSearchBtn = document.getElementById('erschliessungPlaceRelationSearchBtn');
+            if (relationSearchBtn) relationSearchBtn.onclick = searchErschliessungPlaceRelationObjects;
+            var relationSaveBtn = document.getElementById('erschliessungPlaceRelationSaveBtn');
+            if (relationSaveBtn) relationSaveBtn.onclick = saveErschliessungPlaceRelation;
+            if (placeDeleteBtn) placeDeleteBtn.onclick = deleteErschliessungPlaceRelation;
+            d.style.display = 'block';
+            loadErschliessungPlaceLinkOptions(pageId, boxId);
+            loadErschliessungPlaceLinkCurrent(pageId, boxId);
+            fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes/${boxId}/entity-details`)
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (data) {
+                    if (data && data.entity_type === 'place' && data.entity_uri) {
+                        document.getElementById('erschliessungPlaceName').value = data.name || '';
+                        document.getElementById('erschliessungPlaceToMapBtn').style.display = 'inline-block';
+                    }
+                })
+                .catch(function () {});
+        }
+        function closeErschliessungPlaceDialog() {
+            const el = document.getElementById('erschliessungPlaceDialog');
+            if (el) el.style.display = 'none';
+            currentErschliessungsBoxId = null;
+            currentErschliessungsBoxPageId = null;
+        }
+        async function searchErschliessungPlaceSuggestions() {
+            const name = (document.getElementById('erschliessungPlaceName').value || '').trim();
+            if (!name || !currentErschliessungsBoxPageId) return;
+            try {
+                const [internalRes, wikidataRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/entity-suggestions?name=${encodeURIComponent(name)}&entity_type=place`),
+                    fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/wikidata-matches?name=${encodeURIComponent(name)}&entity_type=place`)
+                ]);
+                const internal = internalRes.ok ? (await internalRes.json()).suggestions || [] : [];
+                const wikidata = wikidataRes.ok ? (await wikidataRes.json()).matches || [] : [];
+                let html = internal.length ? internal.map(function (s) {
+                    return '<button type="button" class="erschliessung-suggestion-btn" data-uri="' + escapeHtml(s.uri) + '" data-source="internal">' + escapeHtml(s.name || s.uri) + '</button>';
+                }).join('') : '<span style="color:#888;">Keine Treffer</span>';
+                document.getElementById('erschliessungPlaceInternalList').innerHTML = html;
+                html = wikidata.length ? wikidata.map(function (m) {
+                    return '<button type="button" class="erschliessung-suggestion-btn" data-id="' + escapeHtml(m.id || '') + '" data-source="wikidata">' + escapeHtml(m.label || m.id) + (m.description ? ' – ' + escapeHtml(m.description) : '') + '</button>';
+                }).join('') : '<span style="color:#888;">Keine Treffer</span>';
+                document.getElementById('erschliessungPlaceWikidataList').innerHTML = html;
+                document.querySelectorAll('#erschliessungPlaceDialog .erschliessung-suggestion-btn').forEach(function (btn) {
+                    btn.onclick = function () {
+                        if (btn.dataset.source === 'wikidata') assignErschliessungPlace(null, btn.dataset.id);
+                        else assignErschliessungPlace(btn.dataset.uri, null);
+                    };
+                });
+            } catch (e) {
+                showMessage('Fehler beim Laden der Vorschläge: ' + e.message, 'error');
+            }
+        }
+        async function assignErschliessungPlace(entity_uri, wikidata_id, internalOnly) {
+            if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
+            let body;
+            if (internalOnly) {
+                const name = (document.getElementById('erschliessungPlaceName').value || '').trim();
+                if (!name) { showMessage('Name eingeben für „Nur intern“', 'error'); return; }
+                body = { name: name };
+            } else {
+                body = entity_uri ? { entity_uri: entity_uri } : { wikidata_id: wikidata_id };
+            }
+            try {
+                const r = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/assign`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+                await loadErschliessungsBoxen(currentErschliessungsBoxPageId);
+                showMessage('Ort zugeordnet', 'success');
+                document.getElementById('erschliessungPlaceToMapBtn').style.display = 'inline-block';
+            } catch (e) {
+                showMessage('Fehler: ' + e.message, 'error');
+            }
+        }
+        var currentPlaceRelationOptions = [];
+        var currentPlaceRelationSelectedSubjectUri = null;
+        function getSelectedPlaceRelationOption() {
+            var propSel = document.getElementById('erschliessungPlaceRelationProperty');
+            var prop = propSel ? propSel.value : '';
+            return currentPlaceRelationOptions.find(function (o) { return o.property_id === prop; }) || null;
+        }
+        function renderPlaceRelationPreview(preview, targetElementId) {
+            var el = document.getElementById(targetElementId || 'erschliessungPlaceRelationPreview');
+            if (!el) return;
+            if (!preview) {
+                el.style.display = 'none';
+                el.innerHTML = '';
+                return;
+            }
+            var html = '<strong>' + escapeHtml(preview.name || preview.entity_uri || '') + '</strong>';
+            html += ' <span style="font-size:11px; color:#666;">(' + escapeHtml(preview.entity_type || '') + ')</span>';
+            if (preview.wikidata_id) {
+                html += '<br><a href="https://www.wikidata.org/wiki/' + escapeHtml(preview.wikidata_id) + '" target="_blank" rel="noopener">' + escapeHtml(preview.wikidata_id) + '</a>';
+            }
+            if (preview.main_image_url) {
+                html += '<br><img src="' + escapeHtml(preview.main_image_url) + '" alt="" style="max-width:120px; max-height:80px; margin-top:6px;">';
+            }
+            var claimValues = preview.claim_values || {};
+            var keys = Object.keys(claimValues).slice(0, 5);
+            if (keys.length) {
+                html += '<br><div style="margin-top:6px; font-size:12px;">';
+                keys.forEach(function (k) {
+                    var vals = Array.isArray(claimValues[k]) ? claimValues[k] : [claimValues[k]];
+                    html += '<div><code>' + escapeHtml(k) + '</code>: ' + escapeHtml((vals || []).slice(0, 2).join(', ')) + '</div>';
+                });
+                html += '</div>';
+            }
+            el.innerHTML = html;
+            el.style.display = 'block';
+        }
+        async function loadErschliessungPlaceLinkOptions(pageId, boxId) {
+            var sel = document.getElementById('erschliessungPlaceRelationProperty');
+            if (!sel) return;
+            currentPlaceRelationOptions = [];
+            sel.innerHTML = '';
+            try {
+                var r = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes/${boxId}/place-link-options`);
+                if (!r.ok) throw new Error(r.statusText);
+                var data = await r.json();
+                currentPlaceRelationOptions = data.options || [];
+                currentPlaceRelationOptions.forEach(function (opt) {
+                    var o = document.createElement('option');
+                    o.value = opt.property_id;
+                    o.textContent = (opt.label || opt.property_id) + ' (' + opt.property_id + ')';
+                    sel.appendChild(o);
+                });
+            } catch (e) {
+                sel.innerHTML = '<option value="">Keine Optionen</option>';
+            }
+        }
+        async function loadErschliessungPlaceLinkCurrent(pageId, boxId) {
+            try {
+                var r = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes/${boxId}/place-link`);
+                if (!r.ok) return;
+                var data = await r.json();
+                var link = data.link;
+                if (!link) return;
+                var sel = document.getElementById('erschliessungPlaceRelationProperty');
+                if (sel && link.property_id) sel.value = link.property_id;
+                currentPlaceRelationSelectedSubjectUri = link.subject_uri || null;
+                renderPlaceRelationPreview(link.subject_preview || null);
+                document.getElementById('erschliessungPlaceRelationSaveBtn').disabled = !currentPlaceRelationSelectedSubjectUri;
+                var delBtn = document.getElementById('erschliessungPlaceRelationDeleteBtn');
+                if (delBtn) delBtn.disabled = false;
+            } catch (e) {}
+        }
+        async function searchErschliessungPlaceRelationObjects() {
+            if (!currentErschliessungsBoxPageId) return;
+            var opt = getSelectedPlaceRelationOption();
+            if (!opt) return;
+            var q = (document.getElementById('erschliessungPlaceRelationObjectName').value || '').trim();
+            if (!q) return;
+            try {
+                var r = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/entity-suggestions?name=${encodeURIComponent(q)}&entity_type=${encodeURIComponent(opt.target_entity_type || 'person')}`);
+                var list = r.ok ? (await r.json()).suggestions || [] : [];
+                var html = list.length ? list.map(function (s) {
+                    return '<button type="button" class="erschliessung-suggestion-btn place-link-obj-btn" data-uri="' + escapeHtml(s.uri) + '">' + escapeHtml(s.name || s.uri) + '</button>';
+                }).join('') : '<span style="color:#888;">Keine Treffer</span>';
+                var listEl = document.getElementById('erschliessungPlaceRelationObjectList');
+                listEl.innerHTML = html;
+                listEl.querySelectorAll('.place-link-obj-btn').forEach(function (btn) {
+                    btn.onclick = async function () {
+                        currentPlaceRelationSelectedSubjectUri = btn.dataset.uri;
+                        try {
+                            var pr = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/entity-preview?entity_uri=${encodeURIComponent(currentPlaceRelationSelectedSubjectUri)}`);
+                            var preview = pr.ok ? await pr.json() : null;
+                            renderPlaceRelationPreview(preview);
+                        } catch (e) { renderPlaceRelationPreview(null); }
+                        document.getElementById('erschliessungPlaceRelationSaveBtn').disabled = !currentPlaceRelationSelectedSubjectUri;
+                        var delBtn = document.getElementById('erschliessungPlaceRelationDeleteBtn');
+                        if (delBtn) delBtn.disabled = !currentPlaceRelationSelectedSubjectUri;
+                    };
+                });
+            } catch (e) {
+                showMessage('Fehler bei Objektsuche: ' + e.message, 'error');
+            }
+        }
+        async function saveErschliessungPlaceRelation() {
+            if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId || !currentPlaceRelationSelectedSubjectUri) return;
+            var sel = document.getElementById('erschliessungPlaceRelationProperty');
+            var propertyId = sel ? sel.value : '';
+            if (!propertyId) return;
+            try {
+                var r = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/place-link`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ subject_uri: currentPlaceRelationSelectedSubjectUri, property_id: propertyId })
+                });
+                if (!r.ok) throw new Error((await r.json().catch(function(){ return {}; })).detail || r.statusText);
+                showMessage('Anbindung gespeichert', 'success');
+                var delBtn = document.getElementById('erschliessungPlaceRelationDeleteBtn');
+                if (delBtn) delBtn.disabled = false;
+            } catch (e) {
+                showMessage('Fehler beim Speichern der Anbindung: ' + e.message, 'error');
+            }
+        }
+        async function deleteErschliessungPlaceRelation() {
+            if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
+            try {
+                var r = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/place-link`, { method: 'DELETE' });
+                if (!r.ok) throw new Error((await r.json().catch(function(){ return {}; })).detail || r.statusText);
+                currentPlaceRelationSelectedSubjectUri = null;
+                document.getElementById('erschliessungPlaceRelationObjectList').innerHTML = '';
+                document.getElementById('erschliessungPlaceRelationObjectName').value = '';
+                renderPlaceRelationPreview(null);
+                document.getElementById('erschliessungPlaceRelationSaveBtn').disabled = true;
+                var delBtn = document.getElementById('erschliessungPlaceRelationDeleteBtn');
+                if (delBtn) delBtn.disabled = true;
+                showMessage('Anbindung gelöscht', 'success');
+            } catch (e) {
+                showMessage('Fehler beim Löschen der Anbindung: ' + e.message, 'error');
+            }
+        }
+        var currentEditPlaceRelationOptions = [];
+        var currentEditPlaceRelationSelectedSubjectUri = null;
+        function getSelectedEditPlaceRelationOption() {
+            var propSel = document.getElementById('erschliessungEditPlaceRelationProperty');
+            var prop = propSel ? propSel.value : '';
+            return currentEditPlaceRelationOptions.find(function (o) { return o.property_id === prop; }) || null;
+        }
+        async function initErschliessungEditPlaceRelationUI(pageId, boxId) {
+            currentEditPlaceRelationSelectedSubjectUri = null;
+            var listEl = document.getElementById('erschliessungEditPlaceRelationObjectList');
+            var previewEl = document.getElementById('erschliessungEditPlaceRelationPreview');
+            var srcEl = document.getElementById('erschliessungEditPlaceRelationSourceInfo');
+            var saveBtn = document.getElementById('erschliessungEditPlaceRelationSaveBtn');
+            var deleteBtn = document.getElementById('erschliessungEditPlaceRelationDeleteBtn');
+            if (listEl) listEl.innerHTML = '';
+            if (previewEl) { previewEl.style.display = 'none'; previewEl.innerHTML = ''; }
+            if (srcEl) srcEl.textContent = 'Quelle: Seite ' + pageId + ', Box ' + boxId;
+            if (saveBtn) saveBtn.disabled = true;
+            if (deleteBtn) deleteBtn.disabled = true;
+            var searchBtn = document.getElementById('erschliessungEditPlaceRelationSearchBtn');
+            if (searchBtn) searchBtn.onclick = searchErschliessungEditPlaceRelationObjects;
+            if (saveBtn) saveBtn.onclick = saveErschliessungEditPlaceRelation;
+            if (deleteBtn) deleteBtn.onclick = deleteErschliessungEditPlaceRelation;
+            var sel = document.getElementById('erschliessungEditPlaceRelationProperty');
+            currentEditPlaceRelationOptions = [];
+            if (sel) sel.innerHTML = '';
+            try {
+                var r = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes/${boxId}/place-link-options`);
+                if (r.ok) {
+                    var data = await r.json();
+                    currentEditPlaceRelationOptions = data.options || [];
+                    currentEditPlaceRelationOptions.forEach(function (opt) {
+                        var o = document.createElement('option');
+                        o.value = opt.property_id;
+                        o.textContent = (opt.label || opt.property_id) + ' (' + opt.property_id + ')';
+                        if (sel) sel.appendChild(o);
+                    });
+                }
+            } catch (e) {}
+            try {
+                var cur = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes/${boxId}/place-link`);
+                if (cur.ok) {
+                    var currentData = await cur.json();
+                    var link = currentData.link;
+                    if (link) {
+                        if (sel && link.property_id) sel.value = link.property_id;
+                        currentEditPlaceRelationSelectedSubjectUri = link.subject_uri || null;
+                        renderPlaceRelationPreview(link.subject_preview || null, 'erschliessungEditPlaceRelationPreview');
+                        if (saveBtn) saveBtn.disabled = !currentEditPlaceRelationSelectedSubjectUri;
+                        if (deleteBtn) deleteBtn.disabled = false;
+                    }
+                }
+            } catch (e) {}
+        }
+        async function searchErschliessungEditPlaceRelationObjects() {
+            if (!currentErschliessungsBoxPageId) return;
+            var opt = getSelectedEditPlaceRelationOption();
+            if (!opt) return;
+            var q = (document.getElementById('erschliessungEditPlaceRelationObjectName').value || '').trim();
+            if (!q) return;
+            try {
+                var r = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/entity-suggestions?name=${encodeURIComponent(q)}&entity_type=${encodeURIComponent(opt.target_entity_type || 'person')}`);
+                var list = r.ok ? (await r.json()).suggestions || [] : [];
+                var html = list.length ? list.map(function (s) {
+                    return '<button type="button" class="erschliessung-suggestion-btn place-link-edit-obj-btn" data-uri="' + escapeHtml(s.uri) + '">' + escapeHtml(s.name || s.uri) + '</button>';
+                }).join('') : '<span style="color:#888;">Keine Treffer</span>';
+                var listEl = document.getElementById('erschliessungEditPlaceRelationObjectList');
+                listEl.innerHTML = html;
+                listEl.querySelectorAll('.place-link-edit-obj-btn').forEach(function (btn) {
+                    btn.onclick = async function () {
+                        currentEditPlaceRelationSelectedSubjectUri = btn.dataset.uri;
+                        try {
+                            var pr = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/entity-preview?entity_uri=${encodeURIComponent(currentEditPlaceRelationSelectedSubjectUri)}`);
+                            var preview = pr.ok ? await pr.json() : null;
+                            renderPlaceRelationPreview(preview, 'erschliessungEditPlaceRelationPreview');
+                        } catch (e) { renderPlaceRelationPreview(null, 'erschliessungEditPlaceRelationPreview'); }
+                        document.getElementById('erschliessungEditPlaceRelationSaveBtn').disabled = !currentEditPlaceRelationSelectedSubjectUri;
+                        var delBtn = document.getElementById('erschliessungEditPlaceRelationDeleteBtn');
+                        if (delBtn) delBtn.disabled = !currentEditPlaceRelationSelectedSubjectUri;
+                    };
+                });
+            } catch (e) {
+                showMessage('Fehler bei Objektsuche: ' + e.message, 'error');
+            }
+        }
+        async function saveErschliessungEditPlaceRelation() {
+            if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId || !currentEditPlaceRelationSelectedSubjectUri) return;
+            var sel = document.getElementById('erschliessungEditPlaceRelationProperty');
+            var propertyId = sel ? sel.value : '';
+            if (!propertyId) return;
+            try {
+                var r = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/place-link`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ subject_uri: currentEditPlaceRelationSelectedSubjectUri, property_id: propertyId })
+                });
+                if (!r.ok) throw new Error((await r.json().catch(function(){ return {}; })).detail || r.statusText);
+                showMessage('Anbindung gespeichert', 'success');
+                var delBtn = document.getElementById('erschliessungEditPlaceRelationDeleteBtn');
+                if (delBtn) delBtn.disabled = false;
+            } catch (e) {
+                showMessage('Fehler beim Speichern der Anbindung: ' + e.message, 'error');
+            }
+        }
+        async function deleteErschliessungEditPlaceRelation() {
+            if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
+            try {
+                var r = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/place-link`, { method: 'DELETE' });
+                if (!r.ok) throw new Error((await r.json().catch(function(){ return {}; })).detail || r.statusText);
+                currentEditPlaceRelationSelectedSubjectUri = null;
+                document.getElementById('erschliessungEditPlaceRelationObjectList').innerHTML = '';
+                document.getElementById('erschliessungEditPlaceRelationObjectName').value = '';
+                renderPlaceRelationPreview(null, 'erschliessungEditPlaceRelationPreview');
+                document.getElementById('erschliessungEditPlaceRelationSaveBtn').disabled = true;
+                var delBtn = document.getElementById('erschliessungEditPlaceRelationDeleteBtn');
+                if (delBtn) delBtn.disabled = true;
+                showMessage('Anbindung gelöscht', 'success');
+            } catch (e) {
+                showMessage('Fehler beim Löschen der Anbindung: ' + e.message, 'error');
+            }
+        }
+        var placeMapMap = null;
+        var placeMapMarker = null;
+        var placeMapPlaceId = null;
+        function openPlaceOnMapDialog() {
+            if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
+            placeMapPlaceId = null;
+            fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/entity-details`)
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (data) {
+                    if (!data || data.entity_type !== 'place' || !data.entity_uri) { showMessage('Kein Ort zugeordnet', 'error'); return; }
+                    placeMapPlaceId = (data.entity_uri || '').split('/').pop().split('#')[0];
+                    document.getElementById('placeMapDialogPlaceName').textContent = data.name || placeMapPlaceId;
+                    document.getElementById('placeMapDialogOverlay').style.display = 'flex';
+                    if (placeMapMarker) { if (placeMapMap && placeMapMap.hasLayer(placeMapMarker)) placeMapMap.removeLayer(placeMapMarker); placeMapMarker = null; }
+                    if (placeMapMap) { placeMapMap.remove(); placeMapMap = null; }
+                    var center = [51.05, 13.74];
+                    if (data.lat != null && data.lon != null) { center = [data.lat, data.lon]; }
+                    placeMapMap = L.map('placeMapContainer', { crs: L.CRS.EPSG3857 }).setView(center, 13);
+                    var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' });
+                    var dresden1911Layer = createDresden1911WmsLayer();
+                    var loschwitzLayer = createLoschwitzWmsLayer();
+                    osmLayer.addTo(placeMapMap);
+                    L.control.layers(
+                        { 'OpenStreetMap': osmLayer, 'Dresden 1911 (SLUB)': dresden1911Layer, 'Loschwitz (SLUB)': loschwitzLayer },
+                        {},
+                        { collapsed: true }
+                    ).addTo(placeMapMap);
+                    placeMapMap.on('baselayerchange', function (e) {
+                        if (e.layer === dresden1911Layer) fitMapToDresden1911IfNeeded(placeMapMap);
+                        if (e.layer === loschwitzLayer) fitMapToLoschwitzIfNeeded(placeMapMap);
+                    });
+                    placeMapMarker = L.marker(center, { draggable: true }).addTo(placeMapMap);
+                    placeMapMap.on('click', function (e) { placeMapMarker.setLatLng(e.latlng); });
+                })
+                .catch(function () { showMessage('Fehler beim Laden des Orts', 'error'); });
+        }
+        function savePlaceCoordinates() {
+            if (!placeMapMap || !placeMapMarker || !placeMapPlaceId) return;
+            var latlng = placeMapMarker.getLatLng();
+            fetch(`${API_BASE}/api/erschliessung-overview/places/${encodeURIComponent(placeMapPlaceId)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lat: latlng.lat, lon: latlng.lng })
+            }).then(function (r) {
+                if (!r.ok) throw new Error(r.statusText);
+                closePlaceOnMapDialog();
+                if (currentErschliessungsBoxPageId) loadErschliessungsBoxen(currentErschliessungsBoxPageId);
+                showMessage('Position gespeichert', 'success');
+            }).catch(function (e) { showMessage('Fehler: ' + e.message, 'error'); });
+        }
+        function closePlaceOnMapDialog() {
+            document.getElementById('placeMapDialogOverlay').style.display = 'none';
+            if (placeMapMarker && placeMapMap && placeMapMap.hasLayer(placeMapMarker)) placeMapMap.removeLayer(placeMapMarker);
+            placeMapMarker = null;
+            if (placeMapMap) { placeMapMap.remove(); placeMapMap = null; }
+            placeMapPlaceId = null;
+        }
+
+        var wikidataPropertyLabels = { P569: 'Geburtsdatum', P570: 'Sterbedatum' };
+        async function openWikidataImportDialog(wikidataId) {
+            if (!wikidataId) return;
+            var pageId = currentErschliessungsBoxPageId;
+            if (pageId == null && currentPageData && currentPageData.page_id != null) {
+                pageId = currentPageData.page_id;
+                currentErschliessungsBoxPageId = pageId;
+            }
+            if (pageId == null) return;
+            currentWikidataImportId = wikidataId;
+            try {
+                const r = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/wikidata-preview?wikidata_id=${encodeURIComponent(wikidataId)}`);
+                if (!r.ok) throw new Error((await r.json().catch(function () { return {}; })).detail || r.statusText);
+                const data = await r.json();
+                const entity = data.entity || {};
+                const suggested = data.suggested_claims || {};
+                document.getElementById('wikidataImportEntityInfo').innerHTML =
+                    '<strong>' + escapeHtml(entity.label || wikidataId) + '</strong>' +
+                    (entity.description ? '<br><span style="color:#666;">' + escapeHtml(entity.description) + '</span>' : '') +
+                    (entity.url ? '<br><a href="' + escapeHtml(entity.url) + '" target="_blank" rel="noopener">' + escapeHtml(entity.url) + '</a>' : '');
+                var claimsHtml = '';
+                Object.keys(suggested).forEach(function (propId) {
+                    var label = wikidataPropertyLabels[propId] || propId;
+                    var val = suggested[propId];
+                    claimsHtml += '<label style="display:block; margin-bottom:6px;"><input type="checkbox" class="wikidata-import-claim" data-prop="' + escapeHtml(propId) + '" data-value="' + escapeHtml(String(val)) + '" checked> ' + escapeHtml(label) + ': ' + escapeHtml(String(val)) + '</label>';
+                });
+                document.getElementById('wikidataImportClaimsList').innerHTML = claimsHtml || '<span style="color:#888;">Keine Eigenschaften zum Übernehmen.</span>';
+                document.getElementById('wikidataImportDialog').style.display = 'flex';
+            } catch (e) {
+                showMessage('Fehler beim Laden: ' + e.message, 'error');
+                currentWikidataImportId = null;
+            }
+        }
+        function closeWikidataImportDialog() {
+            document.getElementById('wikidataImportDialog').style.display = 'none';
+            currentWikidataImportId = null;
+        }
+        async function saveWikidataImport() {
+            if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId || !currentWikidataImportId) return;
+            var claim_values = {};
+            document.querySelectorAll('#wikidataImportClaimsList .wikidata-import-claim:checked').forEach(function (cb) {
+                claim_values[cb.dataset.prop] = cb.dataset.value;
+            });
+            try {
+                const r = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/assign`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ wikidata_id: currentWikidataImportId, claim_values: Object.keys(claim_values).length ? claim_values : null })
+                });
+                if (!r.ok) throw new Error((await r.json().catch(function () { return {}; })).detail || r.statusText);
+                var pageId = currentErschliessungsBoxPageId;
+                closeWikidataImportDialog();
+                closeErschliessungPersonDialog();
+                currentErschliessungsBoxId = null;
+                currentErschliessungsBoxPageId = null;
+                await loadErschliessungsBoxen(pageId);
+                showMessage('Person zugeordnet', 'success');
+            } catch (e) {
+                showMessage('Fehler: ' + e.message, 'error');
+            }
+        }
+
+        function openErschliessungBelegDialog(pageId, boxId, viewOnly) {
+            currentErschliessungsBoxPageId = pageId;
+            currentErschliessungsBoxId = boxId;
+            const d = document.getElementById('erschliessungBelegDialog');
+            if (!d) return;
+            document.getElementById('erschliessungBelegSubject').value = '';
+            document.getElementById('erschliessungBelegPredicate').value = '';
+            document.getElementById('erschliessungBelegObject').value = '';
+            d.style.display = 'block';
+        }
+        function closeErschliessungBelegDialog() {
+            document.getElementById('erschliessungBelegDialog').style.display = 'none';
+        }
+        async function saveErschliessungBeleg() {
+            if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
+            const subject_uri = (document.getElementById('erschliessungBelegSubject').value || '').trim();
+            const predicate_uri = (document.getElementById('erschliessungBelegPredicate').value || '').trim();
+            const object_uri = (document.getElementById('erschliessungBelegObject').value || '').trim();
+            if (!subject_uri || !predicate_uri || !object_uri) {
+                showMessage('Subjekt, Prädikat und Objekt eingeben', 'error');
+                return;
+            }
+            try {
+                const r = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/beleg`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ subject_uri, predicate_uri, object_uri })
+                });
+                if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+                var pageIdForReload = currentErschliessungsBoxPageId;
+                closeErschliessungBelegDialog();
+                await loadErschliessungsBoxen(pageIdForReload);
+                showMessage('Beleg gespeichert', 'success');
+            } catch (e) {
+                showMessage('Fehler: ' + e.message, 'error');
             }
         }
 

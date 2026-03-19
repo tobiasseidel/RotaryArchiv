@@ -161,6 +161,8 @@ RotaryArchiv/
 │   │   ├── worker.py        # Worker-Prozess
 │   │   ├── content_analysis_llm.py # Content-Analyse (Einheiten, Personen, Ort)
 │   │   └── llm_sight.py     # LLM-Sichtung für BBoxen
+│   ├── content/             # Erschließungsschicht (Entitäten, Triple Store mit Referenz auf Quellen)
+│   │   └── entities.py      # EntityType, geplant: Entitäten-Katalog
 │   ├── utils/               # Utilities (PDF, Bilder, BBox, Qualität)
 │   └── wikidata/            # Wikidata-Integration (vorerst ungenutzt)
 ├── alembic/                 # DB Migrations
@@ -238,7 +240,12 @@ Diese Module können später wieder aktiviert werden.
 
 ### Geplante Erweiterungen (Ausblick)
 
-Inhaltliche Erschließung der erkannten Texte: Personen, Orte, Ereignisse katalogisieren und verknüpfen; Anbindung an Triple Store und Wikidata; optional Karten-Ansicht für historische Orte sowie Foto-Sammlung mit Anbindung an Wikimedia Commons. Diese Erweiterungen werden als eigene Schicht auf dem OCR-Kern aufgesetzt, ohne den Kern unnötig zu vergrößern.
+Die Erschließung wird als eigene Schicht auf dem OCR-Kern aufgesetzt; der Kern hat keine Abhängigkeit auf die Erschließung. Geplant:
+
+- **Entitäten-Katalog:** Personen, Orte, Ereignisse, Themen aus DocumentUnits/OCR-Text erfassen und katalogisieren; Verknüpfung als „Mention“ (DocumentUnit/Seite ↔ Entität).
+- **Triple Store & Wikidata:** Bestehende Module (triplestore, api/triples, api/wikidata, api/sparql) aktivierbar. Der Triple Store speichert Relationen zwischen Entitäten/Mentions; die **Quelle (Dokument, DocumentUnit) nur als Referenz** (Prädikat z. B. `rotary:belegtIn`), nicht als Subjekt oder Objekt. Abgleich mit Wikidata (QIDs, Labels, Koordinaten für Orte). Siehe [docs/erschliessung.md](docs/erschliessung.md).
+- **Karten-Ansicht:** Historische Karten; Orte aus dem Entitäten-Katalog mit Koordinaten (aus Wikidata oder manuell) darstellen.
+- **Foto-Sammlung:** Anbindung an Wikimedia Commons; Verknüpfung zu Dokumenten und Entitäten.
 
 ## Lizenz
 

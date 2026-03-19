@@ -16,10 +16,13 @@ class Settings(BaseSettings):
     postgres_user: str = "rotary_user"
     postgres_password: str = "change_me"
 
-    # Triple Store (Fuseki)
+    # Triple Store (Fuseki oder lokale Datei)
     fuseki_host: str = "localhost"
     fuseki_port: int = 3030
     fuseki_dataset: str = "rotary_archiv"
+    # Pfad zu einer Turtle-Datei für persistenten lokalen Triplestore (wenn nicht Fuseki).
+    # Bei None: nur In-Memory (Daten gehen bei Neustart verloren).
+    triplestore_path: str | None = "./data/triplestore.ttl"
 
     # File Storage
     documents_path: str = "./data/documents"

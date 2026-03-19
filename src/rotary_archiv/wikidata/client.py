@@ -34,7 +34,10 @@ class WikidataClient:
             Liste von Wikidata-Entitäten
         """
         try:
-            with httpx.Client(timeout=30.0) as client:
+            headers = {
+                "User-Agent": "RotaryArchiv/1.0 (https://github.com/rotary-archiv; contact via Wikidata)"
+            }
+            with httpx.Client(timeout=30.0, headers=headers) as client:
                 params = {
                     "action": "wbsearchentities",
                     "search": query,
@@ -50,18 +53,67 @@ class WikidataClient:
                 results = []
                 if "search" in data:
                     for item in data["search"]:
+                        # API kann label/description als String oder als Objekt {"value": "..."} liefern
+                        label = item.get("label")
+                        if isinstance(label, dict):
+                            label = label.get("value") or ""
+                        desc = item.get("description")
+                        if isinstance(desc, dict):
+                            desc = desc.get("value") or ""
+                        if label is None:
+                            label = ""
+                        if desc is None:
+                            desc = ""
                         results.append(
                             {
-                                "id": item.get("id"),  # z.B. "Q123456"
-                                "label": item.get("label"),
-                                "description": item.get("description"),
+                                "id": item.get("id"),
+                                "label": label,
+                                "description": desc,
                                 "url": f"https://www.wikidata.org/wiki/{item.get('id')}",
-                                "match": item.get("match", {}).get("text", ""),
+                                "match": (item.get("match") or {}).get("text", ""),
                             }
                         )
 
+                # #region agent log
+                import json
+
+                _log = {
+                    "sessionId": "983982",
+                    "location": "WikidataClient.search_entity",
+                    "message": "search result",
+                    "data": {
+                        "query": query,
+                        "resultCount": len(results),
+                        "hasError": any("error" in r for r in results),
+                    },
+                    "timestamp": __import__("time").time() * 1000,
+                    "hypothesisId": "A",
+                }
+                try:
+                    with open("debug-983982.log", "a", encoding="utf-8") as _f:
+                        _f.write(json.dumps(_log, ensure_ascii=False) + "\n")
+                except Exception:
+                    pass
+                # #endregion
                 return results
         except Exception as e:
+            # #region agent log
+            import json
+
+            _log = {
+                "sessionId": "983982",
+                "location": "WikidataClient.search_entity",
+                "message": "search exception",
+                "data": {"query": query, "error": str(e)},
+                "timestamp": __import__("time").time() * 1000,
+                "hypothesisId": "C",
+            }
+            try:
+                with open("debug-983982.log", "a", encoding="utf-8") as _f:
+                    _f.write(json.dumps(_log, ensure_ascii=False) + "\n")
+            except Exception:
+                pass
+            # #endregion
             return [{"error": str(e)}]
 
     def get_entity(self, entity_id: str, language: str = "de") -> dict[str, Any] | None:
@@ -76,7 +128,10 @@ class WikidataClient:
             Dict mit Entitäts-Details oder None
         """
         try:
-            with httpx.Client(timeout=30.0) as client:
+            headers = {
+                "User-Agent": "RotaryArchiv/1.0 (https://github.com/rotary-archiv; contact via Wikidata)"
+            }
+            with httpx.Client(timeout=30.0, headers=headers) as client:
                 params = {
                     "action": "wbgetentities",
                     "ids": entity_id,
@@ -91,6 +146,8 @@ class WikidataClient:
 
                 if "entities" in data and entity_id in data["entities"]:
                     entity = data["entities"][entity_id]
+                    if entity.get("missing"):
+                        return None
                     return {
                         "id": entity_id,
                         "label": entity.get("labels", {})
@@ -107,6 +164,50 @@ class WikidataClient:
                 return None
         except Exception as e:
             return {"error": str(e)}
+
+    def get_labels(self, ids: list[str], language: str = "de") -> dict[str, str]:
+        """
+        Hole Labels für mehrere Wikidata-IDs (Properties wie P569 oder Items wie Q183).
+        wbgetentities mit props=labels; max 50 IDs pro Request (Batching).
+
+        Returns:
+            Dict id -> Label-Text (z. B. {"P569": "Geburtsdatum", "Q183": "Deutschland"})
+        """
+        result: dict[str, str] = {}
+        if not ids:
+            return result
+        ids = list(dict.fromkeys(ids))  # unique, order preserved
+        chunk_size = 50
+        try:
+            headers = {
+                "User-Agent": "RotaryArchiv/1.0 (https://github.com/rotary-archiv; contact via Wikidata)"
+            }
+            with httpx.Client(timeout=30.0, headers=headers) as client:
+                for i in range(0, len(ids), chunk_size):
+                    chunk = ids[i : i + chunk_size]
+                    params = {
+                        "action": "wbgetentities",
+                        "ids": "|".join(chunk),
+                        "languages": language,
+                        "format": "json",
+                        "props": "labels",
+                    }
+                    response = client.get(self.api_url, params=params)
+                    response.raise_for_status()
+                    data = response.json()
+                    entities = data.get("entities") or {}
+                    for eid in chunk:
+                        ent = entities.get(eid)
+                        if ent and not ent.get("missing"):
+                            labels = ent.get("labels") or {}
+                            lang_label = labels.get(language) or labels.get("en") or {}
+                            if isinstance(lang_label, dict):
+                                result[eid] = lang_label.get("value", eid)
+                            else:
+                                result[eid] = eid
+        except Exception:
+            pass
+        return result
 
     def sparql_query(self, query: str) -> list[dict[str, Any]]:
         """

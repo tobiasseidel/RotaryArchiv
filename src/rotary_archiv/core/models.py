@@ -204,9 +204,56 @@ class DocumentPage(Base):
     ocr_results = relationship(
         "OCRResult", back_populates="document_page", cascade="all, delete-orphan"
     )
+    erschliessungs_boxes = relationship(
+        "ErschliessungsBox",
+        back_populates="document_page",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
         return f"<DocumentPage(id={self.id}, document_id={self.document_id}, page={self.page_number})>"
+
+
+class ErschliessungsBox(Base):
+    """
+    Erschließungs-Box auf einer Seite: verknüpft eine Stelle (bbox) mit dem
+    Triple Store. Zwei Typen: entity (Person/Ort-Erwähnung) und beleg (Aussage mit Referenz).
+    """
+
+    __tablename__ = "erschliessungs_boxes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    document_page_id = Column(
+        Integer,
+        ForeignKey("document_pages.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # bbox in Normkoordinaten 0-1 oder Pixel: [x1, y1, x2, y2]
+    bbox = Column(JSON, nullable=False)  # [x1, y1, x2, y2]
+    box_type = Column(String(20), nullable=False, index=True)  # "entity" | "beleg"
+
+    # Für box_type = "entity"
+    entity_type = Column(String(20), nullable=True)  # "person" | "place" | ...
+    entity_uri = Column(
+        String(512), nullable=True
+    )  # rotary:Person_<uuid> nach Zuordnung
+    name = Column(String(512), nullable=True)  # eingegebener Suchbegriff
+
+    # Für box_type = "beleg"
+    subject_uri = Column(String(512), nullable=True)
+    predicate_uri = Column(String(512), nullable=True)
+    object_uri = Column(String(512), nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    document_page = relationship("DocumentPage", back_populates="erschliessungs_boxes")
+
+    def __repr__(self) -> str:
+        return f"<ErschliessungsBox(id={self.id}, page_id={self.document_page_id}, type={self.box_type})>"
 
 
 class OCRResult(Base):

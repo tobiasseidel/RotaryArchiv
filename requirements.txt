@@ -19,6 +19,9 @@ reportlab>=4.0.0  # PDF-Export mit Text-Overlay
 httpx==0.25.2
 aiohttp==3.9.1
 
+# Triple Store (RDF/Erschließung)
+rdflib>=7.0.0
+
 # Utilities
 python-dotenv==1.0.0
 python-multipart==0.0.6
@@ -34,7 +37,7 @@ pytesseract==0.3.10
 opencv-python-headless>=4.8.0
 numpy>=1.24.0  # Für Qualitätsmetriken (Coverage-Berechnung)
 
-# NOTE: Folgende Dependencies sind entfernt (vorerst nicht verwendet):
-# - rdflib, sparqlwrapper (Triple Store vorerst nicht verwendet)
-# - wikibaseintegrator (Wikidata vorerst nicht verwendet)
+# NOTE: Folgende Dependencies sind vorerst nicht verwendet:
+# - sparqlwrapper (SPARQL-Client optional)
+# - wikibaseintegrator (Wikidata-Anbindung erfolgt über httpx + wbsearchentities/wbgetentities)
 # - spacy (NLP entfernt)
