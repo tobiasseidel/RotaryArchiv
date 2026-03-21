@@ -9,7 +9,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from src.rotary_archiv.core.database import get_db
-from src.rotary_archiv.core.models import Document, DocumentPage, ErschliessungsBox
+from src.rotary_archiv.core.models import (
+    Document,
+    DocumentPage,
+    ErschliessungsBox,
+    OCRResult,
+)
 from src.rotary_archiv.core.triplestore import ROTARY, get_triplestore
 from src.rotary_archiv.wikidata.matcher import WikidataMatcher
 
@@ -29,6 +34,16 @@ class PlaceCoordinatesBody(BaseModel):
 
     lat: float = Field(..., ge=-90, le=90)
     lon: float = Field(..., ge=-180, le=180)
+
+
+class EntityUpdateBody(BaseModel):
+    """Body für Update einer Person/Place im Triplestore (globales Editieren)."""
+
+    name: str | None = None
+    main_image_url: str | None = None
+    wikidata_id: str | None = None
+    claim_values: dict | None = None
+    claim_value_labels: dict | None = None
 
 
 def _person_uri_from_id(entity_id: str) -> str:
@@ -162,6 +177,73 @@ def get_entity_details(
         "property_labels": property_labels,
         "main_image_url": details.get("main_image_url"),
     }
+
+
+@router.patch("/entities/{entity_id}")
+def update_entity(
+    entity_id: str,
+    body: EntityUpdateBody,
+):
+    """
+    Person oder Place direkt im Triplestore aktualisieren (globales Editieren ohne Box).
+    entity_id: lokaler Teil der URI (z. B. Person_abc oder Place_abc).
+    """
+    try:
+        entity_uri = _person_uri_from_id(entity_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from e
+
+    if (
+        body.name is None
+        and body.wikidata_id is None
+        and body.claim_values is None
+        and body.claim_value_labels is None
+        and body.main_image_url is None
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Keine Felder zum Aktualisieren angegeben",
+        )
+
+    ts = get_triplestore()
+
+    if "Place_" in entity_uri:
+        details = ts.get_place_details(entity_uri)
+        if not details:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Ort nicht gefunden"
+            )
+        current_name = details.get("name") or ""
+        new_name = body.name if body.name is not None else current_name
+        current_lat = details.get("lat")
+        current_lon = details.get("lon")
+        ts.update_place(
+            entity_uri,
+            new_name,
+            lat=current_lat,
+            lon=current_lon,
+        )
+        return {"entity_uri": entity_uri, "success": True}
+
+    details = ts.get_person_details(entity_uri)
+    if not details:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Person nicht gefunden"
+        )
+
+    name = body.name if body.name is not None else details.get("name") or ""
+    ts.update_person(
+        entity_uri,
+        name,
+        wikidata_id=body.wikidata_id,
+        claim_values=body.claim_values,
+        claim_value_labels=body.claim_value_labels,
+        main_image_url=body.main_image_url,
+        update_main_image=body.main_image_url is not None,
+    )
+    return {"entity_uri": entity_uri, "success": True}
 
 
 @router.get("/pages")
@@ -373,3 +455,50 @@ def update_place_coordinates(
         lon=body.lon,
     )
     return {"place_uri": place_uri, "lat": body.lat, "lon": body.lon}
+
+
+@router.get("/notes")
+def list_notes(
+    search: str | None = Query(None, description="Volltextsuche in Notizen"),
+    document_id: int | None = Query(
+        None, description="Nur Notizen aus diesem Dokument"
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    Alle Notiz-Boxen aus OCRResult abrufen.
+    Notizen sind in bbox_data als JSON gespeichert mit box_type="note".
+    Optimiert: nur benötigte Spalten laden, früh filtern.
+    """
+    # Nur benötigte Spalien laden - spart Speicher und Übertragungszeit
+    q = db.query(
+        OCRResult.document_page_id, OCRResult.document_id, OCRResult.bbox_data
+    ).filter(OCRResult.bbox_data.isnot(None))
+
+    if document_id is not None:
+        q = q.filter(OCRResult.document_id == document_id)
+
+    results = q.all()
+
+    notes = []
+    search_lower = search.strip().lower() if search and search.strip() else None
+    for page_id, doc_id, bbox_data in results:
+        if not bbox_data or not isinstance(bbox_data, list):
+            continue
+        for bbox_item in bbox_data:
+            if not isinstance(bbox_item, dict):
+                continue
+            if bbox_item.get("box_type") != "note":
+                continue
+            note_text = bbox_item.get("note_text") or ""
+            if search_lower and search_lower not in note_text.lower():
+                continue
+            notes.append(
+                {
+                    "note_text": note_text,
+                    "page_id": page_id,
+                    "document_id": doc_id,
+                }
+            )
+
+    return {"notes": notes}

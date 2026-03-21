@@ -1076,11 +1076,16 @@
             <button type="button" class="tab-btn" id="erschliessungOverviewTabSeiten" onclick="switchErschliessungOverviewTab('seiten');">Seiten</button>
             <button type="button" class="tab-btn" id="erschliessungOverviewTabBoxen" onclick="switchErschliessungOverviewTab('boxen');">Boxen</button>
             <button type="button" class="tab-btn" id="erschliessungOverviewTabKarte" onclick="switchErschliessungOverviewTab('karte');">Karte</button>
+            <button type="button" class="tab-btn" id="erschliessungOverviewTabNotizen" onclick="switchErschliessungOverviewTab('notizen');">Notizen</button>
             <div id="erschliessungOverviewMapFilterInline" style="display:none; margin-left:auto; gap:10px; flex-wrap:wrap; align-items:center;">
                 <label style="display:flex; align-items:center; gap:4px; font-size:13px;"><input type="checkbox" id="ovFilterResidence" checked> Wohnorte</label>
                 <label style="display:flex; align-items:center; gap:4px; font-size:13px;"><input type="checkbox" id="ovFilterWork" checked> Arbeitsorte</label>
                 <label style="display:flex; align-items:center; gap:4px; font-size:13px;"><input type="checkbox" id="ovFilterEvent" checked> Veranstaltungsorte</label>
                 <label style="display:flex; align-items:center; gap:4px; font-size:13px;"><input type="checkbox" id="ovFilterUnclassified" checked> Ohne Typ</label>
+            </div>
+            <div id="erschliessungOverviewNotesSearch" style="display:none; margin-left:auto; gap:10px; flex-wrap:wrap; align-items:center;">
+                <input type="text" id="erschliessungOverviewNotesSearchInput" placeholder="Notizen durchsuchen..." style="padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; min-width: 200px;" onkeydown="if(event.key==='Enter'){loadErschliessungOverviewContent();}">
+                <button type="button" class="btn btn-secondary" onclick="loadErschliessungOverviewContent()">Suchen</button>
             </div>
         </div>
         <div id="erschliessungOverviewContent" style="min-height:0;">
@@ -2045,6 +2050,8 @@
         let currentErschliessungsBoxId = null;
         let currentErschliessungsBoxPageId = null;
         let currentWikidataImportId = null;
+        let currentErschliessungEditMode = 'box';
+        let currentErschliessungOverviewEntityId = null;
 
         // Quality-Metriken Config
         const qualityBBoxCache = {}; // BBox-Daten pro page_id nach Aufklappen
@@ -3115,11 +3122,14 @@
         function switchErschliessungOverviewTab(tab) {
             currentErschliessungOverviewTab = tab;
             document.querySelectorAll('#erschliessungOverviewView .tab-btn').forEach(function(btn) { btn.classList.remove('active'); });
-            var tabId = tab === 'personen' ? 'Personen' : tab === 'seiten' ? 'Seiten' : tab === 'boxen' ? 'Boxen' : 'Karte';
+            var tabIdMap = { 'personen': 'Personen', 'seiten': 'Seiten', 'boxen': 'Boxen', 'karte': 'Karte', 'notizen': 'Notizen' };
+            var tabId = tabIdMap[tab] || 'Personen';
             var el = document.getElementById('erschliessungOverviewTab' + tabId);
             if (el) el.classList.add('active');
             var mapFilterInline = document.getElementById('erschliessungOverviewMapFilterInline');
             if (mapFilterInline) mapFilterInline.style.display = tab === 'karte' ? 'flex' : 'none';
+            var notesSearch = document.getElementById('erschliessungOverviewNotesSearch');
+            if (notesSearch) notesSearch.style.display = tab === 'notizen' ? 'flex' : 'none';
             loadErschliessungOverviewContent();
         }
         function resizeErschliessungOverviewMap() {
@@ -3278,6 +3288,17 @@
                     if (!r.ok) throw new Error('Orte fehlen');
                     var data = await r.json();
                     renderErschliessungOverviewKarte(container, data.places || []);
+                } else if (currentErschliessungOverviewTab === 'notizen') {
+                    var searchInput = document.getElementById('erschliessungOverviewNotesSearchInput');
+                    var search = searchInput ? (searchInput.value || '').trim() : '';
+                    var noteParams = [];
+                    if (docId) noteParams.push('document_id=' + encodeURIComponent(docId));
+                    if (search) noteParams.push('search=' + encodeURIComponent(search));
+                    var noteQs = noteParams.length ? '?' + noteParams.join('&') : '';
+                    var r = await fetch(API_BASE + '/api/erschliessung-overview/notes' + noteQs);
+                    if (!r.ok) throw new Error('Notizen fehlen');
+                    var data = await r.json();
+                    renderErschliessungOverviewNotizen(container, data.notes || []);
                 } else {
                     var r = await fetch(API_BASE + '/api/erschliessung-overview/boxes' + qs);
                     if (!r.ok) throw new Error('Boxen fehlen');
@@ -3287,6 +3308,25 @@
             } catch (e) {
                 container.innerHTML = '<p style="color:#c62828;">Fehler: ' + escapeHtml(e.message) + '</p>';
             }
+        }
+        async function refreshErschliessungOverview() {
+            await loadErschliessungOverviewContent();
+        }
+        function renderErschliessungOverviewNotizen(container, notes) {
+            if (!notes.length) {
+                container.innerHTML = '<p style="color:#666;">Keine Notizen gefunden.</p>';
+                return;
+            }
+            var html = '<div style="max-height:600px; overflow-y:auto; border:1px solid #ddd; border-radius:4px;">';
+            html += '<table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#f5f5f5; position:sticky; top:0;"><th style="padding:8px; text-align:left;">Notiz</th><th style="padding:8px;">Seite</th></tr></thead><tbody>';
+            notes.forEach(function(n) {
+                var text = n.note_text || '';
+                var displayText = text.length > 200 ? escapeHtml(text.substring(0, 200)) + '...' : escapeHtml(text);
+                var pageLink = n.page_id ? '<a href="#/page/' + n.page_id + '/inspect">Seite ' + n.page_id + '</a>' : '-';
+                html += '<tr><td style="padding:8px; vertical-align:top;">' + displayText + '</td><td style="padding:8px; white-space:nowrap;">' + pageLink + '</td></tr>';
+            });
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
         }
         function renderErschliessungOverviewKarte(container, places) {
             if (places.length === 0) {
@@ -3444,6 +3484,7 @@
                             .then(function(d) {
                                 if (!d) { detailsEl.innerHTML = 'Fehler beim Laden'; return; }
                                 detailsEl.dataset.loaded = '1';
+                                detailsEl.dataset.entityData = JSON.stringify(d);
                                 var cv = d.claim_values || {};
                                 var cvl = d.claim_value_labels || {};
                                 var pl = d.property_labels || {};
@@ -3457,7 +3498,8 @@
                                         parts.push('<div style="margin-bottom:4px;"><strong>' + escapeHtml(label) + '</strong>: ' + escapeHtml(display) + '</div>');
                                     });
                                 });
-                                detailsEl.innerHTML = parts.length ? parts.join('') : '<span style="color:#888;">Keine Eigenschaften</span>';
+                                var propsHtml = parts.length ? parts.join('') : '<span style="color:#888;">Keine Eigenschaften</span>';
+                                detailsEl.innerHTML = propsHtml + '<button type="button" class="btn btn-secondary" style="margin-top:12px;" onclick="openEntityEditFromOverview(this)">Bearbeiten</button>';
                             })
                             .catch(function() { detailsEl.innerHTML = 'Fehler'; });
                     }
@@ -9522,11 +9564,46 @@
                 });
             });
         }
+        function openEntityEditFromOverview(buttonEl) {
+            var detailsEl = buttonEl.closest('.erschliessung-overview-person-details');
+            if (!detailsEl) return;
+            var entityDataStr = detailsEl.dataset.entityData;
+            if (!entityDataStr) return;
+            var entityData;
+            try {
+                entityData = JSON.parse(entityDataStr);
+            } catch(e) { return; }
+            var entityId = detailsEl.closest('.erschliessung-overview-person-card').getAttribute('data-entity-id');
+            currentErschliessungEditMode = 'overview';
+            currentErschliessungOverviewEntityId = entityId;
+            currentErschliessungsBoxPageId = null;
+            currentErschliessungsBoxId = null;
+            var d = document.getElementById('erschliessungEditEntityDialog');
+            if (!d) return;
+            document.getElementById('erschliessungEditEntityName').value = '';
+            document.getElementById('erschliessungEditEntityClaimsList').innerHTML = '';
+            document.getElementById('erschliessungEditEntityImage').innerHTML = '';
+            document.getElementById('erschliessungEditEntityImageResults').innerHTML = '';
+            document.getElementById('erschliessungEditEntityImageProvider').value = 'memorial';
+            document.getElementById('erschliessungEditEntityImageQuery').value = '';
+            var placePanel = document.getElementById('erschliessungEditEntityPlaceLinkPanel');
+            if (placePanel) placePanel.style.display = 'none';
+            var deleteBtn = d.querySelector('.btn-danger');
+            if (deleteBtn) deleteBtn.style.display = 'none';
+            var placeActions = document.getElementById('erschliessungEditEntityPlaceActions');
+            if (placeActions) placeActions.style.display = 'none';
+            fillErschliessungEditEntityForm(entityData);
+            d.style.display = 'flex';
+        }
         function openErschliessungEditEntityDialog(pageId, boxId) {
             currentErschliessungsBoxPageId = pageId;
             currentErschliessungsBoxId = boxId;
+            currentErschliessungEditMode = 'box';
+            currentErschliessungOverviewEntityId = null;
             const d = document.getElementById('erschliessungEditEntityDialog');
             if (!d) return;
+            var deleteBtn = d.querySelector('.btn-danger');
+            if (deleteBtn) deleteBtn.style.display = '';
             d.style.display = 'flex';
             document.getElementById('erschliessungEditEntityName').value = '';
             document.getElementById('erschliessungEditEntityClaimsList').innerHTML = '';
@@ -9603,7 +9680,6 @@
             currentErschliessungsBoxPageId = null;
         }
         async function saveErschliessungEditEntity() {
-            if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
             var name = (document.getElementById('erschliessungEditEntityName').value || '').trim();
             if (!name) { showMessage('Name eingeben', 'error'); return; }
             var claim_values = {};
@@ -9627,15 +9703,29 @@
                 }
             });
             try {
-                const r = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/entity-details`, {
-                    method: 'PATCH',
+                var url, method, body;
+                if (currentErschliessungEditMode === 'overview' && currentErschliessungOverviewEntityId) {
+                    url = `${API_BASE}/api/erschliessung-overview/entities/${encodeURIComponent(currentErschliessungOverviewEntityId)}`;
+                    method = 'PATCH';
+                    body = JSON.stringify({ name: name, claim_values: claim_values, claim_value_labels: claim_value_labels });
+                } else {
+                    if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
+                    url = `${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/entity-details`;
+                    method = 'PATCH';
+                    body = JSON.stringify({ name: name, claim_values: claim_values, claim_value_labels: claim_value_labels });
+                }
+                const r = await fetch(url, {
+                    method: method,
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: name, claim_values: claim_values, claim_value_labels: claim_value_labels })
+                    body: body
                 });
                 if (!r.ok) throw new Error((await r.json().catch(function () { return {}; })).detail || r.statusText);
-                var pageId = currentErschliessungsBoxPageId;
                 closeErschliessungEditEntityDialog();
-                await loadErschliessungsBoxen(pageId);
+                if (currentErschliessungEditMode === 'box' && currentErschliessungsBoxPageId) {
+                    await loadErschliessungsBoxen(currentErschliessungsBoxPageId);
+                } else {
+                    await refreshErschliessungOverview();
+                }
                 showMessage('Objekt gespeichert', 'success');
             } catch (e) {
                 showMessage('Fehler: ' + e.message, 'error');
