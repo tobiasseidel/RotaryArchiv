@@ -63,6 +63,15 @@ data_dir = Path(settings.documents_path)
 if data_dir.exists():
     app.mount("/data", StaticFiles(directory=str(data_dir.resolve())), name="data")
 
+# Static Files für gecachte Bilder (Wikidata/Commons/Fotothek)
+image_cache_dir = Path(settings.image_cache_path)
+image_cache_dir.mkdir(parents=True, exist_ok=True)
+app.mount(
+    "/media-cache",
+    StaticFiles(directory=str(image_cache_dir.resolve())),
+    name="media-cache",
+)
+
 # Include Routers
 app.include_router(documents.router)
 app.include_router(ocr.router)

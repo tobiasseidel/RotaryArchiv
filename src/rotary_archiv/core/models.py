@@ -256,6 +256,33 @@ class ErschliessungsBox(Base):
         return f"<ErschliessungsBox(id={self.id}, page_id={self.document_page_id}, type={self.box_type})>"
 
 
+class CachedImage(Base):
+    """Persistierte Metadaten für lokal gecachte Bilder und Varianten."""
+
+    __tablename__ = "cached_images"
+
+    id = Column(Integer, primary_key=True, index=True)
+    source_type = Column(String(50), nullable=False, index=True)
+    source_key = Column(String(1024), nullable=False, unique=True, index=True)
+    source_url = Column(String(2048), nullable=False)
+    mime_type = Column(String(120), nullable=True)
+    original_path = Column(String(1024), nullable=False)
+    variants_json = Column(
+        JSON, nullable=False
+    )  # {"64": "/media-cache/.../64.jpg", ...}
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    etag = Column(String(255), nullable=True)
+    last_modified = Column(String(255), nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<CachedImage(id={self.id}, source_type={self.source_type}, source_key={self.source_key})>"
+
+
 class OCRResult(Base):
     """Einzelnes OCR-Ergebnis von einer Quelle"""
 

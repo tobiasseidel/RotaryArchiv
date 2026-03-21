@@ -3,20 +3,23 @@ API für Erschließungs-Boxen: Box auf der Seite ↔ Triple Store.
 CRUD für ErschliessungsBox; entity-suggestions, wikidata-matches, wikidata-preview, assign, beleg.
 """
 
-import json
-from pathlib import Path
 import re
 from typing import Any
+from urllib.parse import urljoin
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+import httpx
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.rotary_archiv.content.entities import EntityType
+from src.rotary_archiv.content.image_cache import ImageCacheService
 from src.rotary_archiv.content.wikidata_sync import (
     extract_all_claim_values,
     extract_image_claims,
+    extract_place_coordinates,
+    extract_place_image_url,
     extract_syncable_claim_values,
     get_property_label,
 )
@@ -26,30 +29,24 @@ from src.rotary_archiv.core.triplestore import ROTARY, get_triplestore
 from src.rotary_archiv.wikidata.matcher import WikidataMatcher
 
 router = APIRouter(prefix="/{page_id}/erschliessung", tags=["erschliessung"])
-
-# #region agent log
-DEBUG_LOG_PATH = (
-    Path(__file__).resolve().parent.parent.parent.parent / "debug-983982.log"
-)
+image_cache = ImageCacheService()
 
 
-def _debug_log(location: str, message: str, data: dict, hypothesis_id: str) -> None:
-    try:
-        payload = {
-            "sessionId": "983982",
-            "location": location,
-            "message": message,
-            "data": data,
-            "hypothesisId": hypothesis_id,
-            "timestamp": __import__("time").time() * 1000,
-        }
-        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    except Exception:
-        pass
+class SetMainImageBody(BaseModel):
+    provider: str = Field(..., pattern="^(memorial|commons|wikidata|direct)$")
+    source_url: str | None = None
+    source_key: str | None = None
+    commons_filename: str | None = None
+    source_page_url: str | None = None
 
 
-# #endregion
+class ImageSearchResult(BaseModel):
+    provider: str
+    source_key: str
+    title: str
+    source_url: str
+    preview_url: str | None = None
+    source_page_url: str | None = None
 
 
 # --- Schemas ---
@@ -168,6 +165,202 @@ def _get_box_or_404(db: Session, page_id: int, box_id: int) -> ErschliessungsBox
     return box
 
 
+def _extract_candidate_image_urls(obj: Any) -> list[str]:
+    urls: list[str] = []
+    if isinstance(obj, dict):
+        for value in obj.values():
+            urls.extend(_extract_candidate_image_urls(value))
+    elif isinstance(obj, list):
+        for value in obj:
+            urls.extend(_extract_candidate_image_urls(value))
+    elif isinstance(obj, str):
+        v = obj.strip()
+        lower = v.lower()
+        if lower.startswith("http") and (
+            any(
+                lower.endswith(ext)
+                for ext in [".jpg", ".jpeg", ".png", ".webp", ".gif"]
+            )
+            or "/iiif/" in lower
+            or "/image/" in lower
+            or "special:filepath" in lower
+        ):
+            urls.append(v)
+    return urls
+
+
+def _search_commons_images(query: str, limit: int) -> list[dict[str, Any]]:
+    api_url = "https://commons.wikimedia.org/w/api.php"
+    params = {
+        "action": "query",
+        "format": "json",
+        "generator": "search",
+        "gsrsearch": query,
+        "gsrnamespace": 6,  # File:
+        "gsrlimit": max(1, min(limit, 20)),
+        "prop": "imageinfo",
+        "iiprop": "url",
+        "iiurlwidth": 320,
+    }
+    headers = {"User-Agent": "RotaryArchiv/1.0 image-search"}
+    with httpx.Client(timeout=30.0, headers=headers) as client:
+        r = client.get(api_url, params=params)
+        r.raise_for_status()
+        pages = (r.json().get("query") or {}).get("pages") or {}
+    results: list[dict[str, Any]] = []
+    for p in pages.values():
+        title = (p.get("title") or "").strip()
+        ii = (p.get("imageinfo") or [{}])[0]
+        src = (ii.get("url") or "").strip()
+        preview = (ii.get("thumburl") or src or "").strip() or None
+        if not src:
+            continue
+        results.append(
+            {
+                "provider": "commons",
+                "source_key": title or src,
+                "title": title or src,
+                "source_url": src,
+                "preview_url": preview,
+                "source_page_url": f"https://commons.wikimedia.org/wiki/{title.replace(' ', '_')}"
+                if title
+                else None,
+            }
+        )
+    return results[:limit]
+
+
+def _search_fotothek_images(query: str, limit: int) -> list[dict[str, Any]]:
+    # Deaktiviert: SLUB/Fotothek-Suche war nicht stabil genug.
+    # Für späteren Re-Enable bewusst im Code belassen.
+    url = "https://data.slub-dresden.de/search"
+    params = {"q": query, "size": max(1, min(limit, 20)), "format": "json"}
+    headers = {"User-Agent": "RotaryArchiv/1.0 image-search"}
+    with httpx.Client(timeout=30.0, headers=headers) as client:
+        r = client.get(url, params=params)
+        r.raise_for_status()
+        data = r.json()
+    results: list[dict[str, Any]] = []
+    for item in data if isinstance(data, list) else []:
+        title = (
+            item.get("preferredName")
+            or (item.get("title") or {}).get("mainTitle")
+            or item.get("name")
+            or "Fotothek-Eintrag"
+        )
+        source_page_url = item.get("@id")
+        urls = list(dict.fromkeys(_extract_candidate_image_urls(item)))
+        if not urls:
+            continue
+        source_url = urls[0]
+        preview = source_url
+        results.append(
+            {
+                "provider": "fotothek",
+                "source_key": source_page_url or source_url,
+                "title": str(title),
+                "source_url": source_url,
+                "preview_url": preview,
+                "source_page_url": source_page_url,
+            }
+        )
+    return results[:limit]
+
+
+def _strip_html_tags(text: str) -> str:
+    clean = re.sub(r"<[^>]+>", " ", text or "")
+    clean = re.sub(r"\s+", " ", clean).strip()
+    return clean
+
+
+def _fetch_og_image(page_url: str) -> str | None:
+    try:
+        with httpx.Client(
+            timeout=20.0, headers={"User-Agent": "RotaryArchiv/1.0 image-search"}
+        ) as client:
+            r = client.get(page_url)
+            r.raise_for_status()
+            html = r.text
+        m = re.search(
+            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+            html,
+            flags=re.IGNORECASE,
+        )
+        if m:
+            return urljoin(page_url, m.group(1).strip())
+    except Exception:
+        return None
+    return None
+
+
+def _search_memorial_rotary_people(query: str, limit: int) -> list[dict[str, Any]]:
+    """
+    Memorial-Rotary: Keine Nutzung von /api/suche o. ä. (CSRF/Session, instabil).
+    Nur sehr eingeschränktes Parsen des statischen HTML von /suche - die Trefferliste
+    läuft dort clientseitig; für zuverlässige Suche ggf. manuell verknüpfen.
+    """
+    base = "https://memorial-rotary.de"
+    search_url = f"{base}/suche"
+    surname = (query or "").strip().split(" ")[-1].strip()
+    if not surname:
+        return []
+    headers = {"User-Agent": "RotaryArchiv/1.0 image-search"}
+    with httpx.Client(timeout=30.0, headers=headers, follow_redirects=True) as client:
+        page = client.get(search_url)
+        page.raise_for_status()
+        html = page.text
+
+    pattern = re.compile(
+        r'<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    candidates: list[tuple[str, str]] = []
+    for href, anchor_html in pattern.findall(html):
+        href_abs = urljoin(search_url, href.strip())
+        if "memorial-rotary.de" not in href_abs:
+            continue
+        if href_abs.rstrip("/").endswith("/suche"):
+            continue
+        if (
+            "/login" in href_abs
+            or "/impressum" in href_abs
+            or "/dokumente/" in href_abs
+        ):
+            continue
+        title = _strip_html_tags(anchor_html)
+        if not title:
+            continue
+        # Nur relevante Personen-/Memorial-Links
+        if "/memorial/" not in href_abs and "/rotarier/" not in href_abs:
+            continue
+        candidates.append((href_abs, title))
+    dedup: list[tuple[str, str]] = []
+    seen = set()
+    for href, title in candidates:
+        key = href.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        dedup.append((href, title))
+        if len(dedup) >= limit:
+            break
+
+    results: list[dict[str, Any]] = []
+    for href, title in dedup:
+        img = _fetch_og_image(href)
+        results.append(
+            {
+                "provider": "memorial",
+                "source_key": href,
+                "title": title,
+                "source_url": img or href,
+                "preview_url": img,
+                "source_page_url": href,
+            }
+        )
+    return results[:limit]
+
+
 # --- CRUD ---
 
 
@@ -209,19 +402,6 @@ def list_erschliessungs_boxes(
         .order_by(ErschliessungsBox.id)
         .all()
     )
-    # #region agent log
-    for b in boxes:
-        _debug_log(
-            "erschliessung.py:list_boxes",
-            "box returned",
-            {
-                "box_id": b.id,
-                "entity_uri": getattr(b, "entity_uri", None),
-                "name": getattr(b, "name", None),
-            },
-            "H3",
-        )
-    # #endregion
     ts = get_triplestore()
     result = []
     for b in boxes:
@@ -306,6 +486,107 @@ def get_entity_suggestions(
     ts = get_triplestore()
     results = ts.search_entities(name=name, entity_type=entity_type, limit=limit)
     return {"suggestions": results}
+
+
+@router.get("/image-search")
+def image_search(
+    page_id: int,
+    provider: str = Query("memorial", pattern="^(memorial|commons)$"),
+    q: str = Query(..., min_length=1),
+    limit: int = Query(8, ge=1, le=20),
+    db: Session = Depends(get_db),
+):
+    """Bildersuche für Personen-Dialog (Memorial bevorzugt, Commons alternativ)."""
+    _get_page_or_404(db, page_id)
+    try:
+        if provider == "commons":
+            items = _search_commons_images(q, limit)
+        elif provider == "memorial":
+            items = _search_memorial_rotary_people(q, limit)
+        else:
+            # Fotothek bewusst deaktiviert; ggf. später erneut evaluieren.
+            items = []
+        return {"provider": provider, "results": items}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Bildersuche fehlgeschlagen: {e}",
+        ) from e
+
+
+@router.post("/boxes/{box_id}/set-main-image")
+def set_main_image_for_box(
+    page_id: int,
+    box_id: int,
+    body: SetMainImageBody,
+    db: Session = Depends(get_db),
+):
+    box = _get_box_or_404(db, page_id, box_id)
+    if box.box_type != "entity" or not box.entity_uri:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nur verknüpfte Entity-Boxen unterstützen Hauptbild",
+        )
+    source_key = body.source_key or body.commons_filename or body.source_url
+    if body.commons_filename:
+        cache_result = image_cache.cache_commons_file(db, body.commons_filename)
+    elif body.source_url:
+        cache_result = image_cache.cache_remote_image(
+            db,
+            source_url=body.source_url,
+            source_type=body.provider,
+            source_key=source_key,
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="source_url oder commons_filename erforderlich",
+        )
+    local_url = cache_result.get("main_url")
+    if not local_url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Lokale Bild-URL konnte nicht erzeugt werden",
+        )
+    ts = get_triplestore()
+    if "Place_" in box.entity_uri:
+        details = ts.get_place_details(box.entity_uri) or {}
+        ts.update_place(
+            box.entity_uri,
+            (details.get("name") or box.name or "").strip(),
+            wikidata_id=details.get("wikidata_id"),
+            main_image_url=local_url,
+            update_main_image=True,
+            lat=details.get("lat"),
+            lon=details.get("lon"),
+        )
+    else:
+        details = ts.get_person_details(box.entity_uri) or {}
+        claim_values = details.get("claim_values") or {}
+        if body.source_page_url and body.source_page_url.strip():
+            website = body.source_page_url.strip()
+            current_urls = claim_values.get("P973") or []
+            if not isinstance(current_urls, list):
+                current_urls = [str(current_urls)]
+            if website not in current_urls:
+                current_urls.append(website)
+            claim_values["P973"] = current_urls
+        ts.update_person(
+            box.entity_uri,
+            (details.get("name") or box.name or "").strip(),
+            wikidata_id=details.get("wikidata_id"),
+            claim_values=claim_values or None,
+            claim_value_labels=details.get("claim_value_labels") or None,
+            main_image_url=local_url,
+            update_main_image=True,
+        )
+    db.commit()
+    db.refresh(box)
+    return {
+        "ok": True,
+        "main_image_url": local_url,
+        "variants": cache_result.get("variants") or {},
+    }
 
 
 @router.get("/boxes/{box_id}/place-link-options")
@@ -558,6 +839,20 @@ def get_wikidata_sync_preview(
             }
         )
     images = extract_image_claims(claims)
+    for img in images:
+        try:
+            source_url = img.get("source_url") or img.get("thumb_url")
+            source_key = img.get("value")
+            if source_url:
+                cached = image_cache.cache_remote_image(
+                    db,
+                    source_url=source_url,
+                    source_type="wikidata",
+                    source_key=f"wikidata:{source_key or source_url}",
+                )
+                img["cached_url"] = cached.get("main_url")
+        except Exception:
+            continue
     return {
         "entity": {
             "id": entity_data.get("id"),
@@ -685,15 +980,36 @@ def update_box_entity_details(
             detail="Nur verknüpfte Entity-Boxen können bearbeitet werden",
         )
     ts = get_triplestore()
+    resolved_main_image_url = body.main_image_url
+    if body.main_image_url:
+        try:
+            cached = image_cache.cache_remote_image(
+                db,
+                source_url=body.main_image_url,
+                source_type="direct",
+                source_key=f"direct:{body.main_image_url}",
+            )
+            resolved_main_image_url = cached.get("main_url") or body.main_image_url
+        except Exception:
+            resolved_main_image_url = body.main_image_url
     if "Place_" in box.entity_uri:
-        ts.update_place(box.entity_uri, body.name.strip())
+        details = ts.get_place_details(box.entity_uri) or {}
+        ts.update_place(
+            box.entity_uri,
+            body.name.strip(),
+            wikidata_id=details.get("wikidata_id"),
+            main_image_url=resolved_main_image_url,
+            update_main_image=body.main_image_url is not None,
+            lat=details.get("lat"),
+            lon=details.get("lon"),
+        )
     else:
         ts.update_person(
             box.entity_uri,
             body.name.strip(),
             claim_values=body.claim_values or None,
             claim_value_labels=body.claim_value_labels or None,
-            main_image_url=body.main_image_url,
+            main_image_url=resolved_main_image_url,
             update_main_image=body.main_image_url is not None,
         )
     box.name = body.name.strip()
@@ -777,6 +1093,23 @@ def sync_box_entity_from_wikidata(
                         claim_value_labels.setdefault(prop_id, {})[
                             v.strip()
                         ] = labels_map[v.strip()]
+    main_image_url = None
+    images = extract_image_claims(claims)
+    if images:
+        candidate = images[0]
+        source_url = candidate.get("source_url") or candidate.get("thumb_url")
+        source_key = candidate.get("value") or source_url
+        if source_url:
+            try:
+                cached = image_cache.cache_remote_image(
+                    db,
+                    source_url=source_url,
+                    source_type="wikidata",
+                    source_key=f"wikidata:{source_key}",
+                )
+                main_image_url = cached.get("main_url")
+            except Exception:
+                main_image_url = None
     ts = get_triplestore()
     ts.update_person(
         box.entity_uri,
@@ -784,6 +1117,8 @@ def sync_box_entity_from_wikidata(
         wikidata_id=body.wikidata_id,
         claim_values=claim_values or None,
         claim_value_labels=claim_value_labels or None,
+        main_image_url=main_image_url,
+        update_main_image=main_image_url is not None,
     )
     if box.name != label:
         box.name = label
@@ -806,20 +1141,6 @@ def assign_entity_to_box(
     Entity-Box zuordnen: entweder entity_uri (aus internem Store) oder wikidata_id.
     Bei wikidata_id: Person mit Wikidata-Daten im Store anlegen, dann Box verknüpfen.
     """
-    # #region agent log
-    _debug_log(
-        "erschliessung.py:assign_entity_to_box",
-        "assign called",
-        {
-            "page_id": page_id,
-            "box_id": box_id,
-            "body_entity_uri": getattr(body, "entity_uri", None),
-            "body_wikidata_id": getattr(body, "wikidata_id", None),
-            "body_name": getattr(body, "name", None),
-        },
-        "H1",
-    )
-    # #endregion
     box = _get_box_or_404(db, page_id, box_id)
     if box.box_type != "entity":
         raise HTTPException(
@@ -862,11 +1183,6 @@ def assign_entity_to_box(
                 entity_uri = str(ROTARY[f"Place_{uuid.uuid4().hex}"])
                 ts.add_place(entity_uri, name)
         elif body.wikidata_id:
-            from src.rotary_archiv.content.wikidata_sync import (
-                extract_place_coordinates,
-                extract_place_image_url,
-            )
-
             matcher = WikidataMatcher()
             entity_data = matcher.get_entity_details(body.wikidata_id)
             if not entity_data or "error" in entity_data:
@@ -877,6 +1193,17 @@ def assign_entity_to_box(
             label = entity_data.get("label") or box.name or body.wikidata_id
             claims = entity_data.get("claims") or {}
             main_image_url = extract_place_image_url(claims)
+            if main_image_url:
+                try:
+                    cached = image_cache.cache_remote_image(
+                        db,
+                        source_url=main_image_url,
+                        source_type="wikidata",
+                        source_key=f"wikidata-place:{body.wikidata_id}",
+                    )
+                    main_image_url = cached.get("main_url") or main_image_url
+                except Exception:
+                    pass
             lat, lon = extract_place_coordinates(claims)
             entity_uri = str(ROTARY[f"Place_{uuid.uuid4().hex}"])
             ts.add_place(
@@ -948,12 +1275,30 @@ def assign_entity_to_box(
                 claim_values = extract_syncable_claim_values(
                     entity_data.get("claims") or {}
                 )
+            main_image_url = None
+            images = extract_image_claims(entity_data.get("claims") or {})
+            if images:
+                first = images[0]
+                source_url = first.get("source_url") or first.get("thumb_url")
+                source_key = first.get("value") or source_url
+                if source_url:
+                    try:
+                        cached = image_cache.cache_remote_image(
+                            db,
+                            source_url=source_url,
+                            source_type="wikidata",
+                            source_key=f"wikidata-person:{source_key}",
+                        )
+                        main_image_url = cached.get("main_url")
+                    except Exception:
+                        main_image_url = None
             entity_uri = str(ROTARY[f"Person_{uuid.uuid4().hex}"])
             ts.add_person(
                 entity_uri,
                 label,
                 wikidata_id=body.wikidata_id,
                 claim_values=claim_values or None,
+                main_image_url=main_image_url,
             )
         else:
             raise HTTPException(
@@ -965,24 +1310,8 @@ def assign_entity_to_box(
     ts.add_mention(mention_uri, entity_uri, box_uri)
 
     box.entity_uri = entity_uri
-    # #region agent log
-    _debug_log(
-        "erschliessung.py:assign_entity_to_box",
-        "before commit",
-        {"box_id": box.id, "entity_uri_set": box.entity_uri},
-        "H1",
-    )
-    # #endregion
     db.commit()
     db.refresh(box)
-    # #region agent log
-    _debug_log(
-        "erschliessung.py:assign_entity_to_box",
-        "after commit",
-        {"box_id": box.id, "entity_uri": box.entity_uri},
-        "H1",
-    )
-    # #endregion
     return box
 
 

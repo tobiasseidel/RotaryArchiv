@@ -74,46 +74,8 @@ class WikidataClient:
                             }
                         )
 
-                # #region agent log
-                import json
-
-                _log = {
-                    "sessionId": "983982",
-                    "location": "WikidataClient.search_entity",
-                    "message": "search result",
-                    "data": {
-                        "query": query,
-                        "resultCount": len(results),
-                        "hasError": any("error" in r for r in results),
-                    },
-                    "timestamp": __import__("time").time() * 1000,
-                    "hypothesisId": "A",
-                }
-                try:
-                    with open("debug-983982.log", "a", encoding="utf-8") as _f:
-                        _f.write(json.dumps(_log, ensure_ascii=False) + "\n")
-                except Exception:
-                    pass
-                # #endregion
                 return results
         except Exception as e:
-            # #region agent log
-            import json
-
-            _log = {
-                "sessionId": "983982",
-                "location": "WikidataClient.search_entity",
-                "message": "search exception",
-                "data": {"query": query, "error": str(e)},
-                "timestamp": __import__("time").time() * 1000,
-                "hypothesisId": "C",
-            }
-            try:
-                with open("debug-983982.log", "a", encoding="utf-8") as _f:
-                    _f.write(json.dumps(_log, ensure_ascii=False) + "\n")
-            except Exception:
-                pass
-            # #endregion
             return [{"error": str(e)}]
 
     def get_entity(self, entity_id: str, language: str = "de") -> dict[str, Any] | None:

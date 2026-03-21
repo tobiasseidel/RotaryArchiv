@@ -190,6 +190,7 @@ class TripleStore:
         *,
         wikidata_id: str | None = None,
         claim_values: dict[str, Any] | None = None,
+        main_image_url: str | None = None,
     ) -> None:
         """
         Person im Store anlegen (wikidata-aligned).
@@ -222,6 +223,10 @@ class TripleStore:
                         )
                     else:
                         self.add_triple(person_uri, pred_uri, val_str, "literal")
+        if main_image_url and main_image_url.strip():
+            self.add_triple(
+                person_uri, str(ROTARY["mainImage"]), main_image_url.strip(), "literal"
+            )
 
     def add_place(
         self,
@@ -499,6 +504,19 @@ class TripleStore:
             ?stmt rotary:statementSubject <{entity_uri}> .
             ?stmt rotary:statementPredicate ?predicate .
             ?stmt rotary:statementObject ?object .
+            OPTIONAL {{ ?stmt rotary:belegtIn ?beleg }}
+        }}
+        """
+        return self.query(query)
+
+    def list_statements_for_object(self, object_uri: str) -> list[dict[str, Any]]:
+        """Alle Statements, in denen die Entität als Object vorkommt."""
+        query = f"""
+        PREFIX rotary: <{ROTARY}>
+        SELECT ?stmt ?subject ?predicate ?beleg WHERE {{
+            ?stmt rotary:statementObject <{object_uri}> .
+            ?stmt rotary:statementSubject ?subject .
+            ?stmt rotary:statementPredicate ?predicate .
             OPTIONAL {{ ?stmt rotary:belegtIn ?beleg }}
         }}
         """

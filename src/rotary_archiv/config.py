@@ -26,6 +26,9 @@ class Settings(BaseSettings):
 
     # File Storage
     documents_path: str = "./data/documents"
+    image_cache_path: str = "./data/image_cache"
+    image_cache_sizes: str = "64,128,256,512"
+    image_cache_max_source_bytes: int = 20 * 1024 * 1024
 
     # OCR
     tesseract_cmd: str = "tesseract"

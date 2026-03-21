@@ -1061,8 +1061,6 @@
 
     <!-- Erschließungs-Daten (Listen-View) -->
     <div id="erschliessungOverviewView" class="container" style="display: none;">
-        <h1>Erschließungs-Daten</h1>
-        <p class="subtitle">Personen, Seiten und Boxen durchsuchen</p>
         <div style="margin-bottom: 16px; padding: 12px; background: #f5f5f5; border-radius: 6px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
             <label style="font-weight: 600;">Dokument:</label>
             <select id="erschliessungOverviewDocument" style="padding: 6px 10px; min-width: 200px;" onchange="loadErschliessungOverviewPageFilter(); loadErschliessungOverviewContent();">
@@ -1073,13 +1071,19 @@
                 <option value="">Alle</option>
             </select>
         </div>
-        <div class="tabs" style="margin-bottom: 16px; border-bottom: 2px solid #ddd;">
+        <div class="tabs" style="margin-bottom: 12px; border-bottom: 2px solid #ddd; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <button type="button" class="tab-btn active" id="erschliessungOverviewTabPersonen" onclick="switchErschliessungOverviewTab('personen');">Personen</button>
             <button type="button" class="tab-btn" id="erschliessungOverviewTabSeiten" onclick="switchErschliessungOverviewTab('seiten');">Seiten</button>
             <button type="button" class="tab-btn" id="erschliessungOverviewTabBoxen" onclick="switchErschliessungOverviewTab('boxen');">Boxen</button>
             <button type="button" class="tab-btn" id="erschliessungOverviewTabKarte" onclick="switchErschliessungOverviewTab('karte');">Karte</button>
+            <div id="erschliessungOverviewMapFilterInline" style="display:none; margin-left:auto; gap:10px; flex-wrap:wrap; align-items:center;">
+                <label style="display:flex; align-items:center; gap:4px; font-size:13px;"><input type="checkbox" id="ovFilterResidence" checked> Wohnorte</label>
+                <label style="display:flex; align-items:center; gap:4px; font-size:13px;"><input type="checkbox" id="ovFilterWork" checked> Arbeitsorte</label>
+                <label style="display:flex; align-items:center; gap:4px; font-size:13px;"><input type="checkbox" id="ovFilterEvent" checked> Veranstaltungsorte</label>
+                <label style="display:flex; align-items:center; gap:4px; font-size:13px;"><input type="checkbox" id="ovFilterUnclassified" checked> Ohne Typ</label>
+            </div>
         </div>
-        <div id="erschliessungOverviewContent">
+        <div id="erschliessungOverviewContent" style="min-height:0;">
             <p style="color: #666;">Lade...</p>
         </div>
     </div>
@@ -1774,13 +1778,25 @@
             <h2>Person zuordnen</h2>
             <label for="erschliessungPersonName">Name</label>
             <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                <input type="text" id="erschliessungPersonName" placeholder="Name eingeben..." style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                <input type="text" id="erschliessungPersonName" placeholder="Name eingeben..." onkeydown="triggerButtonOnEnter(event, 'erschliessungPersonSearchBtn')" style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
                 <button type="button" class="btn btn-primary" id="erschliessungPersonSearchBtn" onclick="searchErschliessungPersonSuggestions()">Suchen</button>
             </div>
             <p style="font-size: 12px; color: #666; margin-bottom: 8px;">Aus Ihrem Bestand:</p>
             <div id="erschliessungPersonInternalList" style="min-height: 36px; margin-bottom: 16px; padding: 8px; background: #f5f5f5; border-radius: 4px;"></div>
             <p style="font-size: 12px; color: #666; margin-bottom: 8px;">Aus Wikidata (zum Übernehmen):</p>
             <div id="erschliessungPersonWikidataList" style="min-height: 36px; margin-bottom: 16px; padding: 8px; background: #e3f2fd; border-radius: 4px;"></div>
+            <div style="margin-bottom: 12px; padding: 10px; background:#f8fbff; border:1px solid #dbe8ff; border-radius: 6px;">
+                <p style="font-size: 12px; color: #666; margin-bottom: 8px;">Bildersuche (Memorial Rotary zuerst):</p>
+                <div style="display:flex; gap:8px; margin-bottom:8px;">
+                    <select id="erschliessungPersonImageProvider" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <option value="memorial" selected>Memorial Rotary</option>
+                        <option value="commons">Wikimedia Commons</option>
+                    </select>
+                    <input type="text" id="erschliessungPersonImageQuery" placeholder="Nachname suchen..." onkeydown="triggerButtonOnEnter(event, 'erschliessungPersonImageSearchBtn')" style="flex:1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    <button type="button" class="btn btn-secondary" id="erschliessungPersonImageSearchBtn" onclick="searchErschliessungPersonImages()">Suchen</button>
+                </div>
+                <div id="erschliessungPersonImageResults" style="min-height:36px; max-height:220px; overflow-y:auto; background:#fff; border:1px solid #eef3ff; border-radius:4px; padding:8px;"></div>
+            </div>
             <div style="margin-bottom: 12px;">
                 <button type="button" class="btn btn-secondary" id="erschliessungPersonInternalOnlyBtn">Nur intern anlegen</button>
             </div>
@@ -1797,7 +1813,7 @@
             <h2>Ort zuordnen</h2>
             <label for="erschliessungPlaceName">Name</label>
             <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                <input type="text" id="erschliessungPlaceName" placeholder="Ort eingeben..." style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                <input type="text" id="erschliessungPlaceName" placeholder="Ort eingeben..." onkeydown="triggerButtonOnEnter(event, 'erschliessungPlaceSearchBtn')" style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
                 <button type="button" class="btn btn-primary" id="erschliessungPlaceSearchBtn" onclick="searchErschliessungPlaceSuggestions()">Suchen</button>
             </div>
             <p style="font-size: 12px; color: #666; margin-bottom: 8px;">Aus Ihrem Bestand:</p>
@@ -1813,7 +1829,7 @@
                 <select id="erschliessungPlaceRelationProperty" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px;"></select>
                 <label for="erschliessungPlaceRelationObjectName">Objekt (intern)</label>
                 <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                    <input type="text" id="erschliessungPlaceRelationObjectName" placeholder="Person/Event suchen..." style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    <input type="text" id="erschliessungPlaceRelationObjectName" placeholder="Person/Event suchen..." onkeydown="triggerButtonOnEnter(event, 'erschliessungPlaceRelationSearchBtn')" style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
                     <button type="button" class="btn btn-secondary" id="erschliessungPlaceRelationSearchBtn">Suchen</button>
                 </div>
                 <div id="erschliessungPlaceRelationObjectList" style="min-height: 32px; margin-bottom: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px;"></div>
@@ -1850,6 +1866,18 @@
         <div class="edit-dialog" onclick="event.stopPropagation()" style="max-width: 560px;">
             <h2>Objekt bearbeiten</h2>
             <div id="erschliessungEditEntityImage" style="margin-bottom: 12px; min-height: 0;"></div>
+            <div id="erschliessungEditEntityImageSearchPanel" style="margin-bottom: 12px; padding: 10px; background:#f8fbff; border:1px solid #dbe8ff; border-radius: 6px;">
+                <p style="font-size: 12px; color: #666; margin-bottom: 8px;">Bildersuche (Memorial Rotary zuerst):</p>
+                <div style="display:flex; gap:8px; margin-bottom:8px;">
+                    <select id="erschliessungEditEntityImageProvider" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                        <option value="memorial" selected>Memorial Rotary</option>
+                        <option value="commons">Wikimedia Commons</option>
+                    </select>
+                    <input type="text" id="erschliessungEditEntityImageQuery" placeholder="Nachname suchen..." onkeydown="triggerButtonOnEnter(event, 'erschliessungEditEntityImageSearchBtn')" style="flex:1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    <button type="button" class="btn btn-secondary" id="erschliessungEditEntityImageSearchBtn" onclick="searchErschliessungEditEntityImages()">Suchen</button>
+                </div>
+                <div id="erschliessungEditEntityImageResults" style="min-height:36px; max-height:220px; overflow-y:auto; background:#fff; border:1px solid #eef3ff; border-radius:4px; padding:8px;"></div>
+            </div>
             <label for="erschliessungEditEntityName">Name</label>
             <input type="text" id="erschliessungEditEntityName" placeholder="Name" style="width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px;">
             <div id="erschliessungEditEntityClaimsList" style="margin-bottom: 12px;"></div>
@@ -1862,7 +1890,7 @@
                 <select id="erschliessungEditPlaceRelationProperty" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px;"></select>
                 <label for="erschliessungEditPlaceRelationObjectName">Objekt (intern)</label>
                 <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                    <input type="text" id="erschliessungEditPlaceRelationObjectName" placeholder="Person/Event suchen..." style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    <input type="text" id="erschliessungEditPlaceRelationObjectName" placeholder="Person/Event suchen..." onkeydown="triggerButtonOnEnter(event, 'erschliessungEditPlaceRelationSearchBtn')" style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
                     <button type="button" class="btn btn-secondary" id="erschliessungEditPlaceRelationSearchBtn">Suchen</button>
                 </div>
                 <div id="erschliessungEditPlaceRelationObjectList" style="min-height: 32px; margin-bottom: 8px; padding: 8px; background: #f5f5f5; border-radius: 4px;"></div>
@@ -1979,6 +2007,12 @@
             const div = document.createElement('div');
             div.textContent = s;
             return div.innerHTML;
+        }
+        function triggerButtonOnEnter(event, buttonId) {
+            if (!event || event.key !== 'Enter') return;
+            event.preventDefault();
+            var btn = document.getElementById(buttonId);
+            if (btn) btn.click();
         }
         let pollInterval = null;
         let currentJobTab = 'all'; // 'all', 'ocr', 'review'
@@ -3054,13 +3088,26 @@
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
             if (contentAnalysisSettingsView) contentAnalysisSettingsView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
-            if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'block';
+            if (erschliessungOverviewView) {
+                erschliessungOverviewView.style.display = 'flex';
+                erschliessungOverviewView.style.flexDirection = 'column';
+                erschliessungOverviewView.style.height = 'calc(100vh - 76px)';
+                erschliessungOverviewView.style.minHeight = '0';
+                erschliessungOverviewView.style.overflow = 'hidden';
+            }
+            var overviewContent = document.getElementById('erschliessungOverviewContent');
+            if (overviewContent) {
+                overviewContent.style.flex = '1';
+                overviewContent.style.minHeight = '0';
+            }
 
             document.querySelectorAll('.nav-menu a').forEach(function(a) { a.classList.remove('active'); });
             const navErschliessung = document.getElementById('navErschliessungOverview');
             if (navErschliessung) navErschliessung.classList.add('active');
 
             window.location.hash = '#/erschliessung-overview';
+            var mapFilterInline = document.getElementById('erschliessungOverviewMapFilterInline');
+            if (mapFilterInline) mapFilterInline.style.display = currentErschliessungOverviewTab === 'karte' ? 'flex' : 'none';
             loadErschliessungOverviewDocuments();
             loadErschliessungOverviewPageFilter();
             loadErschliessungOverviewContent();
@@ -3071,7 +3118,19 @@
             var tabId = tab === 'personen' ? 'Personen' : tab === 'seiten' ? 'Seiten' : tab === 'boxen' ? 'Boxen' : 'Karte';
             var el = document.getElementById('erschliessungOverviewTab' + tabId);
             if (el) el.classList.add('active');
+            var mapFilterInline = document.getElementById('erschliessungOverviewMapFilterInline');
+            if (mapFilterInline) mapFilterInline.style.display = tab === 'karte' ? 'flex' : 'none';
             loadErschliessungOverviewContent();
+        }
+        function resizeErschliessungOverviewMap() {
+            var mapEl = document.getElementById('erschliessungOverviewMapContainer');
+            if (!mapEl) return;
+            var rect = mapEl.getBoundingClientRect();
+            var bottomGap = 12;
+            var minHeight = 320;
+            var targetHeight = Math.max(minHeight, window.innerHeight - rect.top - bottomGap);
+            mapEl.style.height = targetHeight + 'px';
+            if (erschliessungOverviewMap) erschliessungOverviewMap.invalidateSize();
         }
         async function loadErschliessungOverviewDocuments() {
             const sel = document.getElementById('erschliessungOverviewDocument');
@@ -3234,12 +3293,14 @@
                 container.innerHTML = '<p style="color:#666;">Keine Orte mit Koordinaten. Setzen Sie Orte über „Erschließung – Ort“ und „Auf Karte setzen“.</p>';
                 return;
             }
-            container.innerHTML = '<div id="erschliessungOverviewMapContainer" style="height:500px; width:100%; border:1px solid #ccc; border-radius:4px;"></div>';
+            container.innerHTML =
+                '<div id="erschliessungOverviewMapContainer" style="height:500px; width:100%; border:1px solid #ccc; border-radius:4px;"></div>';
             var mapEl = document.getElementById('erschliessungOverviewMapContainer');
             if (!mapEl || typeof L === 'undefined') {
                 container.innerHTML = '<p style="color:#666;">Keine Karte (Leaflet nicht geladen?).</p>';
                 return;
             }
+            resizeErschliessungOverviewMap();
             var center = [51.05, 13.74];
             var zoom = 11;
             if (places.length === 1) {
@@ -3266,13 +3327,81 @@
                 if (e.layer === dresden1911Layer) fitMapToDresden1911IfNeeded(erschliessungOverviewMap);
                 if (e.layer === loschwitzLayer) fitMapToLoschwitzIfNeeded(erschliessungOverviewMap);
             });
-            places.forEach(function(p) {
-                var popupHtml = '<strong>' + escapeHtml(p.name || p.place_id || '') + '</strong>';
-                if (p.main_image_url) popupHtml += '<br><img src="' + escapeHtml(p.main_image_url) + '" alt="" style="max-width:120px; max-height:80px; margin-top:6px;">';
-                if (p.page_ids && p.page_ids.length) popupHtml += '<br>' + p.page_ids.slice(0, 3).map(function(pid) { return '<a href="#/page/' + pid + '/inspect">Seite ' + pid + '</a>'; }).join(' ');
-                var marker = L.marker([p.lat, p.lon]).addTo(erschliessungOverviewMap);
-                marker.bindPopup(popupHtml);
+            function selectedTypes() {
+                var res = document.getElementById('ovFilterResidence');
+                var work = document.getElementById('ovFilterWork');
+                var ev = document.getElementById('ovFilterEvent');
+                var un = document.getElementById('ovFilterUnclassified');
+                return {
+                    residence: !!(res && res.checked),
+                    work: !!(work && work.checked),
+                    event: !!(ev && ev.checked),
+                    unclassified: !!(un && un.checked)
+                };
+            }
+            function placePassesFilter(p, types) {
+                var rel = Array.isArray(p.relation_types) ? p.relation_types : [];
+                if (rel.length === 0) return types.unclassified;
+                if (types.residence && rel.indexOf('residence') >= 0) return true;
+                if (types.work && rel.indexOf('work') >= 0) return true;
+                if (types.event && rel.indexOf('event') >= 0) return true;
+                return false;
+            }
+            function relationLabel(t) {
+                if (t === 'residence') return 'Wohnort';
+                if (t === 'work') return 'Arbeitsort';
+                if (t === 'event') return 'Veranstaltungsort';
+                return t;
+            }
+            function renderMapWithFilters() {
+                if (!erschliessungOverviewMap) return;
+                erschliessungOverviewMap.eachLayer(function(layer) {
+                    if (layer instanceof L.Marker) erschliessungOverviewMap.removeLayer(layer);
+                });
+                var types = selectedTypes();
+                var filtered = places.filter(function(p) { return placePassesFilter(p, types); });
+                filtered.forEach(function(p) {
+                    var rel = Array.isArray(p.relation_types) ? p.relation_types : [];
+                    var popupHtml = '<strong>' + escapeHtml(p.name || p.place_id || '') + '</strong>';
+                    if (rel.length) popupHtml += '<br><span style="color:#666;">Typ: ' + escapeHtml(rel.map(relationLabel).join(', ')) + '</span>';
+                    if (p.main_image_url) popupHtml += '<br><img src="' + escapeHtml(p.main_image_url) + '" alt="" style="max-width:120px; max-height:80px; margin-top:6px;">';
+                    if (p.page_ids && p.page_ids.length) popupHtml += '<br>' + p.page_ids.slice(0, 3).map(function(pid) { return '<a href="#/page/' + pid + '/inspect">Seite ' + pid + '</a>'; }).join(' ');
+                    var marker = L.marker([p.lat, p.lon]).addTo(erschliessungOverviewMap);
+                    marker.bindPopup(popupHtml);
+                    var showPersonIcons = types.residence || types.work;
+                    if (showPersonIcons && Array.isArray(p.linked_persons) && p.linked_persons.length) {
+                        var persons = p.linked_persons.filter(function(lp) {
+                            var rt = Array.isArray(lp.relation_types) ? lp.relation_types : [];
+                            return (types.residence && rt.indexOf('residence') >= 0) || (types.work && rt.indexOf('work') >= 0);
+                        });
+                        persons.slice(0, 8).forEach(function(lp, idx) {
+                            if (!lp.main_image_url) return;
+                            var angle = (idx / Math.max(persons.length, 1)) * Math.PI * 2;
+                            var dLat = Math.sin(angle) * 0.00018;
+                            var dLon = Math.cos(angle) * 0.00024;
+                            var lat = p.lat + dLat;
+                            var lon = p.lon + dLon;
+                            var icon = L.divIcon({
+                                className: 'person-photo-marker',
+                                html: '<img src="' + escapeHtml(lp.main_image_url) + '" style="width:28px;height:28px;border-radius:50%;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.35);object-fit:cover;">',
+                                iconSize: [28, 28],
+                                iconAnchor: [14, 14]
+                            });
+                            var pm = L.marker([lat, lon], { icon: icon }).addTo(erschliessungOverviewMap);
+                            var relText = (lp.relation_types || []).map(relationLabel).join(', ');
+                            pm.bindPopup('<strong>' + escapeHtml(lp.name || '') + '</strong><br><span style="color:#666;">' + escapeHtml(relText) + '</span>');
+                        });
+                    }
+                });
+            }
+            ['ovFilterResidence', 'ovFilterWork', 'ovFilterEvent', 'ovFilterUnclassified'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.addEventListener('change', renderMapWithFilters);
             });
+            window.removeEventListener('resize', resizeErschliessungOverviewMap);
+            window.addEventListener('resize', resizeErschliessungOverviewMap);
+            renderMapWithFilters();
+            resizeErschliessungOverviewMap();
         }
         function renderErschliessungOverviewPersonen(container, entities) {
             if (!entities.length) {
@@ -9310,6 +9439,9 @@
             document.getElementById('erschliessungPersonName').value = '';
             document.getElementById('erschliessungPersonInternalList').innerHTML = '';
             document.getElementById('erschliessungPersonWikidataList').innerHTML = '';
+            document.getElementById('erschliessungPersonImageResults').innerHTML = '';
+            document.getElementById('erschliessungPersonImageProvider').value = 'memorial';
+            document.getElementById('erschliessungPersonImageQuery').value = '';
             const internalOnlyBtn = document.getElementById('erschliessungPersonInternalOnlyBtn');
             if (internalOnlyBtn) internalOnlyBtn.onclick = function () { assignErschliessungPerson(null, null, true); };
             d.style.display = 'block';
@@ -9399,6 +9531,9 @@
             document.getElementById('erschliessungEditEntityName').value = '';
             document.getElementById('erschliessungEditEntityClaimsList').innerHTML = '';
             document.getElementById('erschliessungEditEntityImage').innerHTML = '';
+            document.getElementById('erschliessungEditEntityImageResults').innerHTML = '';
+            document.getElementById('erschliessungEditEntityImageProvider').value = 'memorial';
+            document.getElementById('erschliessungEditEntityImageQuery').value = '';
             var panel = document.getElementById('erschliessungEditEntityPlaceLinkPanel');
             if (panel) panel.style.display = 'none';
             var relationList = document.getElementById('erschliessungEditPlaceRelationObjectList');
@@ -9412,6 +9547,54 @@
                     fillErschliessungEditEntityForm(data);
                 })
                 .catch(function () {});
+        }
+        async function searchErschliessungEditEntityImages() {
+            const pageId = currentErschliessungsBoxPageId;
+            if (!pageId) return;
+            const providerEl = document.getElementById('erschliessungEditEntityImageProvider');
+            const qEl = document.getElementById('erschliessungEditEntityImageQuery');
+            const listEl = document.getElementById('erschliessungEditEntityImageResults');
+            const provider = providerEl ? providerEl.value : 'fotothek';
+            const rawQuery = (qEl ? qEl.value : '').trim() || (document.getElementById('erschliessungEditEntityName').value || '').trim();
+            const q = rawQuery.split(/\s+/).filter(Boolean).slice(-1)[0] || '';
+            if (!q) {
+                showMessage('Bitte Nachnamen für Bildersuche eingeben', 'error');
+                return;
+            }
+            if (listEl) listEl.innerHTML = '<span style="color:#666;">Suche läuft…</span>';
+            try {
+                const r = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/image-search?provider=${encodeURIComponent(provider)}&q=${encodeURIComponent(q)}&limit=500`);
+                if (!r.ok) throw new Error((await r.json().catch(function(){ return {}; })).detail || r.statusText);
+                const data = await r.json();
+                const items = data.results || [];
+                if (!listEl) return;
+                if (!items.length) {
+                    listEl.innerHTML = '<span style="color:#888;">Keine Bilder gefunden.</span>';
+                    return;
+                }
+                listEl.innerHTML = items.map(function(item, idx) {
+                    const preview = item.preview_url ? '<img src="' + escapeHtml(item.preview_url) + '" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #ddd;">' : '<div style="width:64px;height:64px;background:#f0f0f0;border-radius:6px;"></div>';
+                    const title = escapeHtml(item.title || ('Bild ' + (idx + 1)));
+                    const pageLink = item.source_page_url ? '<a href="' + escapeHtml(item.source_page_url) + '" target="_blank" rel="noopener" style="font-size:11px;">Quelle</a>' : '';
+                    return '<div style="display:flex; gap:10px; align-items:center; margin-bottom:8px; padding:6px; border:1px solid #eee; border-radius:6px;">'
+                        + preview
+                        + '<div style="flex:1; min-width:0;"><div style="font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + title + '</div><div>' + pageLink + '</div></div>'
+                        + '<button type="button" class="btn btn-secondary edit-entity-image-use-btn" data-provider="' + escapeHtml(item.provider || provider) + '" data-source-url="' + escapeHtml(item.source_url || '') + '" data-source-key="' + escapeHtml(item.source_key || '') + '" data-source-page-url="' + escapeHtml(item.source_page_url || '') + '" style="font-size:11px; padding:4px 8px;">Als Hauptbild</button>'
+                        + '</div>';
+                }).join('');
+                listEl.querySelectorAll('.edit-entity-image-use-btn').forEach(function(btn) {
+                    btn.onclick = function() {
+                        setErschliessungMainImageByProvider(
+                            btn.dataset.provider || provider,
+                            btn.dataset.sourceUrl || '',
+                            btn.dataset.sourceKey || '',
+                            btn.dataset.sourcePageUrl || ''
+                        );
+                    };
+                });
+            } catch (e) {
+                if (listEl) listEl.innerHTML = '<span style="color:#c62828;">Fehler: ' + escapeHtml(e.message) + '</span>';
+            }
         }
         function closeErschliessungEditEntityDialog() {
             const el = document.getElementById('erschliessungEditEntityDialog');
@@ -9530,7 +9713,9 @@
                 });
                 var images = data.images || [];
                 var imgsHtml = images.length ? images.map(function (img, idx) {
-                    return '<div style="display:inline-block; margin:4px; vertical-align:top; text-align:center;"><img src="' + escapeHtml(img.thumb_url) + '" alt="" style="max-width:80px; max-height:80px; display:block; margin-bottom:4px;"><br><button type="button" class="btn btn-secondary" style="font-size:11px; padding:2px 8px;" onclick="setErschliessungMainImage(\'' + escapeHtml(img.thumb_url.replace(/'/g, "\\'")) + '\')">Als Hauptbild</button></div>';
+                    var preview = img.cached_url || img.thumb_url;
+                    var source = img.source_url || img.thumb_url;
+                    return '<div style="display:inline-block; margin:4px; vertical-align:top; text-align:center;"><img src="' + escapeHtml(preview || '') + '" alt="" style="max-width:80px; max-height:80px; display:block; margin-bottom:4px;"><br><button type="button" class="btn btn-secondary" style="font-size:11px; padding:2px 8px;" onclick="setErschliessungMainImage(\'' + escapeHtml((source || '').replace(/'/g, "\\'")) + '\')">Als Hauptbild</button></div>';
                 }).join('') : '<span style="color:#888;">Keine Bilder.</span>';
                 document.getElementById('erschliessungSyncImagesList').innerHTML = imgsHtml;
                 document.getElementById('erschliessungSyncLoading').style.display = 'none';
@@ -9542,33 +9727,16 @@
             }
         }
         async function setErschliessungMainImage(thumbUrl) {
+            if (!thumbUrl) return;
+            await setErschliessungMainImageByProvider('wikidata', thumbUrl, thumbUrl);
             if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
-            var pageId = currentErschliessungsBoxPageId;
-            var boxId = currentErschliessungsBoxId;
             try {
-                var detailsRes = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes/${boxId}/entity-details`);
-                if (!detailsRes.ok) return;
-                var data = await detailsRes.json();
-                var name = data.name || '';
-                var claim_values = data.claim_values || {};
-                var claim_value_labels = data.claim_value_labels || {};
-                var r = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes/${boxId}/entity-details`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: name, claim_values: claim_values, claim_value_labels: claim_value_labels, main_image_url: thumbUrl })
-                });
-                if (!r.ok) throw new Error((await r.json().catch(function () { return {}; })).detail || r.statusText);
-                showMessage('Hauptbild gesetzt', 'success');
-                if (document.getElementById('erschliessungEditEntityName')) {
-                    var detailsRes2 = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/boxes/${boxId}/entity-details`);
-                    if (detailsRes2.ok) {
-                        var d = await detailsRes2.json();
-                        fillErschliessungEditEntityForm(d);
-                    }
+                var detailsRes2 = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/entity-details`);
+                if (detailsRes2.ok) {
+                    var d = await detailsRes2.json();
+                    fillErschliessungEditEntityForm(d);
                 }
-            } catch (e) {
-                showMessage('Fehler: ' + e.message, 'error');
-            }
+            } catch (e) {}
         }
         async function saveErschliessungSyncWikidata() {
             if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
@@ -9672,6 +9840,76 @@
                 closeErschliessungPersonDialog();
                 await loadErschliessungsBoxen(pageIdForReload);
                 showMessage('Person zugeordnet', 'success');
+            } catch (e) {
+                showMessage('Fehler: ' + e.message, 'error');
+            }
+        }
+        async function searchErschliessungPersonImages() {
+            const pageId = currentErschliessungsBoxPageId;
+            if (!pageId) return;
+            const providerEl = document.getElementById('erschliessungPersonImageProvider');
+            const qEl = document.getElementById('erschliessungPersonImageQuery');
+            const listEl = document.getElementById('erschliessungPersonImageResults');
+            const provider = providerEl ? providerEl.value : 'fotothek';
+            const rawQuery = (qEl ? qEl.value : '').trim() || (document.getElementById('erschliessungPersonName').value || '').trim();
+            const q = rawQuery.split(/\s+/).filter(Boolean).slice(-1)[0] || '';
+            if (!q) {
+                showMessage('Bitte Nachnamen für Bildersuche eingeben', 'error');
+                return;
+            }
+            if (listEl) listEl.innerHTML = '<span style="color:#666;">Suche läuft…</span>';
+            try {
+                const r = await fetch(`${API_BASE}/api/pages/${pageId}/erschliessung/image-search?provider=${encodeURIComponent(provider)}&q=${encodeURIComponent(q)}&limit=500`);
+                if (!r.ok) throw new Error((await r.json().catch(function(){ return {}; })).detail || r.statusText);
+                const data = await r.json();
+                const items = data.results || [];
+                if (!listEl) return;
+                if (!items.length) {
+                    listEl.innerHTML = '<span style="color:#888;">Keine Bilder gefunden.</span>';
+                    return;
+                }
+                listEl.innerHTML = items.map(function(item, idx) {
+                    const preview = item.preview_url ? '<img src="' + escapeHtml(item.preview_url) + '" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #ddd;">' : '<div style="width:64px;height:64px;background:#f0f0f0;border-radius:6px;"></div>';
+                    const title = escapeHtml(item.title || ('Bild ' + (idx + 1)));
+                    const pageLink = item.source_page_url ? '<a href="' + escapeHtml(item.source_page_url) + '" target="_blank" rel="noopener" style="font-size:11px;">Quelle</a>' : '';
+                    return '<div style="display:flex; gap:10px; align-items:center; margin-bottom:8px; padding:6px; border:1px solid #eee; border-radius:6px;">'
+                        + preview
+                        + '<div style="flex:1; min-width:0;"><div style="font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + title + '</div><div>' + pageLink + '</div></div>'
+                        + '<button type="button" class="btn btn-secondary person-image-use-btn" data-provider="' + escapeHtml(item.provider || provider) + '" data-source-url="' + escapeHtml(item.source_url || '') + '" data-source-key="' + escapeHtml(item.source_key || '') + '" data-source-page-url="' + escapeHtml(item.source_page_url || '') + '" style="font-size:11px; padding:4px 8px;">Als Hauptbild</button>'
+                        + '</div>';
+                }).join('');
+                listEl.querySelectorAll('.person-image-use-btn').forEach(function(btn) {
+                    btn.onclick = function() {
+                        setErschliessungMainImageByProvider(
+                            btn.dataset.provider || provider,
+                            btn.dataset.sourceUrl || '',
+                            btn.dataset.sourceKey || '',
+                            btn.dataset.sourcePageUrl || ''
+                        );
+                    };
+                });
+            } catch (e) {
+                if (listEl) listEl.innerHTML = '<span style="color:#c62828;">Fehler: ' + escapeHtml(e.message) + '</span>';
+            }
+        }
+        async function setErschliessungMainImageByProvider(provider, sourceUrl, sourceKey, sourcePageUrl) {
+            if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId || !sourceUrl) return;
+            try {
+                const r = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/set-main-image`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider: provider || 'direct', source_url: sourceUrl, source_key: sourceKey || sourceUrl, source_page_url: sourcePageUrl || null })
+                });
+                if (!r.ok) throw new Error((await r.json().catch(function(){ return {}; })).detail || r.statusText);
+                showMessage('Hauptbild gesetzt', 'success');
+                await loadErschliessungsBoxen(currentErschliessungsBoxPageId);
+                if (document.getElementById('erschliessungEditEntityDialog').style.display !== 'none') {
+                    const detailsRes = await fetch(`${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/entity-details`);
+                    if (detailsRes.ok) {
+                        const data = await detailsRes.json();
+                        fillErschliessungEditEntityForm(data);
+                    }
+                }
             } catch (e) {
                 showMessage('Fehler: ' + e.message, 'error');
             }

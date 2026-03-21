@@ -50,30 +50,6 @@ class WikidataMatcher:
         # Sortiere nach Score (beste zuerst)
         scored_results.sort(key=lambda x: x.get("match_score", 0), reverse=True)
 
-        # #region agent log
-        import json
-
-        _first = results[0] if results else {}
-        _log = {
-            "sessionId": "983982",
-            "location": "WikidataMatcher.find_matches",
-            "message": "after score filter",
-            "data": {
-                "name": name,
-                "rawCount": len(results),
-                "scoredCount": len(scored_results),
-                "firstLabel": _first.get("label") if "error" not in _first else None,
-            },
-            "timestamp": __import__("time").time() * 1000,
-            "hypothesisId": "B",
-        }
-        try:
-            with open("debug-983982.log", "a", encoding="utf-8") as _f:
-                _f.write(json.dumps(_log, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
-        # #endregion
-
         return scored_results[:10]  # Top 10
 
     def _calculate_match_score(

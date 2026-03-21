@@ -30,6 +30,14 @@ PROPERTY_LABELS: dict[str, str] = {
 COMMONS_FILEPATH_URL = "https://commons.wikimedia.org/wiki/Special:FilePath/"
 
 
+def normalize_commons_filename(value: str) -> str:
+    """Normiert Commons-Dateinamen für stabile Speicherung/Keys."""
+    name = (value or "").strip()
+    if name.startswith("File:"):
+        name = name[5:].strip()
+    return name.replace("_", " ")
+
+
 def _normalize_time_value(time_str: str) -> str | None:
     """
     Normalisiere Wikidata-Zeit (z.B. '+1952-03-11T00:00:00Z') zu Datum 'YYYY-MM-DD'.
@@ -130,9 +138,7 @@ def commons_thumb_url(commons_filename: str, width: int = 200) -> str:
     """Commons-Dateiname zu Thumbnail-URL (Special:FilePath)."""
     if not commons_filename or not isinstance(commons_filename, str):
         return ""
-    name = commons_filename.strip()
-    if name.startswith("File:"):
-        name = name[5:].strip()
+    name = normalize_commons_filename(commons_filename)
     from urllib.parse import quote
 
     encoded = quote(name.replace(" ", "_"))
@@ -211,12 +217,15 @@ def extract_image_claims(claims: dict[str, Any]) -> list[dict[str, Any]]:
                 val = val["value"]
             if not isinstance(val, str) or not val.strip():
                 continue
-            filename = val.strip()
-            if filename.startswith("File:"):
-                filename = filename[5:].strip()
+            filename = normalize_commons_filename(val)
             thumb_url = commons_thumb_url(filename, 200)
             result.append(
-                {"prop_id": prop_id, "value": filename, "thumb_url": thumb_url}
+                {
+                    "prop_id": prop_id,
+                    "value": filename,
+                    "thumb_url": thumb_url,
+                    "source_url": commons_thumb_url(filename, 1024),
+                }
             )
             break
     return result

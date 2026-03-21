@@ -17,6 +17,12 @@ router = APIRouter(
     prefix="/api/erschliessung-overview", tags=["erschliessung-overview"]
 )
 
+RELATION_BY_PROPERTY = {
+    "P551": "residence",
+    "P937": "work",
+    "P276": "event",
+}
+
 
 class PlaceCoordinatesBody(BaseModel):
     """Body für Koordinaten-Update eines Orts."""
@@ -290,6 +296,34 @@ def list_places(
         details = ts.get_place_details(uri)
         if not details or details.get("lat") is None or details.get("lon") is None:
             continue
+        stmt_rows = ts.list_statements_for_object(uri)
+        relation_types: set[str] = set()
+        linked_persons_by_uri: dict[str, dict] = {}
+        for row in stmt_rows:
+            subject_uri = row.get("subject") or ""
+            predicate_uri = row.get("predicate") or ""
+            prop_id = (
+                predicate_uri.split("/prop/direct/")[-1]
+                if "/prop/direct/" in predicate_uri
+                else None
+            )
+            relation_type = RELATION_BY_PROPERTY.get(prop_id or "")
+            if relation_type:
+                relation_types.add(relation_type)
+            if relation_type in {"residence", "work"} and "Person_" in subject_uri:
+                p = linked_persons_by_uri.get(subject_uri)
+                if not p:
+                    person_details = ts.get_person_details(subject_uri) or {}
+                    p = {
+                        "entity_uri": subject_uri,
+                        "name": person_details.get("name")
+                        or subject_uri.split("/")[-1],
+                        "main_image_url": person_details.get("main_image_url"),
+                        "relation_types": [],
+                    }
+                    linked_persons_by_uri[subject_uri] = p
+                if relation_type not in p["relation_types"]:
+                    p["relation_types"].append(relation_type)
         place_id = uri.split("/")[-1].split("#")[0] if uri else ""
         result.append(
             {
@@ -300,6 +334,8 @@ def list_places(
                 "lon": details["lon"],
                 "main_image_url": details.get("main_image_url"),
                 "page_ids": list(dict.fromkeys(page_ids)),
+                "relation_types": sorted(relation_types),
+                "linked_persons": list(linked_persons_by_uri.values()),
             }
         )
     return {"places": result}
