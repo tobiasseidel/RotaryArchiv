@@ -8,6 +8,7 @@ import tempfile
 
 from sqlalchemy.orm import Session
 
+from src.rotary_archiv.core.bbox import save_bboxes
 from src.rotary_archiv.core.models import DocumentPage, OCRResult, OCRSource
 from src.rotary_archiv.ocr.ollama_vision import OllamaVisionOCR
 from src.rotary_archiv.utils.file_handler import get_file_path
@@ -147,6 +148,11 @@ class OCRPipeline:
             db.commit()
             db.refresh(ollama_ocr_result)
 
+            # In neue bboxes Tabelle schreiben
+            if bbox_data:
+                save_bboxes(ollama_ocr_result.id, bbox_data, db, update_bbox_data=False)
+                db.commit()
+
             return ocr_results
         finally:
             # Lösche temporäre Datei
@@ -253,5 +259,10 @@ class OCRPipeline:
         # Commit, damit die IDs verfügbar sind
         db.commit()
         db.refresh(ollama_ocr_result)
+
+        # In neue bboxes Tabelle schreiben
+        if bbox_data:
+            save_bboxes(ollama_ocr_result.id, bbox_data, db, update_bbox_data=False)
+            db.commit()
 
         return ocr_results

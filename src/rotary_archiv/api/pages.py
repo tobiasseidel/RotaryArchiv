@@ -350,7 +350,6 @@ def get_deskew_overview(
         Liste: page_id, document_id, document_title, page_number, deskew_angle,
                bbox_count, bbox_with_deskew_count, bbox_with_deskew_pct
     """
-    import json
 
     query = (
         db.query(DocumentPage)
@@ -1148,6 +1147,7 @@ def get_page_inspect(
     for ocr_result in ocr_results:
         # Konvertiere bbox_data JSON zu BBoxItem-Liste (optional in Lesereihenfolge)
         bbox_items = None
+        # Direkt aus bbox_data lesen (bereits geladen)
         if ocr_result.bbox_data:
             try:
                 data_list = (

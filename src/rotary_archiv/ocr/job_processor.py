@@ -19,6 +19,7 @@ from src.rotary_archiv.api.settings import (
     get_ocr_sight_settings_for_job,
 )
 from src.rotary_archiv.config import settings
+from src.rotary_archiv.core.bbox import save_bboxes
 from src.rotary_archiv.core.database import SessionLocal
 from src.rotary_archiv.core.models import (
     Document,
@@ -540,6 +541,8 @@ async def process_bbox_review_job(job_id: int) -> None:
         # Aktualisiere OCRResult mit neuen BBox-Daten
         ocr_result.bbox_data = updated_bboxes
         flag_modified(ocr_result, "bbox_data")
+        # Parallel in neue bboxes Tabelle schreiben
+        save_bboxes(ocr_result.id, updated_bboxes, db, update_bbox_data=False)
         logger.debug(
             f"Seite {job.document_page_id}: {len(updated_bboxes)} BBoxen, {multibox_new_boxes_count} aus Multibox"
         )
@@ -907,6 +910,8 @@ async def process_llm_sight_job(job_id: int) -> None:
 
         ocr_result.bbox_data = bbox_list
         flag_modified(ocr_result, "bbox_data")
+        # Parallel in neue bboxes Tabelle schreiben
+        save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
         job.progress = 100.0
         job.current_step = (
             f"Abgeschlossen - {processed} BBoxen, {auto_confirmed_count} auto-bestätigt"
@@ -2804,6 +2809,8 @@ async def process_persistent_region_re_recognize_job(job_id: int) -> None:
 
             ocr_result.bbox_data = bbox_list
             flag_modified(ocr_result, "bbox_data")
+            # Parallel in neue bboxes Tabelle schreiben
+            save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
             db.commit()
 
             children_after = get_children()

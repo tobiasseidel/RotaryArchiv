@@ -25,6 +25,7 @@ except ImportError:
 from sqlalchemy import func as sqlfunc
 
 from src.rotary_archiv.config import settings
+from src.rotary_archiv.core.bbox import save_bboxes
 from src.rotary_archiv.core.database import get_db
 from src.rotary_archiv.core.models import (
     Document,
@@ -442,6 +443,8 @@ async def confirm_bbox(
     # Speichere zurück - SQLAlchemy muss über Änderung an JSON-Feld informiert werden
     ocr_result.bbox_data = bbox_list
     flag_modified(ocr_result, "bbox_data")
+    # Parallel in neue bboxes Tabelle schreiben
+    save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
     db.commit()
 
     # Erstelle Quality-Job für diese Seite
@@ -497,6 +500,8 @@ async def reject_bbox(
     # Speichere zurück - SQLAlchemy muss über Änderung an JSON-Feld informiert werden
     ocr_result.bbox_data = bbox_list
     flag_modified(ocr_result, "bbox_data")
+    # Parallel in neue bboxes Tabelle schreiben
+    save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
     db.commit()
 
     # Erstelle Quality-Job für diese Seite
@@ -552,6 +557,8 @@ async def ignore_bbox(
     # Speichere zurück - SQLAlchemy muss über Änderung an JSON-Feld informiert werden
     ocr_result.bbox_data = bbox_list
     flag_modified(ocr_result, "bbox_data")
+    # Parallel in neue bboxes Tabelle schreiben
+    save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
     db.commit()
 
     # Erstelle Quality-Job für diese Seite
@@ -602,6 +609,8 @@ async def delete_bbox(
     bbox_list.pop(bbox_index)
     ocr_result.bbox_data = bbox_list
     flag_modified(ocr_result, "bbox_data")
+    # Parallel in neue bboxes Tabelle schreiben
+    save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
     db.commit()
 
     # Erstelle Quality-Job für diese Seite
@@ -710,6 +719,8 @@ async def update_bbox(
     bbox_list[bbox_index] = item
     ocr_result.bbox_data = bbox_list
     flag_modified(ocr_result, "bbox_data")
+    # Parallel in neue bboxes Tabelle schreiben
+    save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
     db.commit()
 
     result = {"success": True}
@@ -822,6 +833,8 @@ async def batch_change_status(
         if modified:
             ocr_result.bbox_data = bbox_list
             flag_modified(ocr_result, "bbox_data")
+            # Parallel in neue bboxes Tabelle schreiben
+            save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
             db.commit()
             # Erstelle Quality-Job für diese Seite
             _create_quality_job_if_needed(page_id, db)
@@ -952,6 +965,8 @@ async def batch_discard_and_recalc(
         if modified:
             ocr_result.bbox_data = bbox_list
             flag_modified(ocr_result, "bbox_data")
+            # Parallel in neue bboxes Tabelle schreiben
+            save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
             db.commit()
             # Erstelle Quality-Job für diese Seite
             _create_quality_job_if_needed(page_id, db)
@@ -1159,6 +1174,8 @@ async def batch_delete(
             if deleted > 0:
                 ocr_result.bbox_data = bbox_list
                 flag_modified(ocr_result, "bbox_data")
+                # Parallel in neue bboxes Tabelle schreiben
+                save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
                 db.commit()
                 # Refresh nach Commit, um sicherzustellen, dass die Daten konsistent sind
                 db.refresh(ocr_result)
@@ -1601,6 +1618,8 @@ async def save_reviewed_bbox(
     # Speichere zurück - SQLAlchemy muss über Änderung an JSON-Feld informiert werden
     ocr_result.bbox_data = bbox_list
     flag_modified(ocr_result, "bbox_data")
+    # Parallel in neue bboxes Tabelle schreiben
+    save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
     db.commit()
 
     # Erstelle Quality-Job für diese Seite
@@ -1654,6 +1673,8 @@ async def set_bbox_text(
     bbox_list[bbox_index] = item
     ocr_result.bbox_data = bbox_list
     flag_modified(ocr_result, "bbox_data")
+    # Parallel in neue bboxes Tabelle schreiben
+    save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
     db.commit()
 
     if request.confirm:
@@ -1980,6 +2001,8 @@ async def add_new_bbox(
 
     ocr_result.bbox_data = bbox_list
     flag_modified(ocr_result, "bbox_data")
+    # Parallel in neue bboxes Tabelle schreiben
+    save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
     db.commit()
 
     if box_type in ("ignore_region", "note", "manual"):
@@ -2395,6 +2418,8 @@ async def add_multiple_bboxes(
         # Speichere zurück
         ocr_result.bbox_data = bbox_list
         flag_modified(ocr_result, "bbox_data")
+        # Parallel in neue bboxes Tabelle schreiben
+        save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
         db.commit()
         db.refresh(ocr_result)
 

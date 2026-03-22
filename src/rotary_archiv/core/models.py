@@ -336,9 +336,86 @@ class OCRResult(Base):
     # Relationships
     document = relationship("Document", back_populates="ocr_results")
     document_page = relationship("DocumentPage", back_populates="ocr_results")
+    bboxes = relationship(
+        "BBox", back_populates="ocr_result", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<OCRResult(id={self.id}, source='{self.source}', document_id={self.document_id})>"
+
+
+class BBox(Base):
+    """Einzelne Bounding Box - normalisierte Tabelle statt JSON in bbox_data"""
+
+    __tablename__ = "bboxes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ocr_result_id = Column(
+        Integer,
+        ForeignKey("ocr_results.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # Box-Typ (ocr, manual, ignore_region, note)
+    box_type = Column(String(50), nullable=False, default="ocr", index=True)
+
+    # Geometrie
+    bbox = Column(JSON, nullable=True)  # Relative Koordinaten [x1, y1, x2, y2]
+    bbox_pixel = Column(JSON, nullable=True)  # Pixel-Koordinaten [x1, y1, x2, y2]
+    text = Column(Text, nullable=True)  # Textinhalt der Box
+
+    # Review-Status
+    review_status = Column(
+        String(50), nullable=True
+    )  # pending, confirmed, rejected, ignored, ocr_done
+    reviewed_at = Column(DateTime, nullable=True)
+    reviewed_by = Column(String(255), nullable=True)
+
+    # OCR-Ergebnisse verschiedener Engines
+    ocr_results_data = Column(
+        JSON, nullable=True
+    )  # {"tesseract": "...", "ollama": "...", ...}
+    differences = Column(
+        JSON, nullable=True
+    )  # Unterschiede zwischen Engine-Ergebnissen
+
+    # Notiz-spezifische Felder
+    note_author = Column(String(255), nullable=True)
+    note_text = Column(Text, nullable=True)
+    note_created_at = Column(String(50), nullable=True)
+
+    # Weitere Metadaten
+    deskew_angle = Column(Float, nullable=True)  # Deskew-Winkel für diese Box
+
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+    # Relationship
+    ocr_result = relationship("OCRResult", back_populates="bboxes")
+
+    def __repr__(self) -> str:
+        return f"<BBox(id={self.id}, ocr_result_id={self.ocr_result_id}, box_type='{self.box_type}')>"
+
+    def to_dict(self) -> dict:
+        """Konvertiert BBox zu dict (kompatibel zu altem bbox_data Format)"""
+        result = {
+            "box_type": self.box_type,
+            "bbox": self.bbox,
+            "bbox_pixel": self.bbox_pixel,
+            "text": self.text,
+            "review_status": self.review_status,
+            "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
+            "reviewed_by": self.reviewed_by,
+            "ocr_results": self.ocr_results_data,
+            "differences": self.differences,
+            "deskew_angle": self.deskew_angle,
+        }
+        if self.box_type == "note":
+            result["note_author"] = self.note_author
+            result["note_text"] = self.note_text
+            result["note_created_at"] = self.note_created_at
+        return result
 
 
 class OCRJob(Base):

@@ -13,7 +13,6 @@ from src.rotary_archiv.core.models import (
     Document,
     DocumentPage,
     ErschliessungsBox,
-    OCRResult,
 )
 from src.rotary_archiv.core.triplestore import ROTARY, get_triplestore
 from src.rotary_archiv.wikidata.matcher import WikidataMatcher
@@ -463,42 +462,40 @@ def list_notes(
     document_id: int | None = Query(
         None, description="Nur Notizen aus diesem Dokument"
     ),
+    limit: int = Query(100, ge=1, le=1000, description="Maximale Anzahl Notizen"),
     db: Session = Depends(get_db),
 ):
     """
-    Alle Notiz-Boxen aus OCRResult abrufen.
-    Notizen sind in bbox_data als JSON gespeichert mit box_type="note".
-    Optimiert: nur benötigte Spalten laden, früh filtern.
+    Alle Notiz-Boxen aus neuer bboxes Tabelle abrufen.
+    Nutzt Index auf box_type - SEHR SCHNELL!
     """
-    # Nur benötigte Spalien laden - spart Speicher und Übertragungszeit
-    q = db.query(
-        OCRResult.document_page_id, OCRResult.document_id, OCRResult.bbox_data
-    ).filter(OCRResult.bbox_data.isnot(None))
+    from src.rotary_archiv.core.models import BBox, DocumentPage, OCRResult
+
+    # BBox → OCRResult → DocumentPage für richtige page_id
+    q = (
+        db.query(BBox.note_text, OCRResult.document_page_id, DocumentPage.document_id)
+        .join(OCRResult, BBox.ocr_result_id == OCRResult.id)
+        .join(DocumentPage, OCRResult.document_page_id == DocumentPage.id)
+        .filter(BBox.box_type == "note")
+    )
 
     if document_id is not None:
-        q = q.filter(OCRResult.document_id == document_id)
+        q = q.filter(DocumentPage.document_id == document_id)
 
-    results = q.all()
+    if search and search.strip():
+        search_term = f"%{search.strip()}%"
+        q = q.filter(BBox.note_text.ilike(search_term))
+
+    results = q.limit(limit).all()
 
     notes = []
-    search_lower = search.strip().lower() if search and search.strip() else None
-    for page_id, doc_id, bbox_data in results:
-        if not bbox_data or not isinstance(bbox_data, list):
-            continue
-        for bbox_item in bbox_data:
-            if not isinstance(bbox_item, dict):
-                continue
-            if bbox_item.get("box_type") != "note":
-                continue
-            note_text = bbox_item.get("note_text") or ""
-            if search_lower and search_lower not in note_text.lower():
-                continue
-            notes.append(
-                {
-                    "note_text": note_text,
-                    "page_id": page_id,
-                    "document_id": doc_id,
-                }
-            )
+    for note_text, page_id, doc_id in results:
+        notes.append(
+            {
+                "note_text": note_text,
+                "page_id": page_id,  # Jetzt korrekt: DocumentPage.id
+                "document_id": doc_id,
+            }
+        )
 
     return {"notes": notes}

@@ -280,6 +280,7 @@ def get_quality_pages(
             )
 
             # Review-Status aus bbox_data: Anteil geprüfter BBoxen (confirmed/rejected/auto_confirmed)
+            # Direkt aus bbox_data lesen (bereits geladen) - Performance!
             bbox_data_list = ocr_result.bbox_data
             if isinstance(bbox_data_list, str):
                 try:
@@ -289,6 +290,7 @@ def get_quality_pages(
                 except json.JSONDecodeError:
                     bbox_data_list = []
             bbox_data_list = bbox_data_list if isinstance(bbox_data_list, list) else []
+            # bbox_data_list = bbox_data_list if isinstance(bbox_data_list, list) else []
             # Nur OCR- und Ignore-Boxen für Review-Statistik (Notizen ausnehmen)
             review_bboxes = [b for b in bbox_data_list if b.get("box_type") != "note"]
             total_bboxes = len(review_bboxes)
@@ -387,6 +389,8 @@ def _iter_matching_bboxes(
         black_pc = quality_metrics.get("black_pixels_per_char", {})
         bbox_densities = list(density.get("bboxes", []))
         bbox_black_pc = {b["index"]: b for b in black_pc.get("bboxes", [])}
+        # Direkt aus bbox_data lesen (bereits geladen) - KEIN extra DB-Query!
+        # Für Performance-kritische Loops ist das schneller als Helper-Funktion
         bbox_data_list = ocr_result.bbox_data
         if isinstance(bbox_data_list, str):
             try:
@@ -681,7 +685,31 @@ def get_bbox_list(
             query = query.filter(DocumentPage.page_number >= page_number_min)
         if page_number_max is not None:
             query = query.filter(DocumentPage.page_number <= page_number_max)
-        rows = query.order_by(DocumentPage.document_id, DocumentPage.page_number).all()
+
+        # Zuerst Gesamtanzahl Seiten ermitteln
+        total_pages_q = (
+            db.query(sqlfunc.count(sqlfunc.distinct(OCRResult.document_page_id)))
+            .select_from(OCRResult)
+            .join(
+                latest_ocr_subq,
+                (OCRResult.document_page_id == latest_ocr_subq.c.document_page_id)
+                & (OCRResult.created_at == latest_ocr_subq.c.max_created_at),
+            )
+            .join(DocumentPage, DocumentPage.id == OCRResult.document_page_id)
+        )
+        if document_id is not None:
+            total_pages_q = total_pages_q.filter(
+                DocumentPage.document_id == document_id
+            )
+        total_pages = total_pages_q.scalar() or 0
+
+        # Begrenze Anzahl Seiten für Performance (max 100 Seiten = ~2000 Boxen)
+        max_pages_to_load = min(total_pages, 100)
+        rows = (
+            query.order_by(DocumentPage.document_id, DocumentPage.page_number)
+            .limit(max_pages_to_load)
+            .all()
+        )
 
         it = _iter_matching_bboxes(
             rows,
@@ -750,6 +778,7 @@ def get_page_quality_metrics(page_id: int, db: Session = Depends(get_db)):
 
     # Review-Status aus bbox_data in density.bboxes mergen + reviewed_pct
     result = copy.deepcopy(ocr_result.quality_metrics)
+    # Direkt aus bbox_data lesen (bereits geladen) - Performance!
     bbox_data_list = ocr_result.bbox_data
     if isinstance(bbox_data_list, str):
         try:
@@ -990,6 +1019,7 @@ def _bbox_inside_region(child_pixel: list, region_pixel: list) -> bool:
 def _iter_persistent_regions(rows):
     """Iteriert über alle persistente Regionen aus (OCRResult, DocumentPage, Document) rows."""
     for ocr_result, page, document in rows:
+        # Direkt aus bbox_data lesen (bereits geladen) - Performance!
         bbox_data_list = ocr_result.bbox_data
         if isinstance(bbox_data_list, str):
             try:
