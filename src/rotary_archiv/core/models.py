@@ -388,6 +388,16 @@ class BBox(Base):
     # Weitere Metadaten
     deskew_angle = Column(Float, nullable=True)  # Deskew-Winkel für diese Box
 
+    # Qualitätsmetriken (vorberechnet für SQL-Filterung)
+    char_count = Column(Integer, nullable=True)  # Anzahl Zeichen im Text
+    chars_per_1k_px = Column(Float, nullable=True)  # Zeichen pro 1000 Pixel
+    area_px = Column(Integer, nullable=True)  # Fläche in Pixeln
+    black_pixels = Column(Integer, nullable=True)  # Anzahl schwarzer Pixel
+    black_pixels_per_char = Column(Float, nullable=True)  # Schwarze Pixel pro Zeichen
+    left_pct = Column(Float, nullable=True)  # Linke Kante in % der Seitenbreite
+    right_pct = Column(Float, nullable=True)  # Rechte Kante in % der Seitenbreite
+    width_pct = Column(Float, nullable=True)  # Breite in % der Seitenbreite
+
     # Timestamps
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
 

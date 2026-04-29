@@ -22,16 +22,18 @@ def save_bboxes(
     bbox_list: list[dict],
     db: Session,
     update_bbox_data: bool = True,
+    image_width: int | None = None,
 ) -> list[BBox]:
     """
-    Schreibt BBox-Liste in Tabelle.
-
+    Schreibt BBox-Liste in Tabelle mit berechneten Metriken.
+    
     Args:
         ocr_result_id: ID der OCRResult
         bbox_list: Liste von BBox-Dicts
         db: Datenbank-Session
         update_bbox_data: Wenn True, auch bbox_data Column aktualisieren (für Kompatibilität)
-
+        image_width: Seitenbreite für Prozentberechnung
+    
     Returns:
         Liste der erstellten BBox Objekte
     """
@@ -59,6 +61,13 @@ def save_bboxes(
             note_text=item.get("note_text"),
             note_created_at=item.get("note_created_at"),
         )
+        
+        # Metriken berechnen und setzen
+        update_bbox_with_metrics(bbox, item, image_width)
+        # black_pixels und black_pixels_per_char aus item übernehmen (falls vorhanden)
+        bbox.black_pixels = item.get("black_pixels")
+        bbox.black_pixels_per_char = item.get("black_pixels_per_char")
+        
         db.add(bbox)
         bboxes.append(bbox)
 
@@ -94,245 +103,6 @@ def get_bboxes_by_type(
     db: Session,
 ) -> list[dict]:
     """
-    Liest BBox-Einträge gefiltert nach Typ.
-    Nutzt den Index auf box_type - sehr schnell!
-
-    Returns:
-        Liste von BBox-Dicts
-    """
-    bboxes = (
-        db.query(BBox)
-        .filter(BBox.ocr_result_id == ocr_result_id)
-        .filter(BBox.box_type == box_type)
-        .order_by(BBox.id)
-        .all()
-    )
-    return [b.to_dict() for b in bboxes]
-
-
-def get_bboxes_except_types(
-    ocr_result_id: int,
-    exclude_types: list[str],
-    db: Session,
-) -> list[dict]:
-    """
-    Liest alle BBox-Einträge außer bestimmten Typen.
-
-    Returns:
-        Liste von BBox-Dicts
-    """
-    bboxes = (
-        db.query(BBox)
-        .filter(BBox.ocr_result_id == ocr_result_id)
-        .filter(BBox.box_type.notin_(exclude_types))
-        .order_by(BBox.id)
-        .all()
-    )
-    return [b.to_dict() for b in bboxes]
-
-
-def delete_bboxes(ocr_result_id: int, db: Session) -> int:
-    """
-    Löscht alle BBox-Einträge für eine OCRResult.
-
-    Returns:
-        Anzahl gelöschter Einträge
-    """
-    count = db.query(BBox).filter(BBox.ocr_result_id == ocr_result_id).delete()
-    return count
-
-
-def update_bbox(
-    bbox_id: int,
-    updates: dict[str, Any],
-    db: Session,
-) -> BBox | None:
-    """
-    Aktualisiert eine einzelne BBox.
-
-    Args:
-        bbox_id: ID der BBox
-        updates: Dict mit zu aktualisierenden Feldern
-        db: Datenbank-Session
-
-    Returns:
-        Das aktualisierte BBox Objekt oder None
-    """
-    bbox = db.query(BBox).filter(BBox.id == bbox_id).first()
-    if not bbox:
-        return None
-
-    allowed_fields = {
-        "box_type",
-        "bbox",
-        "bbox_pixel",
-        "text",
-        "review_status",
-        "reviewed_at",
-        "reviewed_by",
-        "ocr_results_data",
-        "differences",
-        "deskew_angle",
-        "note_author",
-        "note_text",
-        "note_created_at",
-    }
-
-    for key, value in updates.items():
-        if key in allowed_fields and hasattr(bbox, key):
-            if key == "reviewed_at" and isinstance(value, str):
-                value = _parse_datetime(value)
-            setattr(bbox, key, value)
-
-    db.flush()
-    return bbox
-
-
-def get_bbox(bbox_id: int, db: Session) -> BBox | None:
-    """Holt eine einzelne BBox nach ID."""
-    return db.query(BBox).filter(BBox.id == bbox_id).first()
-
-
-def get_notes_page(
-    document_id: int | None = None,
-    search: str | None = None,
-    db: Session = None,
-    limit: int = 100,
-    offset: int = 0,
-) -> list[dict]:
-    """
-    Holt Notizen mit Paginierung und Suche.
-    Optimiert für den Notes-Tab im Erschließungs-Overview.
-
-    Returns:
-        Liste von Dicts mit note_text, page_id, document_id
-    """
-    from src.rotary_archiv.core.models import DocumentPage
-
-    query = (
-        db.query(BBox, DocumentPage.document_id)
-        .join(DocumentPage, BBox.ocr_result_id == DocumentPage.id)
-        .filter(BBox.box_type == "note")
-    )
-
-    if document_id is not None:
-        query = query.filter(DocumentPage.document_id == document_id)
-
-    if search and search.strip():
-        search_term = f"%{search.strip()}%"
-        query = query.filter(BBox.note_text.ilike(search_term))
-
-    query = query.order_by(BBox.id.desc()).limit(limit).offset(offset)
-
-    results = []
-    for bbox, doc_id in query.all():
-        results.append(
-            {
-                "note_text": bbox.note_text or "",
-                "page_id": bbox.ocr_result_id,  # document_page_id
-                "document_id": doc_id,
-            }
-        )
-
-    return results
-
-
-def _parse_datetime(value: Any) -> datetime | None:
-    """Hilfsfunktion zum Parsen von Datetime-Werten."""
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, str):
-        try:
-            # ISO Format
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except (ValueError, AttributeError):
-            return None
-    return None
-
-
-# =============================================================================
-# Lesestellen-Hilfsfunktionen (ersetzen ocr_result.bbox_data Zugriffe)
-# =============================================================================
-
-
-def get_bbox_list_from_ocr_result(ocr_result: OCRResult, db: Session) -> list[dict]:
-    """
-    Holt BBox-Liste für eine OCRResult.
-
-    Verwendet neue bboxes Tabelle wenn USE_BBOX_TABLE_FOR_READS = True,
-    sonst alte bbox_data Spalte.
-
-    Args:
-        ocr_result: OCRResult Objekt
-        db: Datenbank-Session (nur benötigt für neue Tabelle)
-
-    Returns:
-        Liste von BBox-Dicts
-    """
-    if USE_BBOX_TABLE_FOR_READS and db:
-        # NEU: Aus bboxes Tabelle lesen (mit Index - schneller)
-        return get_bboxes(ocr_result.id, db)
-    else:
-        # ALT: Aus bbox_data JSON lesen (Rollback-Option)
-        bbox_data = ocr_result.bbox_data
-        if not bbox_data:
-            return []
-        if isinstance(bbox_data, str):
-            return json.loads(bbox_data)
-        return list(bbox_data)
-
-
-def has_bboxes(ocr_result: OCRResult, db: Session) -> bool:
-    """
-    Prüft ob eine OCRResult BBox-Daten hat.
-
-    Args:
-        ocr_result: OCRResult Objekt
-        db: Datenbank-Session
-
-    Returns:
-        True wenn BBox-Daten vorhanden
-    """
-    if USE_BBOX_TABLE_FOR_READS and db:
-        # NEU: Aus bboxes Tabelle prüfen
-        count = db.query(BBox).filter(BBox.ocr_result_id == ocr_result.id).count()
-        return count > 0
-    else:
-        # ALT: Aus bbox_data prüfen
-        return bool(ocr_result.bbox_data)
-
-
-def get_bbox_list_filtered_by_type(
-    ocr_result: OCRResult,
-    exclude_types: list[str],
-    db: Session,
-) -> list[dict]:
-    """
-    Holt BBox-Liste gefiltert nach Typ (ausschließen).
-
-    Args:
-        ocr_result: OCRResult Objekt
-        exclude_types: Liste von Box-Typen die ausgeschlossen werden sollen
-        db: Datenbank-Session
-
-    Returns:
-        Liste von BBox-Dicts (ohne ausgeschlossene Typen)
-    """
-    if USE_BBOX_TABLE_FOR_READS and db:
-        # NEU: Aus bboxes Tabelle filtern (mit Index)
-        return get_bboxes_except_types(ocr_result.id, exclude_types, db)
-    else:
-        # ALT: In Python filtern
-        bbox_list = get_bbox_list_from_ocr_result(ocr_result, db)
-        return [b for b in bbox_list if b.get("box_type") not in exclude_types]
-
-
-def should_process_bbox_for_ocr(bbox_item: dict) -> bool:
-    """
-    Prüft ob eine BBox für OCR verarbeitet werden soll.
-
     Args:
         bbox_item: BBox Dict
 
@@ -342,3 +112,64 @@ def should_process_bbox_for_ocr(bbox_item: dict) -> bool:
     box_type = bbox_item.get("box_type")
     # Kein box_type oder "ocr" = verarbeiten
     return box_type is None or box_type == "ocr"
+
+
+def calculate_bbox_metrics(bbox_item: dict, image_width: int | None) -> dict:
+    """
+    Berechnet Qualitätsmetriken für eine BBox.
+    
+    Args:
+        bbox_item: BBox-Dict mit bbox_pixel und text
+        image_width: Seitenbreite in Pixeln (für Prozentberechnung)
+    
+    Returns:
+        Dict mit char_count, chars_per_1k_px, area_px, left_pct, right_pct, width_pct
+    """
+    result = {}
+    
+    # Text-Länge
+    text = bbox_item.get("reviewed_text") or bbox_item.get("text") or ""
+    if not isinstance(text, str):
+        text = str(text) if text else ""
+    result["char_count"] = len(text)
+    
+    # Pixel-Koordinaten
+    bbox_pixel = bbox_item.get("bbox_pixel")
+    if bbox_pixel and isinstance(bbox_pixel, (list, tuple)) and len(bbox_pixel) >= 4:
+        x1, y1, x2, y2 = [int(v) if v is not None else 0 for v in bbox_pixel]
+        width = max(0, x2 - x1)
+        height = max(0, y2 - y1)
+        result["area_px"] = width * height
+        
+        # Prozentuale Positionen
+        if image_width and image_width > 0:
+            result["left_pct"] = round((x1 / image_width) * 100, 2)
+            result["right_pct"] = round((x2 / image_width) * 100, 2)
+            result["width_pct"] = round((width / image_width) * 100, 2)
+    
+    # chars_per_1k_px
+    area_px = result.get("area_px", 0)
+    if area_px and area_px > 0 and result.get("char_count", 0) > 0:
+        result["chars_per_1k_px"] = round(1000 * result["char_count"] / area_px, 2)
+    else:
+        result["chars_per_1k_px"] = None
+    
+    return result
+
+
+def update_bbox_with_metrics(bbox: "BBox", bbox_item: dict, image_width: int | None) -> None:
+    """
+    Aktualisiert ein BBox-Objekt mit berechneten Metriken.
+    
+    Args:
+        bbox: BBox SQLAlchemy Objekt
+        bbox_item: BBox-Dict mit bbox_pixel und text
+        image_width: Seitenbreite in Pixeln
+    """
+    metrics = calculate_bbox_metrics(bbox_item, image_width)
+    bbox.char_count = metrics.get("char_count")
+    bbox.chars_per_1k_px = metrics.get("chars_per_1k_px")
+    bbox.area_px = metrics.get("area_px")
+    bbox.left_pct = metrics.get("left_pct")
+    bbox.right_pct = metrics.get("right_pct")
+    bbox.width_pct = metrics.get("width_pct")

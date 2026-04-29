@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from src.rotary_archiv.config import settings
 from src.rotary_archiv.core.database import get_db
 from src.rotary_archiv.core.models import (
+    BBox,
     Document,
     DocumentPage,
     OCRJob,
@@ -380,11 +381,10 @@ def _iter_matching_bboxes(
     max_width_pct=None,
     box_type_filter=None,
 ):
-    """Iteriert über alle BBoxen mit Qualitätsmetriken, gefiltert nach Optionen."""
+    """Iteriert über alle BBoxen, gefiltert nach Optionen."""
     for ocr_result, page, document in rows:
-        if not ocr_result.quality_metrics:
-            continue
-        quality_metrics = ocr_result.quality_metrics
+        # quality_metrics ist optional - wir zeigen ALLE Boxen
+        quality_metrics = ocr_result.quality_metrics or {}
         density = quality_metrics.get("density", {})
         black_pc = quality_metrics.get("black_pixels_per_char", {})
         bbox_densities = list(density.get("bboxes", []))
@@ -412,65 +412,29 @@ def _iter_matching_bboxes(
                     max_x = max(max_x, bbox_pixel[2])  # x2 ist die rechte Kante
             page_width = max_x if max_x > 0 else None
 
-        for bbox in bbox_densities:
-            idx = bbox.get("index")
+        # Iteriere über ALLE Boxen in bbox_data_list (nicht über bbox_densities)
+        # bbox_densities existiert nur bei Seiten mit quality_metrics
+        for idx, bd in enumerate(bbox_data_list):
+            # Text und char_count berechnen
+            text = bd.get("reviewed_text") or bd.get("text") or ""
+            if not isinstance(text, str):
+                text = str(text) if text is not None else ""
+            char_count = len(text)
 
-            # WICHTIG: Validiere, dass der Index noch in bbox_data_list existiert
-            # Dies verhindert, dass veraltete quality_metrics zu nicht-existierenden BBoxen führen
-            if (
-                idx is None
-                or not isinstance(idx, int)
-                or idx < 0
-                or idx >= len(bbox_data_list)
-            ):
-                logger.debug(
-                    f"Überspringe BBox mit veraltetem Index {idx} für Seite {page.id} "
-                    f"(bbox_data_list hat {len(bbox_data_list)} Einträge)"
-                )
+            # chars_per_1k_px aus quality_metrics holen (falls vorhanden)
+            bbox_metrics = bbox_densities[idx] if idx < len(bbox_densities) else {}
+            chars_per_1k = bbox_metrics.get("chars_per_1k_px")
+            black_pc_val = bbox_black_pc.get(idx, {}).get("black_pixels_per_char")
+            black_px = bbox_black_pc.get(idx, {}).get("black_pixels")
+            # Filter chars_per_1k_px nur wenn Wert vorhanden und Filter gesetzt
+            if min_chars_per_1k_px is not None and chars_per_1k is not None and chars_per_1k < min_chars_per_1k_px:
                 continue
-
-            chars_per_1k = bbox.get("chars_per_1k_px")
-            if chars_per_1k is None:
+            if max_chars_per_1k_px is not None and chars_per_1k is not None and chars_per_1k > max_chars_per_1k_px:
                 continue
-
-            # Berechne char_count aus aktuellen bbox_data_list, nicht aus quality_metrics
-            # (quality_metrics können veraltet sein)
-            char_count = 0
-            if idx < len(bbox_data_list):
-                bd = bbox_data_list[idx]
-                text = bd.get("reviewed_text") or bd.get("text") or ""
-                # Stelle sicher, dass text ein String ist
-                if not isinstance(text, str):
-                    text = str(text) if text is not None else ""
-                char_count = len(text)
-            else:
-                # Fallback: verwende char_count aus quality_metrics
-                char_count = bbox.get("char_count", 0)
-                # Stelle sicher, dass char_count ein Integer ist
-                if not isinstance(char_count, int):
-                    try:
-                        char_count = int(char_count)
-                    except (ValueError, TypeError):
-                        char_count = 0
-
-            # Stelle sicher, dass char_count ein Integer ist
-            if not isinstance(char_count, int):
-                try:
-                    char_count = int(char_count)
-                except (ValueError, TypeError):
-                    char_count = 0
-
-            # Filter nach char_count
-            if min_char_count is not None and char_count < min_char_count:
+            # Wenn Filter gesetzt aber Wert fehlt: überspringen
+            if min_chars_per_1k_px is not None and chars_per_1k is None:
                 continue
-            if max_char_count is not None and char_count > max_char_count:
-                continue
-            bp = bbox_black_pc.get(idx, {})
-            black_px = bp.get("black_pixels")
-            black_pc_val = bp.get("black_pixels_per_char")
-            if min_chars_per_1k_px is not None and chars_per_1k < min_chars_per_1k_px:
-                continue
-            if max_chars_per_1k_px is not None and chars_per_1k > max_chars_per_1k_px:
+            if max_chars_per_1k_px is not None and chars_per_1k is None:
                 continue
             if min_black_pixels_per_char is not None:
                 if black_pc_val is None:
@@ -494,14 +458,10 @@ def _iter_matching_bboxes(
                     continue
             if text_search and text_search.strip():
                 search_lower = text_search.strip().lower()
-                full_text = ""
-                if idx < len(bbox_data_list):
-                    bd = bbox_data_list[idx]
-                    full_text = (
-                        bd.get("reviewed_text") or bd.get("text") or ""
-                    ).strip()
+                full_text = (bd.get("reviewed_text") or bd.get("text") or "").strip()
                 if not full_text:
-                    full_text = (bbox.get("text_preview") or "").strip()
+                    # Fallback: text_preview aus quality_metrics
+                    full_text = (bbox_metrics.get("text_preview") or "").strip()
                 if search_lower not in full_text.lower():
                     continue
             review_status = "pending"
@@ -580,10 +540,10 @@ def _iter_matching_bboxes(
                 "page_number": page.page_number,
                 "bbox_index": idx,
                 "id": f"{page.id}_{idx}",
-                "text_preview": bbox.get("text_preview", ""),
+                "text_preview": bd.get("text", "")[:50] if bd.get("text") else "",
                 "text": full_text,
                 "char_count": char_count,
-                "chars_per_1k_px": round(chars_per_1k, 2),
+                "chars_per_1k_px": round(chars_per_1k, 2) if chars_per_1k is not None else None,
                 "black_pixels": black_px,
                 "black_pixels_per_char": round(black_pc_val, 2)
                 if black_pc_val is not None
@@ -657,81 +617,98 @@ def get_bbox_list(
     db: Session = Depends(get_db),
 ):
     """
-    Liste aller BBoxen mit Qualitätsmetriken (Dichte, schwarze px, schwarze px/Zeichen).
-    Gefiltert und paginiert (z. B. 200 pro Seite).
+    Liste aller BBoxen mit Qualitätsmetriken.
+    SQL-basierte Filterung - SEHR SCHNELL!
     """
     try:
-        latest_ocr_subq = (
+        # Basis-Query: BBox joined mit OCRResult, DocumentPage, Document
+        q = (
             db.query(
+                BBox,
                 OCRResult.document_page_id,
-                sqlfunc.max(OCRResult.created_at).label("max_created_at"),
+                DocumentPage.page_number,
+                DocumentPage.document_id,
+                Document.title,
+                Document.filename,
             )
-            .filter(OCRResult.quality_metrics.isnot(None))
-            .group_by(OCRResult.document_page_id)
-        ).subquery("latest_ocr")
-        query = (
-            db.query(OCRResult, DocumentPage, Document)
-            .join(
-                latest_ocr_subq,
-                (OCRResult.document_page_id == latest_ocr_subq.c.document_page_id)
-                & (OCRResult.created_at == latest_ocr_subq.c.max_created_at),
-            )
+            .join(OCRResult, OCRResult.id == BBox.ocr_result_id)
             .join(DocumentPage, DocumentPage.id == OCRResult.document_page_id)
             .join(Document, Document.id == DocumentPage.document_id)
         )
+
+        # Filter direkt in SQL (schnell!)
         if document_id is not None:
-            query = query.filter(DocumentPage.document_id == document_id)
+            q = q.filter(DocumentPage.document_id == document_id)
         if page_number_min is not None:
-            query = query.filter(DocumentPage.page_number >= page_number_min)
+            q = q.filter(DocumentPage.page_number >= page_number_min)
         if page_number_max is not None:
-            query = query.filter(DocumentPage.page_number <= page_number_max)
+            q = q.filter(DocumentPage.page_number <= page_number_max)
+        if review_status:
+            q = q.filter(BBox.review_status.in_(review_status))
+        if box_type:
+            q = q.filter(BBox.box_type.in_(box_type))
+        if text_search and text_search.strip():
+            q = q.filter(BBox.text.ilike(f"%{text_search.strip()}%"))
+        if min_char_count is not None:
+            q = q.filter(BBox.char_count >= min_char_count)
+        if max_char_count is not None:
+            q = q.filter(BBox.char_count <= max_char_count)
+        if min_chars_per_1k_px is not None:
+            q = q.filter(BBox.chars_per_1k_px >= min_chars_per_1k_px)
+        if max_chars_per_1k_px is not None:
+            q = q.filter(BBox.chars_per_1k_px <= max_chars_per_1k_px)
+        if min_black_pixels_per_char is not None:
+            q = q.filter(BBox.black_pixels_per_char >= min_black_pixels_per_char)
+        if max_black_pixels_per_char is not None:
+            q = q.filter(BBox.black_pixels_per_char <= max_black_pixels_per_char)
+        if min_black_pixels is not None:
+            q = q.filter(BBox.black_pixels >= min_black_pixels)
+        if max_black_pixels is not None:
+            q = q.filter(BBox.black_pixels <= max_black_pixels)
+        if max_left_pct is not None:
+            q = q.filter(BBox.left_pct <= max_left_pct)
+        if min_right_pct is not None:
+            q = q.filter(BBox.right_pct >= min_right_pct)
+        if min_width_pct is not None:
+            q = q.filter(BBox.width_pct >= min_width_pct)
+        if max_width_pct is not None:
+            q = q.filter(BBox.width_pct <= max_width_pct)
 
-        # Zuerst Gesamtanzahl Seiten ermitteln
-        total_pages_q = (
-            db.query(sqlfunc.count(sqlfunc.distinct(OCRResult.document_page_id)))
-            .select_from(OCRResult)
-            .join(
-                latest_ocr_subq,
-                (OCRResult.document_page_id == latest_ocr_subq.c.document_page_id)
-                & (OCRResult.created_at == latest_ocr_subq.c.max_created_at),
-            )
-            .join(DocumentPage, DocumentPage.id == OCRResult.document_page_id)
-        )
-        if document_id is not None:
-            total_pages_q = total_pages_q.filter(
-                DocumentPage.document_id == document_id
-            )
-        total_pages = total_pages_q.scalar() or 0
+        # Gesamtanzahl ermitteln (vor Paginierung)
+        total = q.count()
 
-        # Begrenze Anzahl Seiten für Performance (max 100 Seiten = ~2000 Boxen)
-        max_pages_to_load = min(total_pages, 100)
-        rows = (
-            query.order_by(DocumentPage.document_id, DocumentPage.page_number)
-            .limit(max_pages_to_load)
+        # Paginierung in SQL
+        results = (
+            q.order_by(DocumentPage.document_id, DocumentPage.page_number, BBox.id)
+            .offset(offset)
+            .limit(limit)
             .all()
         )
 
-        it = _iter_matching_bboxes(
-            rows,
-            min_chars_per_1k_px,
-            max_chars_per_1k_px,
-            min_black_pixels_per_char,
-            max_black_pixels_per_char,
-            min_black_pixels,
-            max_black_pixels,
-            text_search=text_search,
-            min_char_count=min_char_count,
-            max_char_count=max_char_count,
-            review_status_filter=review_status if review_status else None,
-            max_left_pct=max_left_pct,
-            min_right_pct=min_right_pct,
-            min_width_pct=min_width_pct,
-            max_width_pct=max_width_pct,
-            box_type_filter=box_type if box_type else None,
-        )
-        all_matching = list(it)
-        total = len(all_matching)
-        items = all_matching[offset : offset + limit]
+        # Ergebnisse formatieren
+        items = []
+        for bbox, page_id, page_number, doc_id, doc_title, doc_filename in results:
+            document_title = doc_title or doc_filename or f"Dokument #{doc_id}"
+            items.append({
+                "page_id": page_id,
+                "document_id": doc_id,
+                "document_title": document_title,
+                "page_number": page_number,
+                "bbox_index": 0,
+                "id": f"{page_id}_{bbox.id}",
+                "text_preview": (bbox.text or "")[:50],
+                "text": bbox.text or "",
+                "char_count": bbox.char_count or 0,
+                "chars_per_1k_px": bbox.chars_per_1k_px,
+                "black_pixels": bbox.black_pixels,
+                "black_pixels_per_char": bbox.black_pixels_per_char,
+                "review_status": bbox.review_status or "pending",
+                "box_type": bbox.box_type,
+                "left_pct": bbox.left_pct,
+                "right_pct": bbox.right_pct,
+                "width_pct": bbox.width_pct,
+            })
+
         return {"total": total, "items": items}
     except Exception as e:
         logger.error(f"Fehler im BBox-List-Endpoint: {e}", exc_info=True)

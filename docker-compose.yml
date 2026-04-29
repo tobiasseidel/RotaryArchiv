@@ -1,39 +1,44 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:15
-    container_name: rotary_postgres
-    environment:
-      POSTGRES_DB: rotary_archiv
-      POSTGRES_USER: rotary_user
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+  backend:
+    build: .
+    container_name: rotary_backend
     ports:
-      - "5432:5432"
+      - "8085:8000"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rotary_user"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - documents:/app/data/documents
+      - /Volume1/RotaryArchiv/data/triplestore.ttl:/app/data/triplestore.ttl
+      - /Volume1/RotaryArchiv/data/rotary_archiv.db:/app/rotary_archiv.db
+    environment:
+      - POSTGRES_HOST=sqlite
+      - DOCUMENTS_PATH=/app/data/documents
+      - TRIPLESTORE_PATH=/app/data/triplestore.ttl
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_VISION_MODEL=deepseek-ocr:latest
+      - OLLAMA_GPT_MODEL=gpt-oss:20b
+      - OLLAMA_TIMEOUT_SECONDS=7200
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - DEBUG=True
+    restart: unless-stopped
 
-  fuseki:
-    image: apache/jena-fuseki:latest
-    container_name: rotary_fuseki
-    ports:
-      - "3030:3030"
+  worker:
+    build: .
+    container_name: rotary_worker
+    command: ["python", "-m", "src.rotary_archiv.ocr.worker"]
     volumes:
-      - fuseki_data:/fuseki
+      - documents:/app/data/documents
+      - /Volume1/RotaryArchiv/data/triplestore.ttl:/app/data/triplestore.ttl
+      - /Volume1/RotaryArchiv/data/rotary_archiv.db:/app/rotary_archiv.db
     environment:
-      FUSEKI_DATASET: rotary_archiv
-    command: ["--mem", "--update", "/fuseki/rotary_archiv"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3030/$/ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - POSTGRES_HOST=sqlite
+      - DOCUMENTS_PATH=/app/data/documents
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_VISION_MODEL=deepseek-ocr:latest
+      - OLLAMA_GPT_MODEL=gpt-oss:20b
+      - OLLAMA_TIMEOUT_SECONDS=7200
+    restart: unless-stopped
 
 volumes:
-  postgres_data:
-  fuseki_data:
+  documents:
