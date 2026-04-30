@@ -7,9 +7,9 @@ services:
     ports:
       - "8085:8000"
     volumes:
-      - documents:/app/data/documents
-      - /Volume1/RotaryArchiv/data/triplestore.ttl:/app/data/triplestore.ttl
-      - /Volume1/RotaryArchiv/data/rotary_archiv.db:/app/rotary_archiv.db
+      - /Volume1/docker/rotary-archiv/data/documents:/app/data/documents
+      - /Volume1/docker/rotary-archiv/data/triplestore.ttl:/app/data/triplestore.ttl
+      - /Volume1/docker/rotary-archiv/data/rotary_archiv.db:/app/rotary_archiv.db
     environment:
       - POSTGRES_HOST=sqlite
       - DOCUMENTS_PATH=/app/data/documents
@@ -28,9 +28,9 @@ services:
     container_name: rotary_worker
     command: ["python", "-m", "src.rotary_archiv.ocr.worker"]
     volumes:
-      - documents:/app/data/documents
-      - /Volume1/RotaryArchiv/data/triplestore.ttl:/app/data/triplestore.ttl
-      - /Volume1/RotaryArchiv/data/rotary_archiv.db:/app/rotary_archiv.db
+      - /Volume1/docker/rotary-archiv/data/documents:/app/data/documents
+      - /Volume1/docker/rotary-archiv/data/triplestore.ttl:/app/data/triplestore.ttl
+      - /Volume1/docker/rotary-archiv/data/rotary_archiv.db:/app/rotary_archiv.db
     environment:
       - POSTGRES_HOST=sqlite
       - DOCUMENTS_PATH=/app/data/documents
@@ -39,6 +39,3 @@ services:
       - OLLAMA_GPT_MODEL=gpt-oss:20b
       - OLLAMA_TIMEOUT_SECONDS=7200
     restart: unless-stopped
-
-volumes:
-  documents:
