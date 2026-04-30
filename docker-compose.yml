@@ -7,13 +7,12 @@ services:
     ports:
       - "8085:8000"
     volumes:
-      - /Volume1/RotaryArchiv/data/documents:/app/data/documents
-      - /Volume1/RotaryArchiv/data/triplestore.ttl:/app/data/triplestore.ttl
-      - /Volume1/RotaryArchiv/data/rotary_archiv.db:/app/rotary_archiv.db
+      - /Volume1/RotaryArchiv/data:/app/data
     environment:
       - POSTGRES_HOST=sqlite
       - DOCUMENTS_PATH=/app/data/documents
       - TRIPLESTORE_PATH=/app/data/triplestore.ttl
+      - SQLITE_PATH=/app/data/rotary_archiv.db
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - OLLAMA_VISION_MODEL=deepseek-ocr:latest
       - OLLAMA_GPT_MODEL=gpt-oss:20b
@@ -28,12 +27,11 @@ services:
     container_name: rotary_worker
     command: ["python", "-m", "src.rotary_archiv.ocr.worker"]
     volumes:
-      - /Volume1/RotaryArchiv/data/documents:/app/data/documents
-      - /Volume1/RotaryArchiv/data/triplestore.ttl:/app/data/triplestore.ttl
-      - /Volume1/RotaryArchiv/data/rotary_archiv.db:/app/rotary_archiv.db
+      - /Volume1/RotaryArchiv/data:/app/data
     environment:
       - POSTGRES_HOST=sqlite
       - DOCUMENTS_PATH=/app/data/documents
+      - SQLITE_PATH=/app/data/rotary_archiv.db
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - OLLAMA_VISION_MODEL=deepseek-ocr:latest
       - OLLAMA_GPT_MODEL=gpt-oss:20b
