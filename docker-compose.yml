@@ -7,7 +7,7 @@ services:
     ports:
       - "8085:8000"
     volumes:
-      - documents:/app/data/documents
+      - /Volume1/RotaryArchiv/data/documents:/app/data/documents
       - /Volume1/RotaryArchiv/data/triplestore.ttl:/app/data/triplestore.ttl
       - /Volume1/RotaryArchiv/data/rotary_archiv.db:/app/rotary_archiv.db
     environment:
@@ -28,7 +28,7 @@ services:
     container_name: rotary_worker
     command: ["python", "-m", "src.rotary_archiv.ocr.worker"]
     volumes:
-      - documents:/app/data/documents
+      - /Volume1/RotaryArchiv/data/documents:/app/data/documents
       - /Volume1/RotaryArchiv/data/triplestore.ttl:/app/data/triplestore.ttl
       - /Volume1/RotaryArchiv/data/rotary_archiv.db:/app/rotary_archiv.db
     environment:
@@ -39,6 +39,3 @@ services:
       - OLLAMA_GPT_MODEL=gpt-oss:20b
       - OLLAMA_TIMEOUT_SECONDS=7200
     restart: unless-stopped
-
-volumes:
-  documents:
