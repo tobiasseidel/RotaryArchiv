@@ -1,9 +1,9 @@
 """
 Triple Store Interface für RDF-Relationen.
 
-NOTE: Vorerst nicht verwendet - kann später wieder aktiviert werden.
+AKTIV: Wird in erschliessung.py und erschliessung_overview.py verwendet.
 
-Design-Vorgabe Erschließung: Die Quelle (Dokument, DocumentUnit) aus der
+Design-Empfehlung Erschließung: Die Quelle (Dokument, DocumentUnit) aus der
 relationalen DB wird nicht als Subjekt oder Objekt der Faktentriples verwendet,
 sondern nur als Referenz (Provenienz/Beleg). Empfohlenes Prädikat: rotary:belegtIn
 mit Objekt rotary:DocumentUnit_<id> bzw. rotary:Document_<id>. Siehe docs/erschliessung.md.
