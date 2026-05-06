@@ -1,0 +1,76 @@
+[
+  {
+    "id": 101,
+    "title": "Sitzungsprotokoll vom 15. Mai 1929",
+    "date": "1929-05-15",
+    "epoch": "30er",
+    "is_public": true,
+    "type": "protocol",
+    "pages": [
+      {
+        "page_number": 1,
+        "image_url": "/scans/1929-05-15-p1.jpg",
+        "ocr_text": "Anwesend: Max Müller, Ernst Weber, Karl Bauer, Heinrich Sch..."
+      }
+    ],
+    "bbox_data": [
+      {
+        "id": "bbox-101-001",
+        "page": 1,
+        "x1": 120,
+        "y1": 340,
+        "x2": 480,
+        "y2": 380,
+        "text": "Herr Müller wird einstimmig als Mitglied aufgenommen.",
+        "confidence": 0.94,
+        "entity_uri": "rotary:Mention_101_001",
+        "role": "mention"
+      },
+      {
+        "id": "bbox-101-002",
+        "page": 1,
+        "x1": 200,
+        "y1": 420,
+        "x2": 460,
+        "y2": 460,
+        "text": null,
+        "confidence": 0.12,
+        "entity_uri": null,
+        "role": "unreadable"
+      }
+    ],
+    "transcription": "Herr Müller wird einstimmig als Mitglied aufgenommen. Der Präsident begrüßte ihn herzlich.",
+    "context_snippet": "Herr Müller wird einstimmig als Mitglied aufgenommen."
+  },
+  {
+    "id": 107,
+    "title": "Sitzungsprotokoll vom 9. März 1934",
+    "date": "1934-03-09",
+    "epoch": "30er",
+    "is_public": true,
+    "type": "protocol",
+    "pages": [
+      {
+        "page_number": 1,
+        "image_url": "/scans/1934-03-09-p1.jpg",
+        "ocr_text": "Protokoll der 47. Sitzung des Rotary Club Dresden..."
+      }
+    ],
+    "bbox_data": [
+      {
+        "id": "bbox-107-001",
+        "page": 1,
+        "x1": 80,
+        "y1": 200,
+        "x2": 520,
+        "y2": 260,
+        "text": "Herr Müller tritt aus persönlichen Gründen aus.",
+        "confidence": 0.88,
+        "entity_uri": "rotary:Mention_107_001",
+        "role": "mention"
+      }
+    ],
+    "transcription": "Herr Müller tritt aus persönlichen Gründen aus.",
+    "context_snippet": "Herr Müller tritt aus persönlichen Gründen aus."
+  }
+]

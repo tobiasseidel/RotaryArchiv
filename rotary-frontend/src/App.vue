@@ -1,17 +1,12 @@
 <script setup>
 import { useEpochStore } from '@/stores/epoch'
+import AppShell from '@/components/AppShell.vue'
 
 const epochStore = useEpochStore()
 </script>
 
 <template>
-  <div id="app" :class="['app', epochStore.epochClass]">
+  <AppShell :class="epochStore.epochClass">
     <RouterView />
-  </div>
+  </AppShell>
 </template>
-
-<style scoped>
-.app {
-  min-height: 100vh;
-}
-</style>
