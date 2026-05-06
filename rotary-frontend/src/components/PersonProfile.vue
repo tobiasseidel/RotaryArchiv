@@ -329,7 +329,7 @@ const membershipStatus = computed(() => {
   gap: var(--space-m);
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
   .portrait-block {
     flex-direction: column;
     align-items: center;

@@ -4,6 +4,7 @@ import { useApi } from '@/composables/useApi'
 import { useEpochStore } from '@/stores/epoch'
 import HeroBlock from '@/components/HeroBlock.vue'
 import EntityCard from '@/components/EntityCard.vue'
+import EpochBadge from '@/components/EpochBadge.vue'
 
 const { getFeatured, getPersons } = useApi()
 const epochStore = useEpochStore()
@@ -57,15 +58,15 @@ onMounted(async () => {
 
       <section class="epochs-section">
         <RouterLink to="/epochen" class="epoch-tile epoch-30er-tile">
-          <span class="epoch-tile-label">Die 30er</span>
-          <span class="epoch-tile-years">1927–1937</span>
-          <span class="epoch-tile-desc">Die Gründungszeit</span>
+          <EpochBadge epoch="30er" />
+          <p class="epoch-tile-years">1927–1937</p>
+          <p class="epoch-tile-label">Gründungszeit</p>
         </RouterLink>
 
         <div class="epoch-tile epoch-90er-tile">
-          <span class="epoch-tile-label">Die 90er</span>
-          <span class="epoch-tile-years">1990–2008</span>
-          <span class="epoch-tile-desc">Die Wiedergründung</span>
+          <EpochBadge epoch="90er" />
+          <p class="epoch-tile-years">1990–2008</p>
+          <p class="epoch-tile-label">Wiedergründung</p>
           <a href="#" class="epoch-tile-cta">Inhalte freischalten</a>
         </div>
       </section>
@@ -140,7 +141,6 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   padding: var(--space-l);
-  border-radius: 8px;
   text-decoration: none;
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
 }
@@ -153,29 +153,26 @@ onMounted(async () => {
 .epoch-30er-tile {
   background: var(--color-epoch-badge);
   border: 1px solid var(--color-border);
+  border-radius: var(--epoch-radius, 4px);
+  border-style: var(--epoch-border-style, solid);
 }
 
 .epoch-90er-tile {
   background: var(--color-epoch-badge);
   border: 1px solid var(--color-border);
-}
-
-.epoch-tile-label {
-  font-family: var(--font-serif);
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--color-epoch-primary);
-  margin-bottom: var(--space-xs);
+  border-radius: var(--epoch-radius, 12px);
+  border-style: var(--epoch-border-style, dashed);
 }
 
 .epoch-tile-years {
   font-family: var(--font-sans);
   font-size: 0.875rem;
-  color: var(--color-text-secondary);
+  font-weight: 700;
+  color: var(--color-epoch-primary);
   margin-bottom: var(--space-xs);
 }
 
-.epoch-tile-desc {
+.epoch-tile-label {
   font-family: var(--font-sans);
   font-size: 0.9375rem;
   color: var(--color-text-primary);

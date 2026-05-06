@@ -39,8 +39,18 @@
 
 .epoch-30er {
   --color-epoch-primary: #2C4A3E;
-  --color-epoch-accent: #8B7355;
-  --color-epoch-badge: #E8E0D4;
+  --color-epoch-accent:  #8B7355;
+  --color-epoch-badge:   #E8E0D4;
+  --epoch-radius:        4px;
+  --epoch-border-style:  solid;
+}
+
+.epoch-90er {
+  --color-epoch-primary: #1A3A5C;
+  --color-epoch-accent:  #7A6E8A;
+  --color-epoch-badge:   #E0E4EC;
+  --epoch-radius:        12px;
+  --epoch-border-style:  dashed;
 }
 
 .epoch-90er {
@@ -92,4 +102,10 @@ h3 { font-size: 1.25rem; }
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-epoch-primary);
+  outline-offset: 3px;
+  border-radius: 2px;
 }

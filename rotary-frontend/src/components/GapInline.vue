@@ -18,7 +18,11 @@ const emit = defineEmits(['gap-clicked'])
     class="gap-inline"
     :class="{ 'gap-submitted': isSubmitted }"
     :title="isSubmitted ? 'Beitrag eingereicht' : 'Unleserliche Stelle — klicken zum Mitmachen'"
+    role="button"
+    tabindex="0"
+    :aria-label="isSubmitted ? 'Beitrag eingereicht' : 'Unleserliche Stelle — klicken zum Mitmachen'"
     @click="emit('gap-clicked', bboxId)"
+    @keydown.enter="emit('gap-clicked', bboxId)"
   >
     <template v-if="isSubmitted">✓</template>
     <template v-else>░░░░░</template>

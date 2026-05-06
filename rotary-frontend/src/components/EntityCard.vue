@@ -58,9 +58,9 @@ const anonymizedName = computed(() => {
 </script>
 
 <template>
-  <article class="entity-card" :class="[`epoch-${epoch}`, { 'is-stub': !isPublic }]">
+  <article class="entity-card" :class="[`epoch-${epoch}`, { 'is-stub': !isPublic }]" :aria-label="!isPublic ? 'Nicht öffentlicher Inhalt — Mitglied der ' + epoch : undefined">
     <div v-if="isPublic" class="card-image">
-      <img v-if="portraitUrl && !imageFailed" :src="portraitUrl" :alt="displayName" class="portrait" @error="handleImageError" />
+      <img v-if="portraitUrl && !imageFailed" :src="portraitUrl" :alt="'Portrait von ' + displayName" class="portrait" @error="handleImageError" />
       <div v-else class="initials-placeholder">{{ initials }}</div>
     </div>
     <div v-else class="card-image stub-image">
@@ -85,7 +85,8 @@ const anonymizedName = computed(() => {
 .entity-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 8px;
+  border-radius: var(--epoch-radius, 4px);
+  border-style: var(--epoch-border-style, solid);
   overflow: hidden;
   transition: border-color var(--transition-fast);
 }
@@ -139,6 +140,7 @@ const anonymizedName = computed(() => {
   font-size: 1rem;
   font-weight: 700;
   line-height: 1.3;
+  word-break: break-word;
 }
 
 .card-title a {

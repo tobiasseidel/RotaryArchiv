@@ -10,7 +10,7 @@ const epochStore = useEpochStore()
       <div class="header-inner">
         <RouterLink to="/" class="logo">RotaryArchiv</RouterLink>
 
-        <nav class="nav-desktop">
+        <nav class="nav-desktop" aria-label="Hauptnavigation">
           <RouterLink to="/" class="nav-link">Startseite</RouterLink>
           <a href="#" class="nav-link">Epochen</a>
           <a href="#" class="nav-link">Karte</a>
@@ -33,8 +33,8 @@ const epochStore = useEpochStore()
               <span></span>
               <span></span>
             </summary>
-            <nav class="nav-mobile">
-              <RouterLink to="/" class="nav-link">Startseite</RouterLink>
+            <nav class="nav-mobile" aria-label="Hauptnavigation">
+<RouterLink to="/" class="nav-link" aria-current="page">Startseite</RouterLink>
               <a href="#" class="nav-link">Epochen</a>
               <a href="#" class="nav-link">Karte</a>
               <a href="#" class="nav-link">Netzwerk</a>
@@ -106,7 +106,8 @@ const epochStore = useEpochStore()
 }
 
 .nav-link:hover,
-.nav-link.router-link-active {
+.nav-link.router-link-active,
+.nav-link[aria-current="page"] {
   color: var(--color-epoch-primary);
   text-decoration: none;
 }

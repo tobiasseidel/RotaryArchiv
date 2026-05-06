@@ -90,7 +90,9 @@ function toggleZoom() {
       <div class="dual-tabs" role="tablist">
         <button
           role="tab"
+          id="tab-scan"
           :aria-selected="activeTab === 'scan'"
+          :aria-controls="activeTab === 'scan' ? 'panel-scan' : undefined"
           class="tab-btn"
           :class="{ active: activeTab === 'scan' }"
           @click="activeTab = 'scan'"
@@ -99,7 +101,9 @@ function toggleZoom() {
         </button>
         <button
           role="tab"
+          id="tab-transcription"
           :aria-selected="activeTab === 'transcription'"
+          :aria-controls="activeTab === 'transcription' ? 'panel-transcription' : undefined"
           class="tab-btn"
           :class="{ active: activeTab === 'transcription' }"
           @click="activeTab = 'transcription'"
@@ -113,12 +117,14 @@ function toggleZoom() {
           class="panel panel-scan"
           :class="{ hidden: activeTab !== 'scan' }"
           role="tabpanel"
+          id="panel-scan"
+          aria-labelledby="tab-scan"
         >
           <div class="scan-container">
             <img
               v-if="page.image_url"
               :src="page.image_url"
-              :alt="'Scan von ' + document.title"
+              :alt="'Scan Seite ' + (page.page_number || 1) + ' — ' + document.title"
               class="scan-image"
               :class="{ zoomed: imageZoomed }"
               @error="handleImageError"
@@ -142,6 +148,8 @@ function toggleZoom() {
           class="panel panel-transcription"
           :class="{ hidden: activeTab !== 'transcription' }"
           role="tabpanel"
+          id="panel-transcription"
+          aria-labelledby="tab-transcription"
         >
           <div class="transcription-container">
             <p class="transcription-text">

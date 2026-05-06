@@ -6,15 +6,13 @@ defineProps({
     validator: (value) => ['30er', '90er'].includes(value)
   }
 })
-
-const epochLabels = {
-  '30er': 'Die 30er',
-  '90er': 'Die 90er'
-}
 </script>
 
 <template>
-  <span class="epoch-badge">{{ epochLabels[epoch] }}</span>
+  <span class="epoch-badge" :class="'epoch-' + epoch">
+    <span class="epoch-icon" aria-hidden="true">{{ epoch === '30er' ? '▪' : '◦' }}</span>
+    Die {{ epoch }}
+  </span>
 </template>
 
 <style scoped>
@@ -27,5 +25,11 @@ const epochLabels = {
   font-weight: 600;
   padding: 4px 8px;
   border-radius: 4px;
+}
+
+.epoch-icon {
+  margin-right: 4px;
+  font-size: 0.6rem;
+  vertical-align: middle;
 }
 </style>
