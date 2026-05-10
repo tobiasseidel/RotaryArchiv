@@ -256,7 +256,8 @@ Folgende Variablen müssen für das Deployment gesetzt werden:
 | Variable | Beschreibung | Standardwert |
 |----------|--------------|--------------|
 | `DATA_DIR` | Pfad zum Projekt-Verzeichnis auf der NAS | `/Volume1/RotaryArchiv` |
-| `BACKEND_PORT` | Externe Port für den Backend-Container | `8085` |
+| `BACKEND_PORT` | Externer Port für den Backend-Container | `8085` |
+| `FRONTEND_PORT` | Externer Port für das Frontend (nginx) | `8080` |
 | `POSTGRES_HOST` | Datenbanktyp (`sqlite` oder Hostname) | `sqlite` |
 | `OLLAMA_BASE_URL` | Ollama API URL (Host-Maschine) | `http://host.docker.internal:11434` |
 | `OLLAMA_VISION_MODEL` | Vision-Modell für OCR | `deepseek-ocr:latest` |
@@ -288,7 +289,15 @@ docker compose up -d
 
 ### Update
 
-Der Update-Pfad läuft über Git (git push), woraufhin Portainer das Image neu baut oder via SSH das Update-Skript ausgeführt wird. Führe `./scripts/update.sh frontend` aus — das Frontend wird in einem Docker-Container (node:20-alpine) gebaut und nginx auf der NAS neu geladen. Logs finden sich unter `${PROJECT_DIR}/logs/update.log`.
+Nach einem `git push` kannst du das Frontend via SSH auf der NAS aktualisieren:
+
+```bash
+./scripts/update.sh frontend
+```
+
+Das Frontend wird in einem Docker-Container (node:20-alpine) gebaut, der Container `rotary_frontend` wird neu gestartet. Logs finden sich unter `${PROJECT_DIR}/logs/update.log`.
+
+**Zugriff:** `http://<NAS-IP>:${FRONTEND_PORT}` (z.B. `http://192.168.1.100:8080`)
 
 ## Lizenz
 

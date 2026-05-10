@@ -34,7 +34,7 @@ case "${TARGET}" in
         ;;
 esac
 
-docker compose -f "${PROJECT_DIR}/docker-compose.yml" exec -T backend nginx -s reload
+docker compose -f "${PROJECT_DIR}/docker-compose.yml" restart frontend
 
 # Smoke Test (kommentiert):
 # - Startseite lädt
