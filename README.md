@@ -289,13 +289,17 @@ docker compose up -d
 
 ### Update
 
-Nach einem `git push` kannst du das Frontend via SSH auf der NAS aktualisieren:
+1. **Lokal**: Frontend bauen
+   ```bash
+   cd rotary-frontend && npm run build
+   ```
+   (Oder `./scripts/update.sh`)
 
-```bash
-./scripts/update.sh frontend
-```
+2. **Git push**: `git push`
 
-Das Frontend wird in einem Docker-Container (node:20-alpine) gebaut, der Container `rotary_frontend` wird neu gestartet. Logs finden sich unter `${PROJECT_DIR}/logs/update.log`.
+3. **Portainer**: Pull latest image → Redeploy
+
+Der nginx-Container mounted das `dist/`-Verzeichnis automatisch.
 
 **Zugriff:** `http://<NAS-IP>:${FRONTEND_PORT}` (z.B. `http://192.168.1.100:8080`)
 
