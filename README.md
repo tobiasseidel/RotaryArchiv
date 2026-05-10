@@ -247,6 +247,49 @@ Die Erschließung wird als eigene Schicht auf dem OCR-Kern aufgesetzt; der Kern 
 - **Karten-Ansicht:** Historische Karten; Orte aus dem Entitäten-Katalog mit Koordinaten (aus Wikidata oder manuell) darstellen.
 - **Foto-Sammlung:** Anbindung an Wikimedia Commons; Verknüpfung zu Dokumenten und Entitäten.
 
+## Deploy
+
+### Variablen
+
+Folgende Variablen müssen für das Deployment gesetzt werden:
+
+| Variable | Beschreibung | Standardwert |
+|----------|--------------|--------------|
+| `DATA_DIR` | Pfad zum Projekt-Verzeichnis auf der NAS | `/Volume1/RotaryArchiv` |
+| `BACKEND_PORT` | Externe Port für den Backend-Container | `8085` |
+| `POSTGRES_HOST` | Datenbanktyp (`sqlite` oder Hostname) | `sqlite` |
+| `OLLAMA_BASE_URL` | Ollama API URL (Host-Maschine) | `http://host.docker.internal:11434` |
+| `OLLAMA_VISION_MODEL` | Vision-Modell für OCR | `deepseek-ocr:latest` |
+| `OLLAMA_GPT_MODEL` | GPT-Modell für Analyse | `gpt-oss:20b` |
+| `OLLAMA_TIMEOUT_SECONDS` | Timeout für OCR-Anfragen | `7200` |
+| `DEBUG` | Debug-Modus aktivieren | `True` |
+
+### Variante 1: Portainer (empfohlen)
+
+In Portainer beim Erstellen/Editieren des Stacks die **Environment Variables** setzen:
+
+1. **Stack bearbeiten** → **Advanced** → **Environment**
+2. Alle oben genannten Variablen als Key-Value-Paare eintragen
+3. `env_file` entfernen oder auf `.env.docker` im Container verweisen
+
+Die `docker-compose.yml` enthält Fallback-Standardwerte (`${VAR:-default}`), sodass nur die zwingend nötigen Werte gesetzt werden müssen.
+
+### Variante 2: Lokale .env-Dateien
+
+```bash
+# .env.host für update.sh
+cp .env.example .env.host
+# Anpassen: DATA_DIR, BACKEND_PORT
+
+# .env.docker für Container (Docker Compose direkt)
+cp .env.example .env.docker
+docker compose up -d
+```
+
+### Update
+
+Der Update-Pfad läuft über Git (git push), woraufhin Portainer das Image neu baut oder via SSH das Update-Skript ausgeführt wird. Führe `./scripts/update.sh frontend` aus — das Frontend wird in einem Docker-Container (node:20-alpine) gebaut und nginx auf der NAS neu geladen. Logs finden sich unter `${PROJECT_DIR}/logs/update.log`.
+
 ## Lizenz
 
 Siehe [LICENSE](LICENSE) für Details.
