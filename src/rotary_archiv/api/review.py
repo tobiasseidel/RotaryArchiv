@@ -2297,25 +2297,19 @@ async def add_multiple_bboxes(
                 f"auf {ocr_image_width}x{ocr_image_height}"
             )
 
-        # Wende den gleichen X-Skalierungsfaktor an wie in bbox_ocr.py (0.7)
-        # Dies korrigiert die X-Achsen-Ausrichtung für das Cropping
-        # WICHTIG: Verwende ORIGINALE Koordinaten für die Box-Speicherung,
-        # aber angepasste Koordinaten für das Cropping (wie bei +1 Box)
         bbox_pixel_adjusted = [
-            int(x1_original * 0.7),  # x1 (wie in bbox_ocr.py)
-            y1_original,  # y1 (unverändert)
-            int(x2_original * 0.7),  # x2 (wie in bbox_ocr.py)
-            y2_original,  # y2 (unverändert)
+            x1_original,
+            y1_original,
+            x2_original,
+            y2_original,
         ]
 
         region_width = x2_original - x1_original
         region_height = y2_original - y1_original
 
         logger.info(
-            f"Add-Multiple-BBox: Original-Koordinaten (für Speicherung)=[{x1_original}, {y1_original}, {x2_original}, {y2_original}], "
+            f"Add-Multiple-BBox: Koordinaten=[{x1_original}, {y1_original}, {x2_original}, {y2_original}], "
             f"Region-Größe={region_width}x{region_height}, "
-            f"Angepasste Koordinaten (für Cropping, X*0.7)=[{bbox_pixel_adjusted[0]}, {bbox_pixel_adjusted[1]}, {bbox_pixel_adjusted[2]}, {bbox_pixel_adjusted[3]}], "
-            f"Crop-Größe={bbox_pixel_adjusted[2] - bbox_pixel_adjusted[0]}x{bbox_pixel_adjusted[3] - bbox_pixel_adjusted[1]}, "
             f"Bild-Größe={full_image.width}x{full_image.height}"
         )
 
