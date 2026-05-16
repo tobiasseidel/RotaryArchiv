@@ -3,6 +3,8 @@ API für Erschließungs-Boxen: Box auf der Seite ↔ Triple Store.
 CRUD für ErschliessungsBox; entity-suggestions, wikidata-matches, wikidata-preview, assign, beleg.
 """
 
+from datetime import datetime
+from enum import Enum
 import re
 from typing import Any
 from urllib.parse import urljoin
@@ -70,6 +72,7 @@ class ErschliessungsBoxUpdate(BaseModel):
     subject_uri: str | None = None
     predicate_uri: str | None = None
     object_uri: str | None = None
+    event_type: str | None = None
 
 
 class ErschliessungsBoxResponse(BaseModel):
@@ -79,12 +82,13 @@ class ErschliessungsBoxResponse(BaseModel):
     document_page_id: int
     bbox: list[float]
     box_type: str
-    entity_type: str | None
-    entity_uri: str | None
-    name: str | None
-    subject_uri: str | None
-    predicate_uri: str | None
-    object_uri: str | None
+    entity_type: str | None = None
+    entity_uri: str | None = None
+    name: str | None = None
+    event_type: str | None = None
+    subject_uri: str | None = None
+    predicate_uri: str | None = None
+    object_uri: str | None = None
     main_image_url: str | None = None
 
     class Config:
@@ -110,6 +114,27 @@ class BelegBody(BaseModel):
     subject_uri: str
     predicate_uri: str
     object_uri: str
+
+
+class MembershipEventType(str, Enum):
+    """Typ von Mitgliedschafts-Ereignis."""
+
+    MEMBERSHIP = "membership"
+    BOARD = "board"
+    PRESIDENT = "president"
+    VORTRAG = "vortrag"
+    DISKUSSION = "diskussion"
+    GAST = "gast"
+
+
+class MembershipBody(BaseModel):
+    """Body für Mitgliedschafts-Ereignis: erstellt Beleg-Box mit rotary:wirdTeilVon."""
+
+    event_type: MembershipEventType
+    target_uri: str = "rotary:Club_1"  # Standard: Rotary Club Dresden
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    notes: str | None = None
 
 
 class PlaceCoordinatesBody(BaseModel):
@@ -957,12 +982,13 @@ def get_box_entity_details(
 
 
 class UpdateEntityDetailsBody(BaseModel):
-    """Body zum Aktualisieren der internen Entity-Daten (Name, Properties als Listen, Anzeigenamen pro Wert, optional Hauptbild)."""
+    """Body zum Aktualisieren der internen Entity-Daten (Name, Properties als Listen, Anzeigenamen pro Wert, optional Hauptbild, event_type)."""
 
     name: str
     claim_values: dict[str, list[str]] | None = None
     claim_value_labels: dict[str, dict[str, str]] | None = None
     main_image_url: str | None = None
+    event_type: str | None = None
 
 
 @router.patch("/boxes/{box_id}/entity-details")
@@ -1013,6 +1039,8 @@ def update_box_entity_details(
             update_main_image=body.main_image_url is not None,
         )
     box.name = body.name.strip()
+    if body.event_type is not None:
+        box.event_type = body.event_type if body.event_type else None
     db.commit()
     db.refresh(box)
     return {"ok": True, "box": box}
@@ -1409,3 +1437,100 @@ def set_beleg_for_box(
     db.commit()
     db.refresh(box)
     return box
+
+
+def _get_default_term_dates(
+    event_type: MembershipEventType,
+    start_date: datetime | None,
+    end_date: datetime | None,
+    page_date: datetime | None = None,
+) -> tuple[datetime | None, datetime | None]:
+    """Vorausfüllung für Vorstand/Präsident: 1.7. bis 30.6. des Folgejahres.
+    Für Vortrag/Diskussion/Gast: Seiten-Datum als Startdatum."""
+    if event_type in (MembershipEventType.BOARD, MembershipEventType.PRESIDENT):
+        if start_date is None:
+            current_year = datetime.now().year
+            start_date = datetime(current_year, 7, 1)
+        if end_date is None:
+            end_date = datetime(start_date.year + 1, 6, 30)
+    elif event_type in (
+        MembershipEventType.VORTRAG,
+        MembershipEventType.DISKUSSION,
+        MembershipEventType.GAST,
+    ):
+        if start_date is None and page_date:
+            start_date = page_date
+    return start_date, end_date
+
+
+@router.post(
+    "/boxes/{box_id}/membership",
+    response_model=ErschliessungsBoxResponse,
+)
+def create_membership_event(
+    page_id: int,
+    box_id: int,
+    body: MembershipBody,
+    db: Session = Depends(get_db),
+):
+    """Mitgliedschafts-Ereignis erstellen: erstellt Beleg-Box mit rotary:wirdTeilVon."""
+    entity_box = _get_box_or_404(db, page_id, box_id)
+
+    if entity_box.box_type != "entity":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nur Entity-Boxen (Person) können für Mitgliedschaft verwendet werden",
+        )
+
+    if not entity_box.entity_uri:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Entity-Box muss eine zugeordnete Entity haben (entity_uri)",
+        )
+
+    page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+
+    start_date, end_date = _get_default_term_dates(
+        body.event_type, body.start_date, body.end_date, page.date
+    )
+
+    ts = get_triplestore()
+    if body.event_type in (
+        MembershipEventType.MEMBERSHIP,
+        MembershipEventType.BOARD,
+        MembershipEventType.PRESIDENT,
+    ):
+        ts.add_club(body.target_uri, "Rotary Club Dresden")
+
+    beleg_box = ErschliessungsBox(
+        document_page_id=page.id,
+        bbox=entity_box.bbox,
+        box_type="beleg",
+        name=f"{body.event_type.value}: {body.target_uri}",
+    )
+    db.add(beleg_box)
+    db.commit()
+    db.refresh(beleg_box)
+
+    ts = get_triplestore()
+    beleg_uri = str(ROTARY[f"Beleg_{uuid.uuid4().hex}"])
+    box_uri = str(ROTARY[f"ErschliessungsBox_{beleg_box.id}"])
+    subject_uri = entity_box.entity_uri
+    predicate_uri = str(ROTARY["wirdTeilVon"])
+    object_uri = body.target_uri
+
+    ts.add_beleg(
+        beleg_uri,
+        box_uri,
+        subject_uri,
+        predicate_uri,
+        object_uri,
+    )
+
+    beleg_box.subject_uri = subject_uri
+    beleg_box.predicate_uri = predicate_uri
+    beleg_box.object_uri = object_uri
+    db.commit()
+    db.refresh(beleg_box)
+
+    return beleg_box

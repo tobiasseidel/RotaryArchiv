@@ -1885,6 +1885,23 @@
             </div>
             <label for="erschliessungEditEntityName">Name</label>
             <input type="text" id="erschliessungEditEntityName" placeholder="Name" style="width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px;">
+            <div id="erschliessungEditEntityEventTypePanel" style="margin-bottom: 12px; display: none; padding: 10px; background: #fff8e1; border: 1px solid #ffe082; border-radius: 6px;">
+                <label for="erschliessungEditEntityEventType" style="font-size: 13px; font-weight: 600; color: #333;">Art der Box</label>
+                <select id="erschliessungEditEntityEventType" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    <option value="">-- keine --</option>
+                    <option value="membership">Mitgliedschaft</option>
+                    <option value="board">Vorstand</option>
+                    <option value="president">Präsidentschaft</option>
+                    <option value="vortrag">Vortrag</option>
+                    <option value="diskussion">Diskussion</option>
+                    <option value="gast">Gast</option>
+                </select>
+            </div>
+            <div id="erschliessungEditEntityPlacePropertiesPanel" style="margin-bottom: 12px; display: none; padding: 10px; background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 6px;">
+                <h3 style="font-size: 14px; margin: 0 0 8px 0; color: #2e7d32;">Adressbuch <a href="https://www.saxorum.de/adressbuecher/list/Dresden/1929" target="_blank" rel="noopener" style="font-size:12px; font-weight:normal;">(Suche ➚)</a></h3>
+                <label for="erschliessungEditEntityAdressbuchUrl" style="font-size: 12px; color: #666;">Link zum Digitalisat</label>
+                <input type="text" id="erschliessungEditEntityAdressbuchUrl" placeholder="https://digital.slub-dresden.de/..." style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px;">
+            </div>
             <div id="erschliessungEditEntityClaimsList" style="margin-bottom: 12px;"></div>
             <div id="erschliessungEditEntityPlaceActions" style="margin-bottom: 12px; display: none;">
                 <button type="button" class="btn btn-primary" onclick="openPlaceOnMapDialog()">Auf Karte setzen</button>
@@ -9509,6 +9526,21 @@
             } else {
                 imgEl.innerHTML = '';
             }
+            var eventTypePanel = document.getElementById('erschliessungEditEntityEventTypePanel');
+            var eventTypeSel = document.getElementById('erschliessungEditEntityEventType');
+            if (data.entity_type === 'person' && eventTypePanel && eventTypeSel) {
+                eventTypePanel.style.display = 'block';
+                eventTypeSel.value = data.event_type || '';
+            } else if (eventTypePanel) {
+                eventTypePanel.style.display = 'none';
+            }
+            var placePropsPanel = document.getElementById('erschliessungEditEntityPlacePropertiesPanel');
+            if (data.entity_type === 'place' && placePropsPanel) {
+                placePropsPanel.style.display = 'block';
+                document.getElementById('erschliessungEditEntityAdressbuchUrl').value = data.adressbuch_url || '';
+            } else if (placePropsPanel) {
+                placePropsPanel.style.display = 'none';
+            }
             var placeActions = document.getElementById('erschliessungEditEntityPlaceActions');
             var syncBtn = document.getElementById('erschliessungEditEntitySyncBtn');
             var placeLinkPanel = document.getElementById('erschliessungEditEntityPlaceLinkPanel');
@@ -9682,6 +9714,8 @@
         async function saveErschliessungEditEntity() {
             var name = (document.getElementById('erschliessungEditEntityName').value || '').trim();
             if (!name) { showMessage('Name eingeben', 'error'); return; }
+            var eventType = document.getElementById('erschliessungEditEntityEventType').value;
+            var adressbuchUrl = document.getElementById('erschliessungEditEntityAdressbuchUrl').value;
             var claim_values = {};
             var claim_value_labels = {};
             document.querySelectorAll('#erschliessungEditEntityClaimsList .erschliessung-edit-claim-row').forEach(function (row) {
@@ -9707,12 +9741,20 @@
                 if (currentErschliessungEditMode === 'overview' && currentErschliessungOverviewEntityId) {
                     url = `${API_BASE}/api/erschliessung-overview/entities/${encodeURIComponent(currentErschliessungOverviewEntityId)}`;
                     method = 'PATCH';
-                    body = JSON.stringify({ name: name, claim_values: claim_values, claim_value_labels: claim_value_labels });
+                    var updateData = { name: name, claim_values: claim_values, claim_value_labels: claim_value_labels };
+                    if (adressbuchUrl) {
+                        updateData.adressbuch_url = adressbuchUrl || null;
+                    }
+                    body = JSON.stringify(updateData);
                 } else {
                     if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
                     url = `${API_BASE}/api/pages/${currentErschliessungsBoxPageId}/erschliessung/boxes/${currentErschliessungsBoxId}/entity-details`;
                     method = 'PATCH';
-                    body = JSON.stringify({ name: name, claim_values: claim_values, claim_value_labels: claim_value_labels });
+                    var boxUpdateData = { name: name, claim_values: claim_values, claim_value_labels: claim_value_labels };
+                    if (eventType) {
+                        boxUpdateData.event_type = eventType;
+                    }
+                    body = JSON.stringify(boxUpdateData);
                 }
                 const r = await fetch(url, {
                     method: method,

@@ -31,6 +31,22 @@ app = FastAPI(
 )
 
 
+@app.on_event("startup")
+async def run_pending_migrations():
+    """Prüft und führt ausstehende Alembic-Migrationen beim Start aus."""
+    try:
+        from alembic.command import upgrade
+        from alembic.config import Config
+
+        alembic_cfg = Path(__file__).parent.parent / "alembic.ini"
+        if alembic_cfg.exists():
+            cfg = Config(str(alembic_cfg))
+            upgrade(cfg, "head")
+            logger.info("Alembic-Migrationen erfolgreich ausgeführt")
+    except Exception as e:
+        logger.warning(f"Alembic-Migration übersprungen: {e}")
+
+
 # Request Logging Middleware
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):

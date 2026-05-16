@@ -43,6 +43,9 @@ class EntityUpdateBody(BaseModel):
     wikidata_id: str | None = None
     claim_values: dict | None = None
     claim_value_labels: dict | None = None
+    historical_address: str | None = None
+    adressbuch_url: str | None = None
+    adressbuch_page: str | None = None
 
 
 def _person_uri_from_id(entity_id: str) -> str:
@@ -151,6 +154,9 @@ def get_entity_details(
             "main_image_url": details.get("main_image_url"),
             "lat": details.get("lat"),
             "lon": details.get("lon"),
+            "historical_address": details.get("historical_address"),
+            "adressbuch_url": details.get("adressbuch_url"),
+            "adressbuch_page": details.get("adressbuch_page"),
         }
     details = ts.get_person_details(entity_uri)
     if not details:
@@ -218,11 +224,23 @@ def update_entity(
         new_name = body.name if body.name is not None else current_name
         current_lat = details.get("lat")
         current_lon = details.get("lon")
+        current_hist_addr = details.get("historical_address")
+        current_ab_url = details.get("adressbuch_url")
+        current_ab_page = details.get("adressbuch_page")
         ts.update_place(
             entity_uri,
             new_name,
             lat=current_lat,
             lon=current_lon,
+            historical_address=body.historical_address
+            if body.historical_address is not None
+            else current_hist_addr,
+            adressbuch_url=body.adressbuch_url
+            if body.adressbuch_url is not None
+            else current_ab_url,
+            adressbuch_page=body.adressbuch_page
+            if body.adressbuch_page is not None
+            else current_ab_page,
         )
         return {"entity_uri": entity_uri, "success": True}
 
