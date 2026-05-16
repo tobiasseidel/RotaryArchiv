@@ -38,9 +38,11 @@ async def run_pending_migrations():
         from alembic.command import upgrade
         from alembic.config import Config
 
-        alembic_cfg = Path(__file__).parent.parent / "alembic.ini"
+        project_root = Path(__file__).parent.parent.parent
+        alembic_cfg = project_root / "alembic.ini"
         if alembic_cfg.exists():
             cfg = Config(str(alembic_cfg))
+            cfg.set_main_option("script_location", str(project_root / "alembic"))
             upgrade(cfg, "head")
             logger.info("Alembic-Migrationen erfolgreich ausgeführt")
     except Exception as e:
