@@ -245,6 +245,8 @@ class ErschliessungsBox(Base):
     event_type = Column(
         String(50), nullable=True, index=True
     )  # "membership" | "board" | "president" | "vortrag" | "diskussion" | "gast"
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
 
     # Für box_type = "beleg"
     subject_uri = Column(String(512), nullable=True)

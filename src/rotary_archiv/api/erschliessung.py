@@ -73,6 +73,8 @@ class ErschliessungsBoxUpdate(BaseModel):
     predicate_uri: str | None = None
     object_uri: str | None = None
     event_type: str | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
 
 
 class ErschliessungsBoxResponse(BaseModel):
@@ -86,6 +88,8 @@ class ErschliessungsBoxResponse(BaseModel):
     entity_uri: str | None = None
     name: str | None = None
     event_type: str | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
     subject_uri: str | None = None
     predicate_uri: str | None = None
     object_uri: str | None = None
@@ -982,13 +986,15 @@ def get_box_entity_details(
 
 
 class UpdateEntityDetailsBody(BaseModel):
-    """Body zum Aktualisieren der internen Entity-Daten (Name, Properties als Listen, Anzeigenamen pro Wert, optional Hauptbild, event_type)."""
+    """Body zum Aktualisieren der internen Entity-Daten (Name, Properties als Listen, Anzeigenamen pro Wert, optional Hauptbild, event_type, dates)."""
 
     name: str
     claim_values: dict[str, list[str]] | None = None
     claim_value_labels: dict[str, dict[str, str]] | None = None
     main_image_url: str | None = None
     event_type: str | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
 
 
 @router.patch("/boxes/{box_id}/entity-details")
@@ -1041,6 +1047,10 @@ def update_box_entity_details(
     box.name = body.name.strip()
     if body.event_type is not None:
         box.event_type = body.event_type if body.event_type else None
+    if body.start_date is not None:
+        box.start_date = body.start_date
+    if body.end_date is not None:
+        box.end_date = body.end_date
     db.commit()
     db.refresh(box)
     return {"ok": True, "box": box}

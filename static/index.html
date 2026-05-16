@@ -1887,7 +1887,7 @@
             <input type="text" id="erschliessungEditEntityName" placeholder="Name" style="width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 4px;">
             <div id="erschliessungEditEntityEventTypePanel" style="margin-bottom: 12px; display: none; padding: 10px; background: #fff8e1; border: 1px solid #ffe082; border-radius: 6px;">
                 <label for="erschliessungEditEntityEventType" style="font-size: 13px; font-weight: 600; color: #333;">Art der Box</label>
-                <select id="erschliessungEditEntityEventType" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                <select id="erschliessungEditEntityEventType" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px;" onchange="toggleEventTypeDates()">
                     <option value="">-- keine --</option>
                     <option value="membership">Mitgliedschaft</option>
                     <option value="board">Vorstand</option>
@@ -1896,6 +1896,18 @@
                     <option value="diskussion">Diskussion</option>
                     <option value="gast">Gast</option>
                 </select>
+                <div id="erschliessungEditEntityEventDates" style="display: none;">
+                    <div style="display: flex; gap: 8px;">
+                        <div style="flex: 1;">
+                            <label style="font-size: 12px; color: #666;">Von</label>
+                            <input type="date" id="erschliessungEditEntityStartDate" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="font-size: 12px; color: #666;">Bis</label>
+                            <input type="date" id="erschliessungEditEntityEndDate" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+                        </div>
+                    </div>
+                </div>
             </div>
             <div id="erschliessungEditEntityPlacePropertiesPanel" style="margin-bottom: 12px; display: none; padding: 10px; background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: 6px;">
                 <h3 style="font-size: 14px; margin: 0 0 8px 0; color: #2e7d32;">Adressbuch <a href="https://www.saxorum.de/adressbuecher/list/Dresden/1929" target="_blank" rel="noopener" style="font-size:12px; font-weight:normal;">(Suche ➚)</a></h3>
@@ -9531,6 +9543,13 @@
             if (data.entity_type === 'person' && eventTypePanel && eventTypeSel) {
                 eventTypePanel.style.display = 'block';
                 eventTypeSel.value = data.event_type || '';
+                if (data.start_date) {
+                    document.getElementById('erschliessungEditEntityStartDate').value = data.start_date.split('T')[0];
+                }
+                if (data.end_date) {
+                    document.getElementById('erschliessungEditEntityEndDate').value = data.end_date.split('T')[0];
+                }
+                toggleEventTypeDates();
             } else if (eventTypePanel) {
                 eventTypePanel.style.display = 'none';
             }
@@ -9595,6 +9614,16 @@
                     listEl.appendChild(row);
                 });
             });
+            toggleEventTypeDates();
+        }
+        function toggleEventTypeDates() {
+            var eventType = document.getElementById('erschliessungEditEntityEventType').value;
+            var datePanel = document.getElementById('erschliessungEditEntityEventDates');
+            if (eventType === 'membership' || eventType === 'board' || eventType === 'president') {
+                if (datePanel) datePanel.style.display = 'block';
+            } else {
+                if (datePanel) datePanel.style.display = 'none';
+            }
         }
         function openEntityEditFromOverview(buttonEl) {
             var detailsEl = buttonEl.closest('.erschliessung-overview-person-details');
@@ -9715,6 +9744,8 @@
             var name = (document.getElementById('erschliessungEditEntityName').value || '').trim();
             if (!name) { showMessage('Name eingeben', 'error'); return; }
             var eventType = document.getElementById('erschliessungEditEntityEventType').value;
+            var startDate = document.getElementById('erschliessungEditEntityStartDate').value;
+            var endDate = document.getElementById('erschliessungEditEntityEndDate').value;
             var adressbuchUrl = document.getElementById('erschliessungEditEntityAdressbuchUrl').value;
             var claim_values = {};
             var claim_value_labels = {};
@@ -9753,6 +9784,12 @@
                     var boxUpdateData = { name: name, claim_values: claim_values, claim_value_labels: claim_value_labels };
                     if (eventType) {
                         boxUpdateData.event_type = eventType;
+                    }
+                    if (startDate) {
+                        boxUpdateData.start_date = startDate + "T00:00:00";
+                    }
+                    if (endDate) {
+                        boxUpdateData.end_date = endDate + "T00:00:00";
                     }
                     body = JSON.stringify(boxUpdateData);
                 }
