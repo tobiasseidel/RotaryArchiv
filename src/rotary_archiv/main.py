@@ -92,7 +92,6 @@ app.include_router(quality.router, tags=["quality"])
 app.include_router(erschliessung.router, prefix="/api/pages", tags=["erschliessung"])
 app.include_router(
     erschliessung_overview.router,
-    prefix="/api/erschliessung-overview",
     tags=["erschliessung-overview"],
 )
 app.include_router(settings_api.router, tags=["settings"])

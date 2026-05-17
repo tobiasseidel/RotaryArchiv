@@ -94,6 +94,9 @@ class ErschliessungsBoxResponse(BaseModel):
     predicate_uri: str | None = None
     object_uri: str | None = None
     main_image_url: str | None = None
+    historical_address: str | None = None
+    adressbuch_url: str | None = None
+    adressbuch_page: str | None = None
 
     class Config:
         from_attributes = True
@@ -449,11 +452,18 @@ def list_erschliessungs_boxes(
             "predicate_uri": b.predicate_uri,
             "object_uri": b.object_uri,
         }
-        data["main_image_url"] = (
-            (ts.get_person_details(b.entity_uri) or {}).get("main_image_url")
-            if b.entity_uri
-            else None
-        )
+        if b.entity_uri and "Place_" in b.entity_uri:
+            place_details = ts.get_place_details(b.entity_uri) or {}
+            data["main_image_url"] = place_details.get("main_image_url")
+            data["historical_address"] = place_details.get("historical_address")
+            data["adressbuch_url"] = place_details.get("adressbuch_url")
+            data["adressbuch_page"] = place_details.get("adressbuch_page")
+        elif b.entity_uri:
+            data["main_image_url"] = (
+                (ts.get_person_details(b.entity_uri) or {}).get("main_image_url")
+                if b.entity_uri
+                else None
+            )
         result.append(ErschliessungsBoxResponse(**data))
     return result
 
@@ -936,6 +946,9 @@ def get_box_entity_details(
                 "main_image_url": None,
                 "lat": None,
                 "lon": None,
+                "historical_address": None,
+                "adressbuch_url": None,
+                "adressbuch_page": None,
             }
         return {
             "entity_type": "place",
@@ -951,6 +964,9 @@ def get_box_entity_details(
             "main_image_url": details.get("main_image_url"),
             "lat": details.get("lat"),
             "lon": details.get("lon"),
+            "historical_address": details.get("historical_address"),
+            "adressbuch_url": details.get("adressbuch_url"),
+            "adressbuch_page": details.get("adressbuch_page"),
         }
     if "Event_" in box.entity_uri:
         preview = ts.get_entity_preview(box.entity_uri) or {}
@@ -1013,6 +1029,9 @@ class UpdateEntityDetailsBody(BaseModel):
     event_type: str | None = None
     start_date: datetime | None = None
     end_date: datetime | None = None
+    historical_address: str | None = None
+    adressbuch_url: str | None = None
+    adressbuch_page: str | None = None
 
 
 @router.patch("/boxes/{box_id}/entity-details")
@@ -1044,6 +1063,9 @@ def update_box_entity_details(
             resolved_main_image_url = body.main_image_url
     if "Place_" in box.entity_uri:
         details = ts.get_place_details(box.entity_uri) or {}
+        current_hist_addr = details.get("historical_address")
+        current_ab_url = details.get("adressbuch_url")
+        current_ab_page = details.get("adressbuch_page")
         ts.update_place(
             box.entity_uri,
             body.name.strip(),
@@ -1052,6 +1074,15 @@ def update_box_entity_details(
             update_main_image=body.main_image_url is not None,
             lat=details.get("lat"),
             lon=details.get("lon"),
+            historical_address=body.historical_address
+            if body.historical_address is not None
+            else current_hist_addr,
+            adressbuch_url=body.adressbuch_url
+            if body.adressbuch_url is not None
+            else current_ab_url,
+            adressbuch_page=body.adressbuch_page
+            if body.adressbuch_page is not None
+            else current_ab_page,
         )
     else:
         ts.update_person(

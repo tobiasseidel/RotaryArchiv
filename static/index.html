@@ -1929,6 +1929,10 @@
                 <h3 style="font-size: 14px; margin: 0 0 8px 0; color: #2e7d32;">Adressbuch <a href="https://www.saxorum.de/adressbuecher/list/Dresden/1929" target="_blank" rel="noopener" style="font-size:12px; font-weight:normal;">(Suche ➚)</a></h3>
                 <label for="erschliessungEditEntityAdressbuchUrl" style="font-size: 12px; color: #666;">Link zum Digitalisat</label>
                 <input type="text" id="erschliessungEditEntityAdressbuchUrl" placeholder="https://digital.slub-dresden.de/..." style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                <label for="erschliessungEditEntityAdressbuchPage" style="font-size: 12px; color: #666;">Seitenzahl</label>
+                <input type="text" id="erschliessungEditEntityAdressbuchPage" placeholder="z.B. 42 oder 42-43" style="width: 100%; padding: 8px; margin-bottom: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                <label for="erschliessungEditEntityHistoricalAddress" style="font-size: 12px; color: #666;">Historische Adresse</label>
+                <input type="text" id="erschliessungEditEntityHistoricalAddress" placeholder="z.B. Prager Str. 15" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
             </div>
             <div id="erschliessungEditEntityClaimsList" style="margin-bottom: 12px;"></div>
             <div id="erschliessungEditEntityPlaceActions" style="margin-bottom: 12px; display: none;">
@@ -9588,6 +9592,8 @@
             if (data.entity_type === 'place' && placePropsPanel) {
                 placePropsPanel.style.display = 'block';
                 document.getElementById('erschliessungEditEntityAdressbuchUrl').value = data.adressbuch_url || '';
+                document.getElementById('erschliessungEditEntityAdressbuchPage').value = data.adressbuch_page || '';
+                document.getElementById('erschliessungEditEntityHistoricalAddress').value = data.historical_address || '';
             } else if (placePropsPanel) {
                 placePropsPanel.style.display = 'none';
             }
@@ -9802,6 +9808,8 @@
                 endDate = document.getElementById('erschliessungEditEntityTermEndDate').value || null;
             }
             var adressbuchUrl = document.getElementById('erschliessungEditEntityAdressbuchUrl').value;
+            var adressbuchPage = document.getElementById('erschliessungEditEntityAdressbuchPage').value;
+            var historicalAddress = document.getElementById('erschliessungEditEntityHistoricalAddress').value;
             var claim_values = {};
             var claim_value_labels = {};
             document.querySelectorAll('#erschliessungEditEntityClaimsList .erschliessung-edit-claim-row').forEach(function (row) {
@@ -9831,6 +9839,12 @@
                     if (adressbuchUrl) {
                         updateData.adressbuch_url = adressbuchUrl || null;
                     }
+                    if (adressbuchPage) {
+                        updateData.adressbuch_page = adressbuchPage || null;
+                    }
+                    if (historicalAddress) {
+                        updateData.historical_address = historicalAddress || null;
+                    }
                     body = JSON.stringify(updateData);
                 } else {
                     if (!currentErschliessungsBoxPageId || !currentErschliessungsBoxId) return;
@@ -9845,6 +9859,15 @@
                     }
                     if (endDate) {
                         boxUpdateData.end_date = endDate + "T00:00:00";
+                    }
+                    if (adressbuchUrl) {
+                        boxUpdateData.adressbuch_url = adressbuchUrl || null;
+                    }
+                    if (adressbuchPage) {
+                        boxUpdateData.adressbuch_page = adressbuchPage || null;
+                    }
+                    if (historicalAddress) {
+                        boxUpdateData.historical_address = historicalAddress || null;
                     }
                     body = JSON.stringify(boxUpdateData);
                 }
