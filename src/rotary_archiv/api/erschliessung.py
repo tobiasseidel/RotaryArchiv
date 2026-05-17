@@ -910,6 +910,9 @@ def get_box_entity_details(
             "entity_type": None,
             "entity_uri": None,
             "name": None,
+            "event_type": box.event_type,
+            "start_date": box.start_date,
+            "end_date": box.end_date,
             "wikidata_id": None,
             "claim_values": {},
             "claim_value_labels": {},
@@ -926,6 +929,9 @@ def get_box_entity_details(
                 "entity_type": "place",
                 "entity_uri": box.entity_uri,
                 "name": box.name,
+                "event_type": box.event_type,
+                "start_date": box.start_date,
+                "end_date": box.end_date,
                 "wikidata_id": None,
                 "main_image_url": None,
                 "lat": None,
@@ -935,6 +941,9 @@ def get_box_entity_details(
             "entity_type": "place",
             "entity_uri": box.entity_uri,
             "name": details.get("name") or box.name,
+            "event_type": box.event_type,
+            "start_date": box.start_date,
+            "end_date": box.end_date,
             "wikidata_id": details.get("wikidata_id"),
             "claim_values": {},
             "claim_value_labels": {},
@@ -963,6 +972,9 @@ def get_box_entity_details(
             "entity_type": "person",
             "entity_uri": box.entity_uri,
             "name": box.name,
+            "event_type": box.event_type,
+            "start_date": box.start_date,
+            "end_date": box.end_date,
             "wikidata_id": None,
             "claim_values": {},
             "claim_value_labels": {},
@@ -980,6 +992,9 @@ def get_box_entity_details(
         "entity_type": "person",
         "entity_uri": box.entity_uri,
         "name": details.get("name") or box.name,
+        "event_type": box.event_type,
+        "start_date": box.start_date,
+        "end_date": box.end_date,
         "wikidata_id": details.get("wikidata_id"),
         "claim_values": claim_values,
         "claim_value_labels": claim_value_labels,
@@ -1050,9 +1065,9 @@ def update_box_entity_details(
     box.name = body.name.strip()
     if body.event_type is not None:
         box.event_type = body.event_type if body.event_type else None
-    if body.start_date is not None:
+    if hasattr(body, "start_date") and body.start_date:
         box.start_date = body.start_date
-    if body.end_date is not None:
+    if hasattr(body, "end_date") and body.end_date:
         box.end_date = body.end_date
     db.commit()
     db.refresh(box)

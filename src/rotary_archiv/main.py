@@ -20,9 +20,12 @@ from src.rotary_archiv.api import (
     review,
 )
 from src.rotary_archiv.api import settings as settings_api
-from src.rotary_archiv.config import settings
 
 logger = logging.getLogger(__name__)
+
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)
 
 app = FastAPI(
     title="RotaryArchiv API",
@@ -79,57 +82,27 @@ static_dir = Path(__file__).parent.parent.parent / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-# Static Files für Dokumente und Seiten (für Vorschau)
-data_dir = Path(settings.documents_path)
-if data_dir.exists():
-    app.mount("/data", StaticFiles(directory=str(data_dir.resolve())), name="data")
 
-# Static Files für gecachte Bilder (Wikidata/Commons/Fotothek)
-image_cache_dir = Path(settings.image_cache_path)
-image_cache_dir.mkdir(parents=True, exist_ok=True)
-app.mount(
-    "/media-cache",
-    StaticFiles(directory=str(image_cache_dir.resolve())),
-    name="media-cache",
+# Routen
+app.include_router(documents.router, prefix="/api", tags=["documents"])
+app.include_router(pages.router, prefix="/api", tags=["pages"])
+app.include_router(ocr.router, prefix="/api", tags=["ocr"])
+app.include_router(review.router, prefix="/api", tags=["review"])
+app.include_router(quality.router, prefix="/api", tags=["quality"])
+app.include_router(erschliessung.router, prefix="/api/pages", tags=["erschliessung"])
+app.include_router(
+    erschliessung_overview.router,
+    prefix="/api/erschliessung-overview",
+    tags=["erschliessung-overview"],
 )
-
-# Include Routers
-app.include_router(documents.router)
-app.include_router(ocr.router)
-app.include_router(pages.router)
-app.include_router(erschliessung.router, prefix="/api/pages")
-app.include_router(erschliessung_overview.router)
-app.include_router(review.router)
-app.include_router(quality.router)
-app.include_router(settings_api.router)
-
-# NOTE: Folgende Router sind vorerst nicht aktiviert:
-# - triples.router (markiert als ungenutzt)
-# - wikidata.router (markiert als ungenutzt)
-# - sparql.router (markiert als ungenutzt)
+app.include_router(settings_api.router, prefix="/api/settings", tags=["settings"])
 
 
 @app.get("/")
 async def root():
-    """Root Endpoint - Redirect zu Frontend"""
-    from fastapi.responses import FileResponse
-
-    static_file = static_dir / "index.html"
-    if static_file.exists():
-        return FileResponse(str(static_file))
-    return {
-        "message": "RotaryArchiv API",
-        "version": "0.1.0",
-        "docs": "/docs",
-        "endpoints": {
-            "documents": "/api/documents",
-            "pages": "/api/pages",
-            "ocr": "/api/ocr",
-        },
-    }
+    return {"message": "RotaryArchiv API"}
 
 
 @app.get("/health")
-async def health_check():
-    """Health Check Endpoint"""
-    return {"status": "healthy"}
+async def health():
+    return {"status": "ok"}
