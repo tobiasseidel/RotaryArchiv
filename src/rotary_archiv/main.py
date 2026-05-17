@@ -89,17 +89,23 @@ app.include_router(pages.router, tags=["pages"])
 app.include_router(ocr.router, tags=["ocr"])
 app.include_router(review.router, tags=["review"])
 app.include_router(quality.router, tags=["quality"])
-app.include_router(erschliessung.router, prefix="/pages", tags=["erschliessung"])
+app.include_router(erschliessung.router, prefix="/api/pages", tags=["erschliessung"])
 app.include_router(
     erschliessung_overview.router,
-    prefix="/erschliessung-overview",
+    prefix="/api/erschliessung-overview",
     tags=["erschliessung-overview"],
 )
-app.include_router(settings_api.router, prefix="/settings", tags=["settings"])
+app.include_router(settings_api.router, tags=["settings"])
 
 
 @app.get("/")
 async def root():
+    from fastapi.responses import FileResponse
+
+    static_dir = Path(__file__).parent.parent.parent / "static"
+    index_path = static_dir / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
     return {"message": "RotaryArchiv API"}
 
 
