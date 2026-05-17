@@ -1076,6 +1076,7 @@
             <button type="button" class="tab-btn" id="erschliessungOverviewTabSeiten" onclick="switchErschliessungOverviewTab('seiten');">Seiten</button>
             <button type="button" class="tab-btn" id="erschliessungOverviewTabBoxen" onclick="switchErschliessungOverviewTab('boxen');">Boxen</button>
             <button type="button" class="tab-btn" id="erschliessungOverviewTabKarte" onclick="switchErschliessungOverviewTab('karte');">Karte</button>
+            <button type="button" class="tab-btn" id="erschliessungOverviewTabEvents" onclick="switchErschliessungOverviewTab('events');">Events</button>
             <button type="button" class="tab-btn" id="erschliessungOverviewTabNotizen" onclick="switchErschliessungOverviewTab('notizen');">Notizen</button>
             <div id="erschliessungOverviewMapFilterInline" style="display:none; margin-left:auto; gap:10px; flex-wrap:wrap; align-items:center;">
                 <label style="display:flex; align-items:center; gap:4px; font-size:13px;"><input type="checkbox" id="ovFilterResidence" checked> Wohnorte</label>
@@ -1087,8 +1088,21 @@
                 <input type="text" id="erschliessungOverviewNotesSearchInput" placeholder="Notizen durchsuchen..." style="padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; min-width: 200px;" onkeydown="if(event.key==='Enter'){loadErschliessungOverviewContent();}">
                 <button type="button" class="btn btn-secondary" onclick="loadErschliessungOverviewContent()">Suchen</button>
             </div>
+            <div id="erschliessungOverviewEventsFilter" style="display:none; margin-left:auto; gap:10px; flex-wrap:wrap; align-items:center;">
+                <label style="font-size:12px;">Jahr:</label>
+                <input type="number" id="eventsFromYear" placeholder="von" style="width:60px; padding:4px; border:1px solid #ccc; border-radius:3px;" min="1800" max="2100">
+                <span style="font-size:12px;">–</span>
+                <input type="number" id="eventsToYear" placeholder="bis" style="width:60px; padding:4px; border:1px solid #ccc; border-radius:3px;" min="1800" max="2100">
+                <label style="display:flex; align-items:center; gap:3px; font-size:12px;"><input type="checkbox" id="eventsFilterPresident" checked> Präs.</label>
+                <label style="display:flex; align-items:center; gap:3px; font-size:12px;"><input type="checkbox" id="eventsFilterBoard" checked> Vorst.</label>
+                <label style="display:flex; align-items:center; gap:3px; font-size:12px;"><input type="checkbox" id="eventsFilterMembership" checked> Mitgl.</label>
+                <label style="display:flex; align-items:center; gap:3px; font-size:12px;"><input type="checkbox" id="eventsFilterVortrag" checked style="color:#f57c00;"> Vortrag</label>
+                <label style="display:flex; align-items:center; gap:3px; font-size:12px;"><input type="checkbox" id="eventsFilterGast"> Gast</label>
+                <label style="display:flex; align-items:center; gap:3px; font-size:12px;"><input type="checkbox" id="eventsFilterDiskussion"> Disk.</label>
+                <button type="button" class="btn btn-primary" style="padding:4px 10px; font-size:12px;" onclick="loadErschliessungOverviewContent()">Filter</button>
+            </div>
         </div>
-        <div id="erschliessungOverviewContent" style="min-height:0;">
+        <div id="erschliessungOverviewContent" style="min-height:0; flex:1; overflow-y:auto;">
             <p style="color: #666;">Lade...</p>
         </div>
     </div>
@@ -3171,7 +3185,7 @@
         function switchErschliessungOverviewTab(tab) {
             currentErschliessungOverviewTab = tab;
             document.querySelectorAll('#erschliessungOverviewView .tab-btn').forEach(function(btn) { btn.classList.remove('active'); });
-            var tabIdMap = { 'personen': 'Personen', 'seiten': 'Seiten', 'boxen': 'Boxen', 'karte': 'Karte', 'notizen': 'Notizen' };
+            var tabIdMap = { 'personen': 'Personen', 'seiten': 'Seiten', 'boxen': 'Boxen', 'karte': 'Karte', 'events': 'Events', 'notizen': 'Notizen' };
             var tabId = tabIdMap[tab] || 'Personen';
             var el = document.getElementById('erschliessungOverviewTab' + tabId);
             if (el) el.classList.add('active');
@@ -3179,6 +3193,8 @@
             if (mapFilterInline) mapFilterInline.style.display = tab === 'karte' ? 'flex' : 'none';
             var notesSearch = document.getElementById('erschliessungOverviewNotesSearch');
             if (notesSearch) notesSearch.style.display = tab === 'notizen' ? 'flex' : 'none';
+            var eventsFilter = document.getElementById('erschliessungOverviewEventsFilter');
+            if (eventsFilter) eventsFilter.style.display = tab === 'events' ? 'flex' : 'none';
             loadErschliessungOverviewContent();
         }
         function resizeErschliessungOverviewMap() {
@@ -3348,6 +3364,27 @@
                     if (!r.ok) throw new Error('Notizen fehlen');
                     var data = await r.json();
                     renderErschliessungOverviewNotizen(container, data.notes || []);
+                } else if (currentErschliessungOverviewTab === 'events') {
+                    var fromYearInput = document.getElementById('eventsFromYear');
+                    var toYearInput = document.getElementById('eventsToYear');
+                    var fromYear = fromYearInput ? fromYearInput.value : '';
+                    var toYear = toYearInput ? toYearInput.value : '';
+                    var eventTypes = [];
+                    if (document.getElementById('eventsFilterPresident').checked) eventTypes.push('president');
+                    if (document.getElementById('eventsFilterBoard').checked) eventTypes.push('board');
+                    if (document.getElementById('eventsFilterMembership').checked) eventTypes.push('membership');
+                    if (document.getElementById('eventsFilterVortrag').checked) eventTypes.push('vortrag');
+                    if (document.getElementById('eventsFilterGast').checked) eventTypes.push('gast');
+                    if (document.getElementById('eventsFilterDiskussion').checked) eventTypes.push('diskussion');
+                    var eventParams = [];
+                    if (fromYear) eventParams.push('from_year=' + encodeURIComponent(fromYear));
+                    if (toYear) eventParams.push('to_year=' + encodeURIComponent(toYear));
+                    if (eventTypes.length > 0) eventParams.push('event_types=' + encodeURIComponent(eventTypes.join(',')));
+                    var eventQs = eventParams.length ? '?' + eventParams.join('&') : '';
+                    var r = await fetch(API_BASE + '/api/erschliessung-overview/events' + eventQs);
+                    if (!r.ok) throw new Error('Events fehlen');
+                    var data = await r.json();
+                    renderErschliessungOverviewEvents(container, data.events || []);
                 } else {
                     var r = await fetch(API_BASE + '/api/erschliessung-overview/boxes' + qs);
                     if (!r.ok) throw new Error('Boxen fehlen');
@@ -3376,6 +3413,103 @@
             });
             html += '</tbody></table></div>';
             container.innerHTML = html;
+        }
+        function renderErschliessungOverviewEvents(container, events) {
+            if (!events.length) {
+                container.innerHTML = '<p style="color:#666;">Keine Events gefunden.</p>';
+                return;
+            }
+            var minYear = 2100, maxYear = 1800;
+            events.forEach(function(e) {
+                e.ranges.forEach(function(r) {
+                    if (r.start) { var y = parseInt(r.start.substring(0,4)); if (y < minYear) minYear = y; if (y > maxYear) maxYear = y; }
+                    if (r.end) { var y = parseInt(r.end.substring(0,4)); if (y < minYear) minYear = y; if (y > maxYear) maxYear = y; }
+                });
+                e.points.forEach(function(p) {
+                    if (p.start) { var y = parseInt(p.start.substring(0,4)); if (y < minYear) minYear = y; if (y > maxYear) maxYear = y; }
+                });
+            });
+            if (minYear > maxYear) { minYear = 1990; maxYear = 2010; }
+            var yearRange = maxYear - minYear + 1;
+            if (yearRange < 5) yearRange = 5;
+            var totalWidth = yearRange * 40;
+            var rowHeight = 60;
+            var leftPanelWidth = 200;
+            var headerHeight = 30;
+            var containerWidth = Math.max(container.clientWidth - 20, leftPanelWidth + totalWidth + 50);
+            var containerHeight = events.length * rowHeight + headerHeight + 20;
+            var html = '<div style="width:' + containerWidth + 'px; height:' + containerHeight + 'px; position:relative; overflow:auto;">';
+            html += '<div style="position:sticky; top:0; left:' + leftPanelWidth + 'px; height:' + headerHeight + 'px; background:#f5f5f5; border-bottom:1px solid #ddd; z-index:10;">';
+            for (var y = minYear; y <= maxYear; y++) {
+                var x = (y - minYear) * 40;
+                html += '<div style="position:absolute; left:' + x + 'px; font-size:10px; color:#666; border-left:1px solid #ddd; padding-left:2px;">' + y + '</div>';
+            }
+            html += '</div>';
+            events.forEach(function(e, idx) {
+                var top = headerHeight + idx * rowHeight;
+                var img = e.main_image_url ? '<img src="' + escapeHtml(e.main_image_url) + '" style="width:36px; height:36px; border-radius:50%; object-fit:cover;">' : '<div style="width:36px; height:36px; border-radius:50%; background:#ddd; display:flex; align-items:center; justify-content:center; font-size:12px; color:#666;">?</div>';
+                var personLink = e.entity_id ? '<a href="#/page/1/inspect" onclick="openEntityFromEvents(\'' + escapeHtml(e.entity_id) + '\'); return false;" style="color:#1976d2; font-weight:500; text-decoration:none;">' + escapeHtml(e.person_name || e.entity_uri) + '</a>' : escapeHtml(e.person_name || e.entity_uri);
+                html += '<div style="position:absolute; top:' + top + 'px; left:0; width:' + leftPanelWidth + 'px; height:' + rowHeight + 'px; display:flex; align-items:center; gap:8px; padding:0 8px; border-bottom:1px solid #eee; background:#fff;">';
+                html += '<div>' + img + '</div><div style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px;">' + personLink + '</div></div>';
+                var rangesHtml = '';
+                e.ranges.forEach(function(r) {
+                    var startY = r.start ? parseInt(r.start.substring(0,4)) : minYear;
+                    var endY = r.end ? parseInt(r.end.substring(0,4)) : startY;
+                    var x1 = Math.max(0, (startY - minYear) * 40);
+                    var x2 = Math.min(totalWidth, (endY - minYear + 1) * 40);
+                    var w = Math.max(20, x2 - x1);
+                    var color = '#1976d2';
+                    var label = 'Mitgl.';
+                    if (r.type === 'president') { color = '#7b1fa2'; label = 'Präs.'; }
+                    else if (r.type === 'board') { color = '#388e3c'; label = 'Vorst.'; }
+                    else if (r.type === 'membership') { color = '#1976d2'; label = 'Mitgl.'; }
+                    rangesHtml += '<div style="position:absolute; left:' + x1 + 'px; width:' + w + 'px; top:8px; height:16px; background:' + color + '; border-radius:2px; cursor:pointer;" title="' + label + ' ' + (r.start || '') + '–' + (r.end || '') + '" onclick="openPageFromEvent(' + r.page_id + ')"></div>';
+                });
+                var pointsHtml = '';
+                var pointTypeLabels = { 'vortrag': 'Vortrag', 'gast': 'Gast', 'diskussion': 'Diskussion' };
+                e.points.forEach(function(p) {
+                    var pYear = p.start ? parseInt(p.start.substring(0,4)) : minYear;
+                    var x = (pYear - minYear) * 40 + 15;
+                    var color = '#f57c00';
+                    if (p.type === 'gast') color = '#757575';
+                    else if (p.type === 'diskussion') color = '#0288d1';
+                    else if (p.type === 'vortrag') color = '#f57c00';
+                    var label = pointTypeLabels[p.type] || p.type;
+                    var dateStr = p.start ? p.start.substring(0,10) : '';
+                    pointsHtml += '<div style="position:absolute; left:' + x + 'px; top:30px; width:16px; height:16px; text-align:center; cursor:pointer; font-size:14px; color:' + color + ';" title="' + label + ' ' + dateStr + ' (Seite ' + p.page_id + ')" onclick="openPageFromEvent(' + p.page_id + ')">★</div>';
+                });
+                html += '<div style="position:absolute; top:' + top + 'px; left:' + leftPanelWidth + 'px; width:' + totalWidth + 'px; height:' + rowHeight + 'px; border-bottom:1px solid #eee;">';
+                html += rangesHtml + pointsHtml;
+                html += '</div>';
+            });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        function openEntityFromEvents(entityId) {
+            var detailsEl = document.createElement('div');
+            detailsEl.innerHTML = '<div class="erschliessung-overview-person-details" style="display:block; padding:10px; background:#fff; border:1px solid #ddd; margin-top:10px;"><p>Lade...</p></div>';
+            var r = fetch(API_BASE + '/api/erschliessung-overview/entities/' + encodeURIComponent(entityId));
+            r.then(function(resp) { return resp.ok ? resp.json() : null; }).then(function(d) {
+                if (!d) return;
+                var cv = d.claim_values || {};
+                var cvl = d.claim_value_labels || {};
+                var pl = d.property_labels || {};
+                var parts = [];
+                Object.keys(cv).forEach(function(propId) {
+                    var vals = cv[propId];
+                    if (!Array.isArray(vals)) vals = vals != null ? [vals] : [];
+                    var label = pl[propId] || propId;
+                    vals.forEach(function(v) {
+                        var display = (cvl[propId] && cvl[propId][v]) ? cvl[propId][v] : v;
+                        parts.push('<div style="margin-bottom:4px;"><strong>' + escapeHtml(label) + '</strong>: ' + escapeHtml(display) + '</div>');
+                    });
+                });
+                detailsEl.innerHTML = parts.length ? parts.join('') : '<span style="color:#888;">Keine Eigenschaften</span>';
+                detailsEl.innerHTML += '<button type="button" class="btn btn-secondary" style="margin-top:12px;" onclick="openEntityEditFromOverview(this)">Bearbeiten</button>';
+            });
+        }
+        function openPageFromEvent(pageId) {
+            window.location.hash = '#/page/' + pageId + '/inspect';
         }
         function renderErschliessungOverviewKarte(container, places) {
             if (places.length === 0) {
@@ -3572,7 +3706,7 @@
                 container.innerHTML = '<p style="color:#666;">Keine Boxen gefunden.</p>';
                 return;
             }
-            var html = '<table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#f5f5f5;"><th style="padding:8px;">Seite</th><th style="padding:8px;">Dokument</th><th style="padding:8px;">Typ</th><th style="padding:8px;">Name / Person</th><th style="padding:8px;"></th></tr></thead><tbody>';
+            var html = '<table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#f5f5f5; position:sticky; top:0;"><th style="padding:8px;">Seite</th><th style="padding:8px;">Dokument</th><th style="padding:8px;">Typ</th><th style="padding:8px;">Name / Person</th><th style="padding:8px;"></th></tr></thead><tbody>';
             boxes.forEach(function(b) {
                 var img = (b.main_image_url && b.main_image_url.trim()) ? '<img src="' + escapeHtml(b.main_image_url) + '" alt="" style="width:32px; height:32px; object-fit:cover; border-radius:4px; vertical-align:middle;">' : '';
                 html += '<tr><td style="padding:8px;">' + b.page_id + '</td><td style="padding:8px;">' + escapeHtml(b.document_title || '') + '</td><td style="padding:8px;">' + escapeHtml(b.box_type || '') + '</td><td style="padding:8px;">' + img + ' ' + escapeHtml(b.name || b.entity_uri || '') + '</td><td style="padding:8px;"><a href="#/page/' + b.page_id + '/inspect">Seite</a></td></tr>';

@@ -520,3 +520,116 @@ def list_notes(
         )
 
     return {"notes": notes}
+
+
+EVENT_TYPE_RANK = {
+    "president": 1,
+    "board": 2,
+    "membership": 3,
+    "vortrag": 4,
+    "diskussion": 5,
+    "gast": 6,
+}
+
+RANGE_TYPES = {"president", "board", "membership"}
+POINT_TYPES = {"vortrag", "diskussion", "gast"}
+
+
+@router.get("/events")
+def list_events(
+    from_year: int | None = Query(None, description="Start-Jahr für Filter"),
+    to_year: int | None = Query(None, description="End-Jahr für Filter"),
+    event_types: str | None = Query(None, description="Kommagetrennte Event-Typen"),
+    db: Session = Depends(get_db),
+):
+    """
+    Alle Events (Mitgliedschaften, Vorträge, etc.) als Timeline-Daten.
+    Optional gefiltert nach Jahr und/oder Event-Typen.
+    """
+    allowed_types = None
+    if event_types:
+        allowed_types = [t.strip() for t in event_types.split(",") if t.strip()]
+
+    q = db.query(ErschliessungsBox).filter(ErschliessungsBox.event_type.isnot(None))
+    rows = q.all()
+
+    if from_year is not None or to_year is not None:
+        filtered_rows = []
+        for row in rows:
+            if row.start_date:
+                if from_year is not None and row.start_date.year < from_year:
+                    continue
+                if to_year is not None and row.start_date.year > to_year:
+                    continue
+            if row.end_date:
+                if from_year is not None and row.end_date.year < from_year:
+                    continue
+                if to_year is not None and row.end_date.year > to_year:
+                    continue
+            if (
+                not row.start_date
+                and not row.end_date
+                and (from_year is not None or to_year is not None)
+            ):
+                continue
+            filtered_rows.append(row)
+        rows = filtered_rows
+
+    if allowed_types:
+        rows = [r for r in rows if r.event_type in allowed_types]
+
+    by_person: dict[str, dict] = {}
+    for row in rows:
+        if not row.entity_uri or "Person_" not in row.entity_uri:
+            continue
+
+        if row.entity_uri not in by_person:
+            by_person[row.entity_uri] = {
+                "entity_uri": row.entity_uri,
+                "person_name": row.name or "",
+                "ranges": [],
+                "points": [],
+            }
+
+        event_data = {
+            "type": row.event_type,
+            "page_id": row.document_page_id,
+        }
+        if row.start_date:
+            event_data["start"] = row.start_date.isoformat()
+        if row.end_date:
+            event_data["end"] = row.end_date.isoformat()
+        elif row.start_date and row.event_type in RANGE_TYPES:
+            event_data["end"] = row.start_date.isoformat()
+
+        if row.event_type in RANGE_TYPES:
+            by_person[row.entity_uri]["ranges"].append(event_data)
+        else:
+            by_person[row.entity_uri]["points"].append(event_data)
+
+    ts = get_triplestore()
+    result = []
+    for uri, data in by_person.items():
+        details = ts.get_person_details(uri)
+        if details:
+            data["person_name"] = details.get("name") or data["person_name"]
+            data["main_image_url"] = details.get("main_image_url")
+
+        data["entity_id"] = uri.split("/")[-1].split("#")[0] if uri else ""
+
+        highest_rank = 999
+        for r in data["ranges"]:
+            rank = EVENT_TYPE_RANK.get(r["type"], 999)
+            if rank < highest_rank:
+                highest_rank = rank
+        for p in data["points"]:
+            rank = EVENT_TYPE_RANK.get(p["type"], 999)
+            if rank < highest_rank:
+                highest_rank = rank
+        data["sort_rank"] = highest_rank
+
+        result.append(data)
+
+    result.sort(key=lambda x: (x["sort_rank"], x["person_name"] or ""))
+
+    return {"events": result}
