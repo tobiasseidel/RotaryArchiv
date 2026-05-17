@@ -1897,14 +1897,30 @@
                     <option value="gast">Gast</option>
                 </select>
                 <div id="erschliessungEditEntityEventDates" style="display: none;">
-                    <div style="display: flex; gap: 8px;">
-                        <div style="flex: 1;">
-                            <label style="font-size: 12px; color: #666;">Von</label>
-                            <input type="date" id="erschliessungEditEntityStartDate" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+                    <div id="erschliessungEditEntityMembershipDates" style="display: none;">
+                        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                            <div style="flex: 1;">
+                                <label style="font-size: 12px; color: #666;">Eintritt</label>
+                                <input type="checkbox" id="erschliessungEditEntityHasStartDate" style="margin-right: 4px;" onchange="toggleMembershipStartDate()"><span style="font-size: 11px;">ja</span>
+                                <input type="date" id="erschliessungEditEntityStartDate" disabled style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px; margin-top: 4px;">
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="font-size: 12px; color: #666;">Austritt</label>
+                                <input type="checkbox" id="erschliessungEditEntityHasEndDate" style="margin-right: 4px;" onchange="toggleMembershipEndDate()"><span style="font-size: 11px;">ja</span>
+                                <input type="date" id="erschliessungEditEntityEndDate" disabled style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px; margin-top: 4px;">
+                            </div>
                         </div>
-                        <div style="flex: 1;">
-                            <label style="font-size: 12px; color: #666;">Bis</label>
-                            <input type="date" id="erschliessungEditEntityEndDate" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+                    </div>
+                    <div id="erschliessungEditEntityTermDates" style="display: none;">
+                        <div style="display: flex; gap: 8px;">
+                            <div style="flex: 1;">
+                                <label style="font-size: 12px; color: #666;">Von</label>
+                                <input type="date" id="erschliessungEditEntityTermStartDate" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="font-size: 12px; color: #666;">Bis</label>
+                                <input type="date" id="erschliessungEditEntityTermEndDate" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px;">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -9543,11 +9559,26 @@
             if (data.entity_type === 'person' && eventTypePanel && eventTypeSel) {
                 eventTypePanel.style.display = 'block';
                 eventTypeSel.value = data.event_type || '';
-                if (data.start_date) {
-                    document.getElementById('erschliessungEditEntityStartDate').value = data.start_date.split('T')[0];
-                }
-                if (data.end_date) {
-                    document.getElementById('erschliessungEditEntityEndDate').value = data.end_date.split('T')[0];
+                var hasStartCb = document.getElementById('erschliessungEditEntityHasStartDate');
+                var hasEndCb = document.getElementById('erschliessungEditEntityHasEndDate');
+                var startInput = document.getElementById('erschliessungEditEntityStartDate');
+                var endInput = document.getElementById('erschliessungEditEntityEndDate');
+                var termStartInput = document.getElementById('erschliessungEditEntityTermStartDate');
+                var termEndInput = document.getElementById('erschliessungEditEntityTermEndDate');
+                if (data.event_type === 'membership') {
+                    if (hasStartCb && startInput && data.start_date) {
+                        hasStartCb.checked = true;
+                        startInput.disabled = false;
+                        startInput.value = data.start_date.split('T')[0];
+                    }
+                    if (hasEndCb && endInput && data.end_date) {
+                        hasEndCb.checked = true;
+                        endInput.disabled = false;
+                        endInput.value = data.end_date.split('T')[0];
+                    }
+                } else if (data.event_type === 'board' || data.event_type === 'president') {
+                    if (termStartInput && data.start_date) termStartInput.value = data.start_date.split('T')[0];
+                    if (termEndInput && data.end_date) termEndInput.value = data.end_date.split('T')[0];
                 }
                 toggleEventTypeDates();
             } else if (eventTypePanel) {
@@ -9619,11 +9650,29 @@
         function toggleEventTypeDates() {
             var eventType = document.getElementById('erschliessungEditEntityEventType').value;
             var datePanel = document.getElementById('erschliessungEditEntityEventDates');
-            if (eventType === 'membership' || eventType === 'board' || eventType === 'president') {
+            var membershipDates = document.getElementById('erschliessungEditEntityMembershipDates');
+            var termDates = document.getElementById('erschliessungEditEntityTermDates');
+            if (eventType === 'membership') {
                 if (datePanel) datePanel.style.display = 'block';
+                if (membershipDates) membershipDates.style.display = 'block';
+                if (termDates) termDates.style.display = 'none';
+            } else if (eventType === 'board' || eventType === 'president') {
+                if (datePanel) datePanel.style.display = 'block';
+                if (membershipDates) membershipDates.style.display = 'none';
+                if (termDates) termDates.style.display = 'block';
             } else {
                 if (datePanel) datePanel.style.display = 'none';
             }
+        }
+        function toggleMembershipStartDate() {
+            var cb = document.getElementById('erschliessungEditEntityHasStartDate');
+            var input = document.getElementById('erschliessungEditEntityStartDate');
+            if (input) input.disabled = !cb.checked;
+        }
+        function toggleMembershipEndDate() {
+            var cb = document.getElementById('erschliessungEditEntityHasEndDate');
+            var input = document.getElementById('erschliessungEditEntityEndDate');
+            if (input) input.disabled = !cb.checked;
         }
         function openEntityEditFromOverview(buttonEl) {
             var detailsEl = buttonEl.closest('.erschliessung-overview-person-details');
@@ -9744,8 +9793,14 @@
             var name = (document.getElementById('erschliessungEditEntityName').value || '').trim();
             if (!name) { showMessage('Name eingeben', 'error'); return; }
             var eventType = document.getElementById('erschliessungEditEntityEventType').value;
-            var startDate = document.getElementById('erschliessungEditEntityStartDate').value;
-            var endDate = document.getElementById('erschliessungEditEntityEndDate').value;
+            var hasStartDate = document.getElementById('erschliessungEditEntityHasStartDate').checked;
+            var hasEndDate = document.getElementById('erschliessungEditEntityHasEndDate').checked;
+            var startDate = hasStartDate ? document.getElementById('erschliessungEditEntityStartDate').value : null;
+            var endDate = hasEndDate ? document.getElementById('erschliessungEditEntityEndDate').value : null;
+            if (eventType === 'board' || eventType === 'president') {
+                startDate = document.getElementById('erschliessungEditEntityTermStartDate').value || null;
+                endDate = document.getElementById('erschliessungEditEntityTermEndDate').value || null;
+            }
             var adressbuchUrl = document.getElementById('erschliessungEditEntityAdressbuchUrl').value;
             var claim_values = {};
             var claim_value_labels = {};

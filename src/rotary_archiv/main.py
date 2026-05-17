@@ -47,6 +47,9 @@ async def run_pending_migrations():
             logger.info("Alembic-Migrationen erfolgreich ausgeführt")
     except Exception as e:
         logger.warning(f"Alembic-Migration übersprungen: {e}")
+        import traceback
+
+        logger.warning(f"Alembic-Fehler Details: {traceback.format_exc()}")
 
 
 # Request Logging Middleware
