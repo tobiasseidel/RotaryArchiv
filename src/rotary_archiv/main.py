@@ -84,18 +84,18 @@ if static_dir.exists():
 
 
 # Routen
-app.include_router(documents.router, prefix="/api", tags=["documents"])
-app.include_router(pages.router, prefix="/api", tags=["pages"])
-app.include_router(ocr.router, prefix="/api", tags=["ocr"])
-app.include_router(review.router, prefix="/api", tags=["review"])
-app.include_router(quality.router, prefix="/api", tags=["quality"])
-app.include_router(erschliessung.router, prefix="/api/pages", tags=["erschliessung"])
+app.include_router(documents.router, tags=["documents"])
+app.include_router(pages.router, tags=["pages"])
+app.include_router(ocr.router, tags=["ocr"])
+app.include_router(review.router, tags=["review"])
+app.include_router(quality.router, tags=["quality"])
+app.include_router(erschliessung.router, prefix="/pages", tags=["erschliessung"])
 app.include_router(
     erschliessung_overview.router,
-    prefix="/api/erschliessung-overview",
+    prefix="/erschliessung-overview",
     tags=["erschliessung-overview"],
 )
-app.include_router(settings_api.router, prefix="/api/settings", tags=["settings"])
+app.include_router(settings_api.router, prefix="/settings", tags=["settings"])
 
 
 @app.get("/")
