@@ -5,6 +5,17 @@ RUN echo 'server { \
     server_name localhost; \
     root /usr/share/nginx/html; \
     index index.html; \
+    location /scans/ { \
+        alias /var/www/rotary-scans/; \
+        expires 30d; \
+        add_header Cache-Control "public, immutable"; \
+        access_log off; \
+        autoindex off; \
+        location ~* \.(png|jpg|jpeg)$ { \
+            try_files $uri =404; \
+        } \
+        return 404; \
+    } \
     location / { \
         try_files $$uri $$uri/ /index.html; \
     } \

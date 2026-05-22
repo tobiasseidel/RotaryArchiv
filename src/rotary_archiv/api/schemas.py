@@ -276,6 +276,14 @@ class DocumentUnitCreate(BaseModel):
         default=False,
         description="Gehört mit nächster Seite zusammen",
     )
+    is_public: bool = Field(
+        default=False, description="Für öffentliches Archiv freigegeben"
+    )
+    document_type: DocumentType | None = Field(
+        default=None, description="Art des logischen Dokuments"
+    )
+    title: str | None = Field(default=None, description="Titel")
+    date: datetime | None = Field(default=None, description="Datum")
 
 
 class DocumentUnitUpdate(BaseModel):
@@ -283,6 +291,12 @@ class DocumentUnitUpdate(BaseModel):
 
     page_ids: list[int] | None = Field(None, min_length=1)
     belongs_with_next: bool | None = None
+    is_public: bool | None = Field(
+        default=None, description="Für öffentliches Archiv freigegeben"
+    )
+    document_type: DocumentType | None = None
+    title: str | None = None
+    date: datetime | None = None
     summary: str | None = None
     persons: list[dict[str, Any]] | None = None
     topic: str | None = None
@@ -299,6 +313,12 @@ class DocumentUnitResponse(BaseModel):
     document_id: int
     page_ids: list[int]
     belongs_with_next: bool
+    is_public: bool = Field(
+        default=False, description="Für öffentliches Archiv freigegeben"
+    )
+    document_type: DocumentType | None = None
+    title: str | None = None
+    date: datetime | None = None
     summary: str | None
     persons: list[dict[str, Any]]  # [{"name": "...", "role": "..."}]
     topic: str | None
@@ -337,6 +357,12 @@ class ComposedUnitOverviewItem(BaseModel):
     )
     full_text: str = Field(description="Zusammengesetzter BBox-Text in Lesereihenfolge")
     belongs_with_next: bool
+    is_public: bool = Field(
+        default=False, description="Für öffentliches Archiv freigegeben"
+    )
+    document_type: DocumentType | None = None
+    title: str | None = None
+    date: datetime | None = None
     summary: str | None
     persons: list[dict[str, Any]]
     topic: str | None
@@ -349,6 +375,14 @@ class ComposedUnitOverviewItem(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Public Schemas
+class DocumentPagePublic(BaseModel):
+    """Oeffentliches Schema fuer eine Seite mit image_url."""
+
+    page_number: int
+    image_url: str | None  # None wenn noch nicht extrahiert
 
 
 # Page Inspect Schema

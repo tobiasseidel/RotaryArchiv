@@ -8,6 +8,7 @@ services:
       - "${BACKEND_PORT:-8085}:8000"
     volumes:
       - ${DATA_DIR:-/Volume1/RotaryArchiv}/data:/app/data
+      - ${DATA_DIR:-/Volume1/RotaryArchiv}/scans:/app/scans
     env_file:
       - .env.docker
     environment:
@@ -49,6 +50,8 @@ services:
     container_name: rotary_frontend
     ports:
       - "${FRONTEND_PORT:-8080}:80"
+    volumes:
+      - ${DATA_DIR:-/Volume1/RotaryArchiv}/scans:/var/www/rotary-scans:ro
     depends_on:
       - backend
     restart: unless-stopped

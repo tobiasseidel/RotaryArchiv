@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     image_cache_path: str = "./data/image_cache"
     image_cache_sizes: str = "64,128,256,512"
     image_cache_max_source_bytes: int = 20 * 1024 * 1024
+    scans_path: str = (
+        "/app/scans"  # Pfad zu extrahierten Seiten-Bildern (Docker-Volume)
+    )
 
     # OCR
     tesseract_cmd: str = "tesseract"
