@@ -12,10 +12,10 @@ const epochStore = useEpochStore()
 
         <nav class="nav-desktop" aria-label="Hauptnavigation">
           <RouterLink to="/" class="nav-link">Startseite</RouterLink>
-          <a href="#" class="nav-link">Epochen</a>
-          <a href="#" class="nav-link">Karte</a>
-          <a href="#" class="nav-link">Netzwerk</a>
-          <a href="#" class="nav-link">Über das Projekt</a>
+          <span class="nav-link" aria-disabled="true">Epochen</span>
+          <span class="nav-link" aria-disabled="true">Karte</span>
+          <span class="nav-link" aria-disabled="true">Netzwerk</span>
+          <span class="nav-link" aria-disabled="true">Über das Projekt</span>
         </nav>
 
         <div class="header-actions">
@@ -35,11 +35,11 @@ const epochStore = useEpochStore()
             </summary>
             <nav class="nav-mobile" aria-label="Hauptnavigation">
 <RouterLink to="/" class="nav-link" aria-current="page">Startseite</RouterLink>
-              <a href="#" class="nav-link">Epochen</a>
-              <a href="#" class="nav-link">Karte</a>
-              <a href="#" class="nav-link">Netzwerk</a>
-              <a href="#" class="nav-link">Über das Projekt</a>
-              <a href="#" class="nav-link">Login</a>
+              <span class="nav-link" aria-disabled="true">Epochen</span>
+              <span class="nav-link" aria-disabled="true">Karte</span>
+              <span class="nav-link" aria-disabled="true">Netzwerk</span>
+              <span class="nav-link" aria-disabled="true">Über das Projekt</span>
+              <span class="nav-link" aria-disabled="true">Login</span>
             </nav>
           </details>
         </div>
@@ -110,6 +110,11 @@ const epochStore = useEpochStore()
 .nav-link[aria-current="page"] {
   color: var(--color-epoch-primary);
   text-decoration: none;
+}
+
+.nav-link[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .header-actions {

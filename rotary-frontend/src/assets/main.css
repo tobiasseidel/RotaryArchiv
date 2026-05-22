@@ -53,12 +53,6 @@
   --epoch-border-style:  dashed;
 }
 
-.epoch-90er {
-  --color-epoch-primary: #1A3A5C;
-  --color-epoch-accent: #7A6E8A;
-  --color-epoch-badge: #E0E4EC;
-}
-
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;

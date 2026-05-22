@@ -13,7 +13,7 @@
     "membership": {
       "joined": "1927-01-01",
       "joined_document_id": null,
-      "joined_quote": "Victor Klemperer von Klemenau wurde als Mitglied aufgenommen.",
+      "joined_quote": "Victor Klemperer von Klemenau wurde als Gründungsmitglied aufgenommen.",
       "left": null,
       "left_document_id": null,
       "left_quote": null,
@@ -36,7 +36,7 @@
     "epoch": "30er",
     "wikidata_id": "Q213569",
     "is_public": true,
-    "notes": "Generalmusikdirektor der Semperoper",
+    "notes": "Generalmusikdirektor der Semperoper Dresden",
     "portrait_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Fritz_Busch_(SdM).jpg?width=200",
     "membership": {
       "joined": "1928-01-01",
@@ -65,7 +65,7 @@
     "wikidata_id": "Q1596590",
     "is_public": true,
     "notes": "Kaufmann und Industrieller",
-    "portrait_url": null,
+    "portrait_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Heinrich_Gustav_Arnhold.jpg?width=200",
     "membership": {
       "joined": "1929-01-01",
       "joined_document_id": null,
@@ -94,10 +94,6 @@
     "is_public": false,
     "notes": null,
     "portrait_url": null,
-    "membership": null,
-    "timeline": [],
-    "attendance": null,
-    "network": { "nodes": [], "edges": [] },
     "stub": true,
     "consent_progress": {
       "total_persons": 8,

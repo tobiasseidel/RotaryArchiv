@@ -9,8 +9,8 @@
     "pages": [
       {
         "page_number": 1,
-        "image_url": "/scans/1929-05-15-p1.jpg",
-        "ocr_text": "Anwesend: Max Müller, Ernst Weber, Karl Bauer, Heinrich Sch..."
+        "image_url": "/scans/protokoll-1929-05-15-p1.svg",
+        "ocr_text": "Anwesend: Victor Klemperer von Klemenau (Vorsitz), Fritz Busch, Heinrich Arnhold, Erich Haenel, Julius Ferdinand Wollf. Der Vorsitzende eröffnet die Sitzung um 19 Uhr. Herr Klemperer berichtet über die Gründungsversammlung des Rotary Clubs Dresden."
       }
     ],
     "bbox_data": [
@@ -21,7 +21,7 @@
         "y1": 340,
         "x2": 480,
         "y2": 380,
-        "text": "Herr Müller wird einstimmig als Mitglied aufgenommen.",
+        "text": "Herr Klemperer wird einstimmig als Präsident bestätigt.",
         "confidence": 0.94,
         "entity_uri": "rotary:Mention_101_001",
         "role": "mention"
@@ -39,8 +39,8 @@
         "role": "unreadable"
       }
     ],
-    "transcription": "Herr Müller wird einstimmig als Mitglied aufgenommen. Der Präsident begrüßte ihn herzlich.",
-    "context_snippet": "Herr Müller wird einstimmig als Mitglied aufgenommen."
+    "transcription": "Herr Klemperer wird einstimmig als Präsident bestätigt. Der Vorsitzende begrüßte ihn herzlich. Anschließend wurde die Mitgliederliste verlesen.",
+    "context_snippet": "Herr Klemperer wird einstimmig als Präsident bestätigt."
   },
   {
     "id": 107,
@@ -52,8 +52,8 @@
     "pages": [
       {
         "page_number": 1,
-        "image_url": "/scans/1934-03-09-p1.jpg",
-        "ocr_text": "Protokoll der 47. Sitzung des Rotary Club Dresden..."
+        "image_url": "/scans/protokoll-1934-03-09-p1.svg",
+        "ocr_text": "Protokoll der 47. Sitzung des Rotary Club Dresden. Vorsitz: Victor Klemperer von Klemenau. Anwesend: Fritz Busch, Heinrich Arnhold, Erich Haenel, Walter Bachmann, Hugo Grille."
       }
     ],
     "bbox_data": [
@@ -64,13 +64,13 @@
         "y1": 200,
         "x2": 520,
         "y2": 260,
-        "text": "Herr Müller tritt aus persönlichen Gründen aus.",
+        "text": "Herr Arnhold tritt aus gesundheitlichen Gründen zurück.",
         "confidence": 0.88,
         "entity_uri": "rotary:Mention_107_001",
         "role": "mention"
       }
     ],
-    "transcription": "Herr Müller tritt aus persönlichen Gründen aus.",
-    "context_snippet": "Herr Müller tritt aus persönlichen Gründen aus."
+    "transcription": "Herr Arnhold tritt aus gesundheitlichen Gründen zurück. Der Club bedauert diesen Schritt und dankt ihm für seine Verdienste.",
+    "context_snippet": "Herr Arnhold tritt aus gesundheitlichen Gründen zurück."
   }
 ]

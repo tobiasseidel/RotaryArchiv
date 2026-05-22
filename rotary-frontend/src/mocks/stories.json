@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "id": 1,
+    "personSlug": "victor-klemperer-von-klemenau",
+    "title": "Erinnerung meines Großvaters",
+    "body": "Mein Großvater war lange Jahre als Jurist in Dresden tätig und begegnete Victor Klemperer mehrfach im Rahmen gesellschaftlicher Veranstaltungen. Er beschrieb ihn als einen äußerst gebildeten und zugänglichen Menschen, der stets ein offenes Ohr für die Belange junger Juristen hatte. Besonders in Erinnerung blieb ihm eine Begegnung im Jahr 1932, bei der Klemperer eindringlich vor den politischen Entwicklungen warnte.",
+    "authorName": "anonym",
+    "status": "approved",
+    "createdAt": "2026-03-15"
+  },
+  {
+    "id": 2,
+    "personSlug": "heinrich-arnhold",
+    "title": "Der Kaufmann und die Künste",
+    "body": "Heinrich Arnhold war nicht nur als Industrieller erfolgreich, sondern engagierte sich auch als Mäzen in der Dresdner Kunstszene. Die Sammlung Arnhold umfasste bedeutende Werke des Impressionismus. Mein Urgroßvater arbeitete in seiner Firma und berichtete, dass Arnhold großen Wert auf soziale Einrichtungen für seine Arbeiter legte – für die damalige Zeit bemerkenswert.",
+    "authorName": "anonym",
+    "status": "pending",
+    "createdAt": "2026-04-02"
+  }
+]

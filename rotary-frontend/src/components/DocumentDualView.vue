@@ -7,6 +7,10 @@ const props = defineProps({
   document: {
     type: Object,
     required: true
+  },
+  submittedBboxIds: {
+    type: Array,
+    default: () => []
   }
 })
 
@@ -41,7 +45,7 @@ function parseTranscription(ocrText, bboxData) {
 
   if (insertPosition > 0) {
     segments.push({ type: 'text', content: ocrText.substring(0, insertPosition), bboxId: null })
-    segments.push({ type: 'gap', content: '░░░░░', bboxId: firstGap.id })
+    segments.push({ type: 'gap', content: '░░░░░', bboxId: firstGap.id, bbox: firstGap })
     segments.push({ type: 'text', content: ocrText.substring(insertPosition), bboxId: null })
   } else {
     segments.push({ type: 'text', content: ocrText, bboxId: null })
@@ -157,7 +161,8 @@ function toggleZoom() {
                 <GapInline
                   v-if="segment.type === 'gap'"
                   :bbox-id="segment.bboxId"
-                  @gap-clicked="emit('gap-clicked', $event)"
+                  :is-submitted="submittedBboxIds.includes(segment.bboxId)"
+                  @gap-clicked="emit('gap-clicked', segment.bbox)"
                 />
                 <span v-else>{{ segment.content }}</span>
               </template>
@@ -198,11 +203,12 @@ function toggleZoom() {
           <p class="transcription-text">
             <template v-for="(segment, index) in transcriptionSegments" :key="index">
               <GapInline
-                v-if="segment.type === 'gap'"
-                :bbox-id="segment.bboxId"
-                @gap-clicked="emit('gap-clicked', $event)"
-              />
-              <span v-else>{{ segment.content }}</span>
+                  v-if="segment.type === 'gap'"
+                  :bbox-id="segment.bboxId"
+                  :is-submitted="submittedBboxIds.includes(segment.bboxId)"
+                  @gap-clicked="emit('gap-clicked', segment.bbox)"
+                />
+                <span v-else>{{ segment.content }}</span>
             </template>
           </p>
         </div>

@@ -4,6 +4,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useApi } from '@/composables/useApi'
 import { useEpochStore } from '@/stores/epoch'
 import DocumentDualView from '@/components/DocumentDualView.vue'
+import ContributionModalMini from '@/components/ContributionModalMini.vue'
 import EpochBadge from '@/components/EpochBadge.vue'
 
 const route = useRoute()
@@ -30,8 +31,34 @@ onMounted(async () => {
   }
 })
 
-function handleGapClicked(bboxId) {
-  console.log('Gap clicked:', bboxId)
+const selectedBbox = ref(null)
+const submittedBboxIds = ref([])
+const toastVisible = ref(false)
+const toastMessage = ref('')
+let toastTimer = null
+
+function handleGapClicked(bbox) {
+  selectedBbox.value = bbox
+}
+
+function handleModalSubmit(bboxId, text) {
+  console.log('Gap submitted:', { bboxId, text })
+  submittedBboxIds.value = [...submittedBboxIds.value, bboxId]
+  selectedBbox.value = null
+  showToast('Danke für Ihren Beitrag!')
+}
+
+function handleModalClose() {
+  selectedBbox.value = null
+}
+
+function showToast(message) {
+  toastMessage.value = message
+  toastVisible.value = true
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    toastVisible.value = false
+  }, 3000)
 }
 </script>
 
@@ -71,8 +98,22 @@ function handleGapClicked(bboxId) {
     <DocumentDualView
       v-else
       :document="document"
+      :submitted-bbox-ids="submittedBboxIds"
       @gap-clicked="handleGapClicked"
     />
+
+    <ContributionModalMini
+      v-if="selectedBbox"
+      :bbox="selectedBbox"
+      @submit="handleModalSubmit"
+      @close="handleModalClose"
+    />
+
+    <Teleport to="body">
+      <div v-if="toastVisible" class="toast" role="status" aria-live="polite">
+        {{ toastMessage }}
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -187,5 +228,34 @@ function handleGapClicked(bboxId) {
 
 .login-cta:hover {
   background: var(--color-epoch-accent);
+}
+
+.toast {
+  position: fixed;
+  bottom: var(--space-xl);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-epoch-primary);
+  color: var(--color-surface);
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  padding: var(--space-m) var(--space-l);
+  border-radius: 8px;
+  z-index: 300;
+  box-shadow: 0 4px 24px rgba(28, 25, 23, 0.2);
+  animation: toast-in 300ms ease-out;
+  pointer-events: none;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 </style>
