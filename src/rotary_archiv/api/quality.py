@@ -427,9 +427,17 @@ def _iter_matching_bboxes(
             black_pc_val = bbox_black_pc.get(idx, {}).get("black_pixels_per_char")
             black_px = bbox_black_pc.get(idx, {}).get("black_pixels")
             # Filter chars_per_1k_px nur wenn Wert vorhanden und Filter gesetzt
-            if min_chars_per_1k_px is not None and chars_per_1k is not None and chars_per_1k < min_chars_per_1k_px:
+            if (
+                min_chars_per_1k_px is not None
+                and chars_per_1k is not None
+                and chars_per_1k < min_chars_per_1k_px
+            ):
                 continue
-            if max_chars_per_1k_px is not None and chars_per_1k is not None and chars_per_1k > max_chars_per_1k_px:
+            if (
+                max_chars_per_1k_px is not None
+                and chars_per_1k is not None
+                and chars_per_1k > max_chars_per_1k_px
+            ):
                 continue
             # Wenn Filter gesetzt aber Wert fehlt: überspringen
             if min_chars_per_1k_px is not None and chars_per_1k is None:
@@ -543,7 +551,9 @@ def _iter_matching_bboxes(
                 "text_preview": bd.get("text", "")[:50] if bd.get("text") else "",
                 "text": full_text,
                 "char_count": char_count,
-                "chars_per_1k_px": round(chars_per_1k, 2) if chars_per_1k is not None else None,
+                "chars_per_1k_px": round(chars_per_1k, 2)
+                if chars_per_1k is not None
+                else None,
                 "black_pixels": black_px,
                 "black_pixels_per_char": round(black_pc_val, 2)
                 if black_pc_val is not None
@@ -621,16 +631,29 @@ def get_bbox_list(
     SQL-basierte Filterung - SEHR SCHNELL!
     """
     try:
-        # Basis-Query: BBox joined mit OCRResult, DocumentPage, Document
+        # Subquery: berechne 0-basierten bbox_index als ROW_NUMBER pro ocr_result_id
+        ranked = db.query(
+            BBox.id.label("rid"),
+            (
+                sqlfunc.row_number().over(
+                    partition_by=BBox.ocr_result_id, order_by=BBox.id
+                )
+                - 1
+            ).label("bbox_index"),
+        ).subquery("ranked")
+
+        # Basis-Query: BBox joined mit ranked, OCRResult, DocumentPage, Document
         q = (
             db.query(
                 BBox,
+                ranked.c.bbox_index,
                 OCRResult.document_page_id,
                 DocumentPage.page_number,
                 DocumentPage.document_id,
                 Document.title,
                 Document.filename,
             )
+            .join(ranked, ranked.c.rid == BBox.id)
             .join(OCRResult, OCRResult.id == BBox.ocr_result_id)
             .join(DocumentPage, DocumentPage.id == OCRResult.document_page_id)
             .join(Document, Document.id == DocumentPage.document_id)
@@ -644,15 +667,37 @@ def get_bbox_list(
         if page_number_max is not None:
             q = q.filter(DocumentPage.page_number <= page_number_max)
         if review_status:
-            q = q.filter(BBox.review_status.in_(review_status))
+            q = q.filter(
+                sqlfunc.coalesce(BBox.review_status, "pending").in_(review_status)
+            )
         if box_type:
-            q = q.filter(BBox.box_type.in_(box_type))
+            # box_type Mapping: Frontend schickt "normal", DB hat "ocr"
+            db_box_types = []
+            for bt in box_type:
+                if bt == "normal":
+                    db_box_types.append("ocr")
+                elif bt == "note":
+                    db_box_types.append("note")
+                elif bt == "persistent_region":
+                    # persistent_region wird über persistent_multibox_region Flag ermittelt,
+                    # das nicht in der bboxes Tabelle gespeichert ist
+                    continue
+                else:
+                    db_box_types.append(bt)
+            if db_box_types:
+                q = q.filter(BBox.box_type.in_(db_box_types))
         if text_search and text_search.strip():
             q = q.filter(BBox.text.ilike(f"%{text_search.strip()}%"))
         if min_char_count is not None:
-            q = q.filter(BBox.char_count >= min_char_count)
+            q = q.filter(
+                sqlfunc.coalesce(BBox.char_count, sqlfunc.length(BBox.text), 0)
+                >= min_char_count
+            )
         if max_char_count is not None:
-            q = q.filter(BBox.char_count <= max_char_count)
+            q = q.filter(
+                sqlfunc.coalesce(BBox.char_count, sqlfunc.length(BBox.text), 0)
+                <= max_char_count
+            )
         if min_chars_per_1k_px is not None:
             q = q.filter(BBox.chars_per_1k_px >= min_chars_per_1k_px)
         if max_chars_per_1k_px is not None:
@@ -687,27 +732,41 @@ def get_bbox_list(
 
         # Ergebnisse formatieren
         items = []
-        for bbox, page_id, page_number, doc_id, doc_title, doc_filename in results:
+        for (
+            bbox,
+            bbox_index,
+            page_id,
+            page_number,
+            doc_id,
+            doc_title,
+            doc_filename,
+        ) in results:
             document_title = doc_title or doc_filename or f"Dokument #{doc_id}"
-            items.append({
-                "page_id": page_id,
-                "document_id": doc_id,
-                "document_title": document_title,
-                "page_number": page_number,
-                "bbox_index": 0,
-                "id": f"{page_id}_{bbox.id}",
-                "text_preview": (bbox.text or "")[:50],
-                "text": bbox.text or "",
-                "char_count": bbox.char_count or 0,
-                "chars_per_1k_px": bbox.chars_per_1k_px,
-                "black_pixels": bbox.black_pixels,
-                "black_pixels_per_char": bbox.black_pixels_per_char,
-                "review_status": bbox.review_status or "pending",
-                "box_type": bbox.box_type,
-                "left_pct": bbox.left_pct,
-                "right_pct": bbox.right_pct,
-                "width_pct": bbox.width_pct,
-            })
+            # char_count aus Text-Länge berechnen falls nicht gespeichert
+            effective_char_count = bbox.char_count
+            if effective_char_count is None:
+                effective_char_count = len(bbox.text) if bbox.text else 0
+            items.append(
+                {
+                    "page_id": page_id,
+                    "document_id": doc_id,
+                    "document_title": document_title,
+                    "page_number": page_number,
+                    "bbox_index": bbox_index,
+                    "id": f"{page_id}_{bbox.id}",
+                    "text_preview": (bbox.text or "")[:50],
+                    "text": bbox.text or "",
+                    "char_count": effective_char_count,
+                    "chars_per_1k_px": bbox.chars_per_1k_px,
+                    "black_pixels": bbox.black_pixels,
+                    "black_pixels_per_char": bbox.black_pixels_per_char,
+                    "review_status": bbox.review_status or "pending",
+                    "box_type": bbox.box_type,
+                    "left_pct": bbox.left_pct,
+                    "right_pct": bbox.right_pct,
+                    "width_pct": bbox.width_pct,
+                }
+            )
 
         return {"total": total, "items": items}
     except Exception as e:
