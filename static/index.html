@@ -1109,8 +1109,37 @@
 
     <!-- Modal: Einheit manuell anlegen -->
     <div id="createUnitModal" style="display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 10000; overflow: auto;" onclick="if (event.target === this) closeCreateUnitModal();">
-        <div style="max-width: 500px; margin: 40px auto; background: white; border-radius: 8px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);" onclick="event.stopPropagation();">
+        <div style="max-width: 520px; margin: 40px auto; background: white; border-radius: 8px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);" onclick="event.stopPropagation();">
             <h2 style="margin: 0 0 16px 0;">Einheit manuell anlegen</h2>
+            <!-- Metadaten -->
+            <div style="margin-bottom: 16px; padding: 12px; background: #f9f9f9; border-radius: 6px; border: 1px solid #e0e0e0;">
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 13px;">Titel</label>
+                    <input type="text" id="createUnitTitle" placeholder="Titel des logischen Dokuments" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 13px;">Datum</label>
+                    <input type="date" id="createUnitDate" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 13px;">Art</label>
+                    <select id="createUnitDocumentType" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                        <option value="">-- Keine Angabe --</option>
+                        <option value="meeting_protocol">Sitzungsprotokoll</option>
+                        <option value="invitation">Einladung</option>
+                        <option value="photo">Foto</option>
+                        <option value="member_list">Mitgliederliste</option>
+                        <option value="financial_report">Finanzbericht</option>
+                        <option value="other">Sonstiges</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="createUnitIsPublic">
+                        <span style="font-weight: 600; font-size: 13px;">Veröffentlicht (öffentlich sichtbar)</span>
+                    </label>
+                </div>
+            </div>
             <p style="color: #666; margin-bottom: 12px;">Wählen Sie die Seiten für diese Einheit (in Lesereihenfolge).</p>
             <div id="createUnitPageCheckboxes" style="max-height: 300px; overflow-y: auto; margin-bottom: 12px;"></div>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
@@ -1126,9 +1155,38 @@
 
     <!-- Modal: Einheit bearbeiten -->
     <div id="editUnitModal" style="display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 10000; overflow: auto;" onclick="if (event.target === this) closeEditUnitModal();">
-        <div style="max-width: 500px; margin: 40px auto; background: white; border-radius: 8px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);" onclick="event.stopPropagation();">
+        <div style="max-width: 520px; margin: 40px auto; background: white; border-radius: 8px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);" onclick="event.stopPropagation();">
             <h2 style="margin: 0 0 16px 0;">Einheit bearbeiten</h2>
             <input type="hidden" id="editUnitId">
+            <!-- Metadaten -->
+            <div style="margin-bottom: 16px; padding: 12px; background: #f9f9f9; border-radius: 6px; border: 1px solid #e0e0e0;">
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 13px;">Titel</label>
+                    <input type="text" id="editUnitTitle" placeholder="Titel des logischen Dokuments" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 13px;">Datum</label>
+                    <input type="date" id="editUnitDate" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                </div>
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; font-weight: 600; margin-bottom: 4px; font-size: 13px;">Art</label>
+                    <select id="editUnitDocumentType" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                        <option value="">-- Keine Angabe --</option>
+                        <option value="meeting_protocol">Sitzungsprotokoll</option>
+                        <option value="invitation">Einladung</option>
+                        <option value="photo">Foto</option>
+                        <option value="member_list">Mitgliederliste</option>
+                        <option value="financial_report">Finanzbericht</option>
+                        <option value="other">Sonstiges</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="editUnitIsPublic">
+                        <span style="font-weight: 600; font-size: 13px;">Veröffentlicht (öffentlich sichtbar)</span>
+                    </label>
+                </div>
+            </div>
             <p style="color: #666; margin-bottom: 12px;">Seiten für diese Einheit (in Lesereihenfolge):</p>
             <div id="editUnitPageCheckboxes" style="max-height: 300px; overflow-y: auto; margin-bottom: 12px;"></div>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
@@ -1589,6 +1647,7 @@
             <button type="button" class="btn btn-secondary" onclick="bboxListSelectCurrentPage()">Alle (diese Seite) auswählen</button>
             <button type="button" class="btn btn-secondary" onclick="bboxListSelectAllMatching()">Alle (Filter) auswählen</button>
             <button type="button" class="btn btn-primary" id="bboxListPreviewBtn" onclick="bboxListTogglePreviews()">Vorschau</button>
+            <button type="button" class="btn btn-secondary" onclick="bboxListTriggerBackfill()">Metriken-Backfill</button>
             <span id="bboxListSelectionCount" style="font-weight: 600;"></span>
         </div>
 
@@ -1615,6 +1674,7 @@
                 <button type="button" class="btn btn-secondary" id="bboxListFillTextBtn" onclick="bboxListOpenFillTextDialog()" style="padding: 4px 12px;">Text füllen</button>
                 <button type="button" class="btn btn-secondary" id="bboxListEditTextsBtn" onclick="bboxListOpenEditTextsDialog()" style="padding: 4px 12px;">Texte bearbeiten</button>
                 <button type="button" class="btn btn-secondary" onclick="bboxListBatchDiscardAndRecalc()">OCR verwerfen und neu berechnen</button>
+                <button type="button" class="btn btn-warning" id="bboxListRecalcQualityBtn" onclick="bboxListBatchRecalcQuality()">Qualität neu berechnen</button>
                 <button type="button" class="btn btn-danger" onclick="bboxListBatchDelete(event)">Ausgewählte löschen</button>
             </div>
         </div>
@@ -3795,14 +3855,21 @@
                 let html = '';
                 units.forEach(function(u, idx) {
                     const pageRange = u.page_numbers && u.page_numbers.length ? 'Seiten ' + u.page_numbers.join(', ') : 'Seiten ' + (u.page_ids || []).join(', ');
+                    const publicBadge = u.is_public ? '<span class="status-badge status-completed">Öffentlich</span>' : '<span class="status-badge" style="background:#e0e0e0;color:#666;">Intern</span>';
+                    const toggleBtn = u.is_public
+                        ? '<button type="button" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="toggleUnitPublic(' + u.id + ', false)">Zurückziehen</button>'
+                        : '<button type="button" class="btn btn-primary" style="padding: 4px 10px; font-size: 12px;" onclick="toggleUnitPublic(' + u.id + ', true)">Veröffentlichen</button>';
                     html += '<div style="margin-bottom: 24px; padding: 16px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa;">';
                     html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">';
-                    html += '<div style="font-weight: 600;">Einheit ' + (idx + 1) + ' (' + pageRange + ')</div>';
-                    html += '<span><button type="button" class="btn btn-secondary" style="margin-right: 6px; padding: 4px 10px; font-size: 12px;" onclick="openEditUnitModal(' + u.id + ', ' + JSON.stringify(u.page_ids || []) + ', ' + (u.belongs_with_next ? 'true' : 'false') + ')">Bearbeiten</button>';
-                    html += '<button type="button" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="deleteDocumentUnit(' + u.id + ')">Löschen</button></span></div>';
-                    if (u.event_date || u.topic || u.place) {
+                    html += '<div style="font-weight: 600;">Einheit ' + (idx + 1) + ' (' + pageRange + ') ' + publicBadge + '</div>';
+                    html += '<span>' + toggleBtn + ' <button type="button" class="btn btn-secondary" style="margin-left: 6px; padding: 4px 10px; font-size: 12px;" onclick="openEditUnitModal(' + u.id + ', ' + JSON.stringify(u.page_ids || []) + ', ' + (u.belongs_with_next ? 'true' : 'false') + ')">Bearbeiten</button>';
+                    html += '<button type="button" class="btn btn-secondary" style="margin-left: 6px; padding: 4px 10px; font-size: 12px;" onclick="deleteDocumentUnit(' + u.id + ')">Löschen</button></span></div>';
+                    if (u.title) html += '<div style="font-size: 13px; font-weight: 500; margin-bottom: 4px;">' + escapeHtml(u.title) + '</div>';
+                    if (u.event_date || u.place || u.topic || u.date || u.document_type) {
                         html += '<div style="font-size: 12px; color: #666; margin-bottom: 8px;">';
-                        if (u.event_date) html += 'Datum: ' + escapeHtml(u.event_date) + ' &middot; ';
+                        if (u.document_type) html += 'Art: ' + escapeHtml(u.document_type) + ' &middot; ';
+                        if (u.date) html += 'Datum: ' + escapeHtml(u.date.slice(0, 10)) + ' &middot; ';
+                        if (u.event_date) html += 'Event: ' + escapeHtml(u.event_date) + ' &middot; ';
                         if (u.place) html += 'Ort: ' + escapeHtml(u.place) + ' &middot; ';
                         if (u.topic) html += 'Thema: ' + escapeHtml(u.topic);
                         html += '</div>';
@@ -4013,6 +4080,10 @@
                     container.appendChild(label);
                 });
                 document.getElementById('createUnitBelongsWithNext').checked = false;
+                document.getElementById('createUnitTitle').value = '';
+                document.getElementById('createUnitDate').value = '';
+                document.getElementById('createUnitDocumentType').value = '';
+                document.getElementById('createUnitIsPublic').checked = false;
                 document.getElementById('createUnitModal').style.display = 'block';
             } catch (e) {
                 if (document.getElementById('composedOverviewMessages')) {
@@ -4038,11 +4109,23 @@
                 return;
             }
             const belongsWithNext = document.getElementById('createUnitBelongsWithNext').checked;
+            const title = document.getElementById('createUnitTitle').value.trim() || null;
+            const dateVal = document.getElementById('createUnitDate').value;
+            const date = dateVal ? dateVal + 'T00:00:00' : null;
+            const documentType = document.getElementById('createUnitDocumentType').value || null;
+            const isPublic = document.getElementById('createUnitIsPublic').checked;
             try {
                 const r = await fetch(API_BASE + '/api/documents/' + docId + '/units', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ page_ids: checked, belongs_with_next: belongsWithNext })
+                    body: JSON.stringify({
+                        page_ids: checked,
+                        belongs_with_next: belongsWithNext,
+                        title: title,
+                        date: date,
+                        document_type: documentType,
+                        is_public: isPublic
+                    })
                 });
                 if (!r.ok) throw new Error((await r.json().catch(function() { return {}; })).detail || r.statusText);
                 closeCreateUnitModal();
@@ -4057,6 +4140,26 @@
             document.getElementById('editUnitBelongsWithNext').checked = !!belongsWithNext;
             const docId = getComposedOverviewDocId();
             if (!docId) return;
+            // Metadaten zurücksetzen
+            document.getElementById('editUnitTitle').value = '';
+            document.getElementById('editUnitDate').value = '';
+            document.getElementById('editUnitDocumentType').value = '';
+            document.getElementById('editUnitIsPublic').checked = false;
+            // Unit-Daten laden
+            fetch(API_BASE + '/api/documents/' + docId + '/units/' + unitId).then(function(r) {
+                if (r.ok) return r.json();
+                return null;
+            }).then(function(unit) {
+                if (unit) {
+                    document.getElementById('editUnitTitle').value = unit.title || '';
+                    if (unit.date) {
+                        try { document.getElementById('editUnitDate').value = unit.date.slice(0, 10); } catch(e) {}
+                    }
+                    document.getElementById('editUnitDocumentType').value = unit.document_type || '';
+                    document.getElementById('editUnitIsPublic').checked = !!unit.is_public;
+                }
+            }).catch(function(e) {});
+            // Seiten laden
             fetch(API_BASE + '/api/pages/document/' + docId).then(function(r) { return r.json(); }).then(function(data) {
                 const pages = data.pages || [];
                 const container = document.getElementById('editUnitPageCheckboxes');
@@ -4100,11 +4203,23 @@
                 return;
             }
             const belongsWithNext = document.getElementById('editUnitBelongsWithNext').checked;
+            const title = document.getElementById('editUnitTitle').value.trim() || null;
+            const dateVal = document.getElementById('editUnitDate').value;
+            const date = dateVal ? dateVal + 'T00:00:00' : null;
+            const documentType = document.getElementById('editUnitDocumentType').value || null;
+            const isPublic = document.getElementById('editUnitIsPublic').checked;
             try {
                 const r = await fetch(API_BASE + '/api/documents/' + docId + '/units/' + unitId, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ page_ids: checked, belongs_with_next: belongsWithNext })
+                    body: JSON.stringify({
+                        page_ids: checked,
+                        belongs_with_next: belongsWithNext,
+                        title: title,
+                        date: date,
+                        document_type: documentType,
+                        is_public: isPublic
+                    })
                 });
                 if (!r.ok) throw new Error((await r.json().catch(function() { return {}; })).detail || r.statusText);
                 closeEditUnitModal();
@@ -4120,6 +4235,27 @@
             try {
                 const r = await fetch(API_BASE + '/api/documents/' + docId + '/units/' + unitId, { method: 'DELETE' });
                 if (!r.ok) throw new Error(r.statusText);
+                loadComposedOverview();
+            } catch (e) {
+                if (document.getElementById('composedOverviewMessages')) {
+                    const m = document.getElementById('composedOverviewMessages');
+                    m.style.display = 'block';
+                    m.className = 'message message-error';
+                    m.textContent = 'Fehler: ' + (e.message || e);
+                }
+            }
+        }
+
+        async function toggleUnitPublic(unitId, makePublic) {
+            const docId = getComposedOverviewDocId();
+            if (!docId) return;
+            try {
+                const r = await fetch(API_BASE + '/api/documents/' + docId + '/units/' + unitId, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ is_public: makePublic })
+                });
+                if (!r.ok) throw new Error((await r.json().catch(function() { return {}; })).detail || r.statusText);
                 loadComposedOverview();
             } catch (e) {
                 if (document.getElementById('composedOverviewMessages')) {
@@ -4787,6 +4923,126 @@
             updateBboxListSelectionCount();
             const countEl = document.getElementById('bboxListSelectionCount');
             if (countEl) countEl.textContent = bboxListCurrentTotal + ' BBoxen ausgewählt (alle der Filter-Kriterien).';
+        }
+
+        async function bboxListTriggerBackfill() {
+            const confirmed = confirm('Metriken-Backfill für alle bestehenden BBoxen starten?\n\n' +
+                'Berechnet char_count, chars_per_1k_px, left_pct, width_pct, right_pct ' +
+                'und übernimmt black_pixels aus vorhandenen quality_metrics.\n\n' +
+                'Läuft im Hintergrund – große Datenmenge kann einige Zeit dauern.');
+            if (!confirmed) return;
+
+            const btn = document.querySelector('button[onclick*="bboxListTriggerBackfill"]');
+            if (btn) btn.disabled = true;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/quality/backfill-metrics`, {
+                    method: 'POST'
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.detail || response.statusText);
+                }
+                alert('Backfill gestartet: ' + (data.message || ''));
+            } catch (err) {
+                alert('Fehler: ' + err.message);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function bboxListBatchRecalcQuality() {
+            const btn = document.getElementById('bboxListRecalcQualityBtn');
+            if (!btn) return;
+
+            // Sammle BBox-IDs
+            let bboxIds = [];
+
+            if (bboxListSelectedAllMatching) {
+                // Alle Filter-Matching: lade alle IDs von der API
+                const filters = bboxListBuildFilterObject();
+                const confirmed = confirm(
+                    `Qualität neu berechnen für alle BBoxen, die den aktuellen Filtern entsprechen?`
+                );
+                if (!confirmed) return;
+
+                btn.disabled = true;
+                bboxListUpdateStatusMessage('Sammle BBox-IDs...', true);
+
+                try {
+                    let offset = 0;
+                    const limit = 500;
+                    let hasMore = true;
+                    while (hasMore) {
+                        const params = bboxListBuildQueryParams(offset, limit);
+                        const url = `${API_BASE}/api/quality/bbox-list?${params.toString()}`;
+                        const response = await fetch(url);
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                        const data = await response.json();
+                        const items = data.items || [];
+                        items.forEach(it => {
+                            if (it.bbox_id != null) bboxIds.push(it.bbox_id);
+                        });
+                        offset += items.length;
+                        hasMore = offset < (data.total || 0) && items.length === limit;
+                        bboxListUpdateStatusMessage(`Sammle BBox-IDs: ${bboxIds.length} / ${data.total}`, true);
+                        if (bboxIds.length > 100000) break;
+                    }
+                } catch (err) {
+                    alert('Fehler beim Sammeln: ' + err.message);
+                    bboxListUpdateStatusMessage('', false);
+                    btn.disabled = false;
+                    return;
+                }
+                bboxListUpdateStatusMessage('', false);
+            } else {
+                // Aktuelle Auswahl
+                if (bboxListSelectedIds.size === 0) {
+                    alert('Bitte wähle zuerst BBoxen aus.');
+                    return;
+                }
+                // Durchsuche currentItems nach passenden IDs
+                for (const selectedId of bboxListSelectedIds) {
+                    const item = bboxListCurrentItems.find(it => it.id === selectedId);
+                    if (item && item.bbox_id != null) {
+                        bboxIds.push(item.bbox_id);
+                    }
+                }
+                if (bboxIds.length === 0) {
+                    alert('Keine gültigen BBox-IDs in der aktuellen Auswahl.');
+                    return;
+                }
+            }
+
+            btn.disabled = true;
+            bboxListUpdateStatusMessage(`Starte Nachberechnung für ${bboxIds.length} BBoxen...`, true);
+
+            try {
+                const response = await fetch(`${API_BASE}/api/quality/bbox-recalculate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bbox_ids: bboxIds })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(data.detail || response.statusText);
+                }
+                alert(
+                    `Nachberechnung gestartet: ${data.message || ''}\n` +
+                    `Job-ID: ${data.job_id}\n` +
+                    `Der Worker berechnet black_pixels im Hintergrund.`
+                );
+                // Auswahl zurücksetzen und Liste neu laden
+                bboxListSelectedIds.clear();
+                bboxListSelectedAllMatching = false;
+                loadBboxList(bboxListCurrentOffset);
+            } catch (err) {
+                alert('Fehler: ' + err.message);
+                console.error('bboxListBatchRecalcQuality error', err);
+            } finally {
+                bboxListUpdateStatusMessage('', false);
+                btn.disabled = false;
+            }
         }
 
         function updateBboxListSelectionCount() {

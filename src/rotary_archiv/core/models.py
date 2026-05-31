@@ -406,6 +406,9 @@ class BBox(Base):
     right_pct = Column(Float, nullable=True)  # Rechte Kante in % der Seitenbreite
     width_pct = Column(Float, nullable=True)  # Breite in % der Seitenbreite
 
+    # Staleness-Flag: True wenn black_pixels/black_pixels_per_char neu berechnet werden müssen
+    metrics_stale = Column(Boolean, nullable=False, default=True, server_default="1")
+
     # Timestamps
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
@@ -505,6 +508,12 @@ class DocumentUnit(Base):
     belongs_with_next = Column(
         Boolean, default=False, nullable=False, server_default="0"
     )
+    # Logische Dokument-Metadaten (für Veröffentlichung)
+    is_public = Column(Boolean, default=False, nullable=False, server_default="0")
+    document_type = Column(SQLEnum(DocumentType), nullable=True)
+    title = Column(String(512), nullable=True)
+    date = Column(DateTime, nullable=True)
+
     summary = Column(Text, nullable=True)
     persons = Column(
         JSON, nullable=True

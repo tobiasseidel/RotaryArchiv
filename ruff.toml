@@ -27,6 +27,7 @@ ignore = [
 # Ignoriere bestimmte Regeln in bestimmten Dateien
 "__init__.py" = ["F401"]  # Unused imports in __init__.py sind OK
 "tests/**/*.py" = ["E501"]  # Tests können längere Zeilen haben
+"scripts/**/*.py" = ["E402", "I001"]  # Scripts mit sys.path.insert
 
 [lint.isort]
 # Import-Sortierung

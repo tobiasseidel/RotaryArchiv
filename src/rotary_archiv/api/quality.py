@@ -6,13 +6,14 @@ import copy
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func as sqlfunc
 from sqlalchemy.orm import Session
 
 from src.rotary_archiv.config import settings
-from src.rotary_archiv.core.database import get_db
+from src.rotary_archiv.core.bbox import update_bbox_with_metrics
+from src.rotary_archiv.core.database import SessionLocal, get_db
 from src.rotary_archiv.core.models import (
     BBox,
     Document,
@@ -41,7 +42,12 @@ class BatchCreateJobsResponse(BaseModel):
     """Response für Batch-Job-Erstellung"""
 
     created: int
-    job_ids: list[int]
+
+
+class BBoxRecalcRequest(BaseModel):
+    """Request für selektive BBox-Nachberechnung"""
+
+    bbox_ids: list[int]
 
 
 class ReRecognizeSingleRequest(BaseModel):
@@ -751,6 +757,7 @@ def get_bbox_list(
                     "document_title": document_title,
                     "page_number": page_number,
                     "bbox_index": bbox_index,
+                    "bbox_id": bbox.id,
                     "id": f"{page_id}_{bbox.id}",
                     "text_preview": (bbox.text or "")[:50],
                     "text": bbox.text or "",
@@ -1036,6 +1043,147 @@ def batch_create_quality_jobs(
     return BatchCreateJobsResponse(created=len(created_jobs), job_ids=created_jobs)
 
 
+@router.post("/bbox-recalculate", response_model=QualityJobCreateResponse)
+def create_bbox_quality_recalc_job(
+    request: BBoxRecalcRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Erstellt einen Job zur Nachberechnung von black_pixels / black_pixels_per_char
+    für ausgewählte BBoxen. Setzt metrics_stale=False nach Abschluss.
+
+    Args:
+        request: Liste von BBox-IDs
+
+    Returns:
+        Job-ID und Bestätigung
+    """
+    if not request.bbox_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mindestens eine BBox-ID erforderlich",
+        )
+
+    # Prüfe ob BBoxen existieren
+    bbox_count = db.query(BBox).filter(BBox.id.in_(request.bbox_ids)).count()
+    if bbox_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Keine gültigen BBox-IDs gefunden",
+        )
+
+    # Verwende die erste BBox für document_id / page_id (Job-Orga)
+    first_bbox = db.query(BBox).filter(BBox.id.in_(request.bbox_ids)).first()
+    ocr_result = (
+        db.query(OCRResult).filter(OCRResult.id == first_bbox.ocr_result_id).first()
+    )
+
+    job = OCRJob(
+        document_id=ocr_result.document_id if ocr_result else 0,
+        document_page_id=(ocr_result.document_page_id if ocr_result else None),
+        job_type="bbox_quality_recalc",
+        status=OCRJobStatus.PENDING,
+        language="deu+eng",
+        use_correction=False,
+        priority=0,
+        job_params={"bbox_ids": request.bbox_ids},
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    return QualityJobCreateResponse(
+        job_id=job.id,
+        message=(f"BBox-Quality-Recalc-Job erstellt für {bbox_count} BBoxen"),
+    )
+
+
+class BackfillResponse(BaseModel):
+    """Response für Backfill-Trigger"""
+
+    message: str
+
+
+def _run_backfill_metrics():
+    """
+    Hintergrund-Task: Berechnet Metriken für alle BBoxen, die noch NULL haben.
+    Läuft in einem separaten DB-Session.
+    """
+    db = SessionLocal()
+    try:
+        ocr_result_ids = [
+            row[0]
+            for row in db.query(OCRResult.id)
+            .filter(OCRResult.bbox_data.isnot(None))
+            .all()
+        ]
+        updated = 0
+        errors = 0
+
+        for ocr_result_id in ocr_result_ids:
+            ocr_result = (
+                db.query(OCRResult).filter(OCRResult.id == ocr_result_id).first()
+            )
+            if not ocr_result:
+                continue
+
+            bbox_rows = (
+                db.query(BBox)
+                .filter(BBox.ocr_result_id == ocr_result_id)
+                .order_by(BBox.id)
+                .all()
+            )
+            if not bbox_rows:
+                continue
+
+            bp_by_index = {}
+            if ocr_result.quality_metrics:
+                bp_data = ocr_result.quality_metrics.get("black_pixels_per_char", {})
+                for i, bp_entry in enumerate(bp_data.get("bboxes", [])):
+                    bp_by_index[bp_entry.get("index", i)] = bp_entry
+
+            for pos, bbox in enumerate(bbox_rows):
+                try:
+                    bbox_item = {
+                        "text": bbox.text,
+                        "bbox_pixel": bbox.bbox_pixel,
+                        "reviewed_text": bbox.text,
+                    }
+                    update_bbox_with_metrics(bbox, bbox_item, ocr_result.image_width)
+                    bp_entry = bp_by_index.get(pos)
+                    if bp_entry:
+                        bbox.black_pixels = bp_entry.get("black_pixels")
+                        bbox.black_pixels_per_char = bp_entry.get(
+                            "black_pixels_per_char"
+                        )
+                    bbox.metrics_stale = False
+                    updated += 1
+                except Exception:
+                    errors += 1
+
+            db.commit()
+
+        logger.info(
+            "Backfill abgeschlossen: %s Boxen aktualisiert, %s Fehler",
+            updated,
+            errors,
+        )
+    except Exception as e:
+        logger.error("Backfill fehlgeschlagen: %s", e, exc_info=True)
+    finally:
+        db.close()
+
+
+@router.post("/backfill-metrics", response_model=BackfillResponse)
+def trigger_backfill_metrics(background_tasks: BackgroundTasks):
+    """
+    Startet einen Hintergrund-Task, der alle Metriken (char_count, chars_per_1k_px,
+    left_pct, black_pixels, etc.) für bestehende BBoxen berechnet und metrics_stale=False setzt.
+    """
+    background_tasks.add_task(_run_backfill_metrics)
+    return BackfillResponse(message="Backfill im Hintergrund gestartet")
+
+
 def _bbox_inside_region(child_pixel: list, region_pixel: list) -> bool:
     """Prüft ob child_pixel [x1,y1,x2,y2] vollständig innerhalb region_pixel liegt."""
     if (
@@ -1263,12 +1411,12 @@ def get_persistent_regions(
             ]
 
         key_map = {
-            "page_id": lambda i: (i.get("page_id") or 0),
-            "document_id": lambda i: (i.get("document_id") or 0),
+            "page_id": lambda i: i.get("page_id") or 0,
+            "document_id": lambda i: i.get("document_id") or 0,
             "coverage_ratio": lambda i: (
                 i.get("coverage_ratio") if i.get("coverage_ratio") is not None else -1.0
             ),
-            "child_count": lambda i: (i.get("child_count") or 0),
+            "child_count": lambda i: i.get("child_count") or 0,
             "children_black_pixels_per_char": lambda i: (
                 i.get("children_black_pixels_per_char")
                 if i.get("children_black_pixels_per_char") is not None

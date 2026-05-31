@@ -22,6 +22,7 @@ from src.rotary_archiv.config import settings
 from src.rotary_archiv.core.bbox import save_bboxes
 from src.rotary_archiv.core.database import SessionLocal
 from src.rotary_archiv.core.models import (
+    BBox,
     Document,
     DocumentPage,
     DocumentStatus,
@@ -2127,6 +2128,23 @@ async def process_quality_job(job_id: int) -> None:
         }
 
         ocr_result.quality_metrics = quality_metrics
+
+        # Schreibe black_pixels in bboxes-Tabelle + setze metrics_stale=False
+        bbox_rows = (
+            db.query(BBox)
+            .filter(BBox.ocr_result_id == ocr_result.id)
+            .order_by(BBox.id)
+            .all()
+        )
+        for bp_entry in bbox_black_per_char:
+            idx = bp_entry.get("index")
+            if idx is not None and idx < len(bbox_rows):
+                bbox_rows[idx].black_pixels = bp_entry.get("black_pixels")
+                bbox_rows[idx].black_pixels_per_char = bp_entry.get(
+                    "black_pixels_per_char"
+                )
+                bbox_rows[idx].metrics_stale = False
+
         db.commit()
 
         # Abschluss
@@ -3084,4 +3102,207 @@ async def process_pdf_export_job(job_id: int) -> None:
         for p in temp_paths:
             with contextlib.suppress(Exception):
                 Path(p).unlink(missing_ok=True)
+        db.close()
+
+
+async def process_bbox_quality_recalc_job(job_id: int) -> None:
+    """
+    Berechnet black_pixels / black_pixels_per_char für ausgewählte BBoxen nach
+    und setzt metrics_stale=False.
+
+    Erwartet job_params = {"bbox_ids": [1, 2, 3, ...]}.
+    """
+    db = SessionLocal()
+    job = None
+
+    try:
+        job = db.query(OCRJob).filter(OCRJob.id == job_id).first()
+        if not job:
+            return
+
+        bbox_ids = (job.job_params or {}).get("bbox_ids", [])
+        if not bbox_ids or not isinstance(bbox_ids, list):
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "job_params.bbox_ids fehlt oder ist keine Liste"
+            db.commit()
+            return
+
+        job.status = OCRJobStatus.RUNNING
+        job.started_at = datetime.now()
+        job.progress = 0.0
+        job.current_step = "Lade ausgewählte BBoxen"
+        db.commit()
+
+        # BBoxen mit OCRResult- und Seiten-Info laden
+        bbox_rows = (
+            db.query(BBox)
+            .filter(BBox.id.in_(bbox_ids))
+            .order_by(BBox.ocr_result_id, BBox.id)
+            .all()
+        )
+
+        if not bbox_rows:
+            job.status = OCRJobStatus.FAILED
+            job.error_message = "Keine BBoxen zu den angegebenen IDs gefunden"
+            db.commit()
+            return
+
+        # Gruppiere nach ocr_result_id
+        from collections import defaultdict
+
+        bboxes_by_page: dict[int, list[BBox]] = defaultdict(list)
+        for b in bbox_rows:
+            bboxes_by_page[b.ocr_result_id].append(b)
+
+        from PIL import Image
+
+        from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
+
+        total = len(bbox_rows)
+        processed = 0
+
+        for ocr_result_id, page_bboxes in bboxes_by_page.items():
+            ocr_result = (
+                db.query(OCRResult).filter(OCRResult.id == ocr_result_id).first()
+            )
+            if not ocr_result or not ocr_result.document_page_id:
+                continue
+
+            page = (
+                db.query(DocumentPage)
+                .filter(DocumentPage.id == ocr_result.document_page_id)
+                .first()
+            )
+            if not page:
+                continue
+
+            document = (
+                db.query(Document).filter(Document.id == page.document_id).first()
+            )
+            if not document:
+                continue
+
+            job.current_step = (
+                f"Verarbeite Seite {page.page_number} ({len(page_bboxes)} BBoxen)"
+            )
+            db.commit()
+
+            # Lade Seitenbild
+            try:
+                if not page.file_path:
+                    pdf_path = get_file_path(document.file_path)
+                    if not pdf_path.exists():
+                        continue
+                    img = extract_page_as_image(
+                        str(pdf_path), page.page_number, dpi=200
+                    )
+                else:
+                    file_path = get_file_path(page.file_path)
+                    if not file_path.exists():
+                        continue
+                    is_img = (
+                        page.file_type
+                        and page.file_type.lower()
+                        in ("image/png", "image/jpeg", "image/jpg")
+                    ) or str(file_path).lower().endswith((".png", ".jpg", ".jpeg"))
+                    if is_img:
+                        img = Image.open(file_path).convert("RGB")
+                    else:
+                        from pdf2image import convert_from_path
+
+                        convert_kwargs = {
+                            "first_page": page.page_number,
+                            "last_page": page.page_number,
+                            "dpi": 200,
+                        }
+                        if settings.poppler_path:
+                            pp = Path(settings.poppler_path)
+                            if pp.exists():
+                                convert_kwargs["poppler_path"] = str(pp)
+                        images = convert_from_path(str(file_path), **convert_kwargs)
+                        if not images:
+                            continue
+                        img = images[0]
+
+                if page.deskew_angle is not None:
+                    from src.rotary_archiv.utils.image_utils import (
+                        deskew_image,
+                    )
+
+                    img = deskew_image(img, page.deskew_angle)
+
+                if (
+                    ocr_result.image_width
+                    and ocr_result.image_height
+                    and img.size != (ocr_result.image_width, ocr_result.image_height)
+                ):
+                    img = img.resize(
+                        (ocr_result.image_width, ocr_result.image_height),
+                        Image.Resampling.LANCZOS,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "Bild-Laden fehlgeschlagen für Seite %s: %s",
+                    page.id,
+                    e,
+                )
+                continue
+
+            # BBox-Liste für compute_black_pixels_per_char bauen
+            bbox_input = []
+            for b in page_bboxes:
+                bbox_input.append(
+                    {
+                        "bbox_pixel": b.bbox_pixel,
+                        "text": b.text or "",
+                        "reviewed_text": b.text or "",
+                    }
+                )
+
+            try:
+                bp_results, _ = compute_black_pixels_per_char(
+                    img, bbox_input, dark_threshold=200
+                )
+            except Exception as e:
+                logger.warning(
+                    "Black-Pixel-Berechnung fehlgeschlagen für Seite %s: %s",
+                    page.id,
+                    e,
+                )
+                continue
+
+            # Ergebnisse zurückschreiben
+            for bp_entry, bbox in zip(bp_results, page_bboxes, strict=False):
+                bbox.black_pixels = bp_entry.get("black_pixels")
+                bbox.black_pixels_per_char = bp_entry.get("black_pixels_per_char")
+                bbox.metrics_stale = False
+                processed += 1
+
+            db.commit()
+            job.progress = (processed / total) * 100.0
+            db.commit()
+
+        job.current_step = f"Abgeschlossen - {processed}/{total} BBoxen aktualisiert"
+        job.progress = 100.0
+        job.status = OCRJobStatus.COMPLETED
+        job.completed_at = datetime.now()
+        db.commit()
+
+        logger.info(
+            "BBox Quality Recalc Job %s: %s/%s BBoxen aktualisiert",
+            job_id,
+            processed,
+            total,
+        )
+
+    except Exception as e:
+        if job:
+            db.refresh(job)
+            if job.status not in [OCRJobStatus.CANCELLED, OCRJobStatus.ARCHIVED]:
+                job.status = OCRJobStatus.FAILED
+                job.error_message = str(e)
+                job.completed_at = datetime.now()
+                db.commit()
+        logger.exception("BBox Quality Recalc Job %s fehlgeschlagen", job_id)
+    finally:
         db.close()
