@@ -268,6 +268,27 @@ def get_document_units(document_id: int, db: Session = Depends(get_db)):
 
 
 @router.get(
+    "/{document_id}/units/{unit_id}",
+    response_model=DocumentUnitResponse,
+)
+def get_document_unit(document_id: int, unit_id: int, db: Session = Depends(get_db)):
+    """Hole eine einzelne Content-Analyse-Einheit."""
+    unit = (
+        db.query(DocumentUnit)
+        .filter(
+            DocumentUnit.id == unit_id,
+            DocumentUnit.document_id == document_id,
+        )
+        .first()
+    )
+    if not unit:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Einheit nicht gefunden"
+        )
+    return DocumentUnitResponse.model_validate(unit)
+
+
+@router.get(
     "/{document_id}/unassigned-pages",
     response_model=list[UnassignedPageItem],
 )
@@ -455,6 +476,10 @@ def create_document_unit(
         document_id=document_id,
         page_ids=body.page_ids,
         belongs_with_next=body.belongs_with_next,
+        is_public=body.is_public,
+        document_type=body.document_type,
+        title=body.title,
+        date=body.date,
     )
     db.add(unit)
     db.commit()
@@ -566,6 +591,10 @@ def get_composed_overview(document_id: int, db: Session = Depends(get_db)):
                 page_numbers=page_numbers,
                 full_text=full_text,
                 belongs_with_next=u.belongs_with_next,
+                is_public=u.is_public,
+                document_type=u.document_type,
+                title=u.title,
+                date=u.date,
                 summary=u.summary,
                 persons=u.persons or [],
                 topic=u.topic,
@@ -747,7 +776,7 @@ async def create_page_jobs(
                 db_page = DocumentPage(
                     document_id=document_id,
                     page_number=page_num,
-                    file_path=None,  # Virtuell, keine Datei-Extraktion
+                    file_path=None,  # Wird nach Extraktion gesetzt
                     file_type="pdf",
                     is_extracted=False,
                 )
@@ -767,6 +796,38 @@ async def create_page_jobs(
             .order_by(DocumentPage.page_number)
             .all()
         )
+
+        # Extrahiere Seiten als PNG-Dateien ins scans-Verzeichnis
+        from pathlib import Path
+
+        from src.rotary_archiv.config import settings
+        from src.rotary_archiv.utils.pdf_utils import extract_page_as_image
+
+        scans_dir = Path(settings.scans_path)
+        doc_scans_dir = scans_dir / str(document_id)
+        doc_scans_dir.mkdir(parents=True, exist_ok=True)
+
+        for page in all_pages:
+            if page.file_path is not None and page.is_extracted:
+                continue
+            try:
+                png_path = doc_scans_dir / f"{page.page_number}.png"
+                img = extract_page_as_image(
+                    str(absolute_file_path),
+                    page.page_number,
+                    dpi=settings.pdf_extraction_dpi,
+                )
+                img.save(str(png_path), "PNG")
+                page.file_path = str(png_path)
+                page.file_type = "image/png"
+                page.is_extracted = True
+                db.add(page)
+            except Exception as e:
+                logging.error(
+                    f"Fehler beim Extrahieren von Seite {page.page_number} "
+                    f"(Dokument {document_id}): {e}"
+                )
+        db.commit()
 
         # Prüfe welche Jobs bereits existieren
         existing_jobs = (
@@ -815,7 +876,6 @@ async def create_page_jobs(
     except HTTPException:
         raise
     except Exception as e:
-        import logging
         import traceback
 
         logging.error(

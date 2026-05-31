@@ -1,39 +1,57 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:15
-    container_name: rotary_postgres
-    environment:
-      POSTGRES_DB: rotary_archiv
-      POSTGRES_USER: rotary_user
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+  backend:
+    build: .
+    container_name: rotary_backend
     ports:
-      - "5432:5432"
+      - "${BACKEND_PORT:-8085}:8000"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rotary_user"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  fuseki:
-    image: apache/jena-fuseki:latest
-    container_name: rotary_fuseki
-    ports:
-      - "3030:3030"
-    volumes:
-      - fuseki_data:/fuseki
+      - ${DATA_DIR:-/Volume1/RotaryArchiv}/data:/app/data
+      - ${DATA_DIR:-/Volume1/RotaryArchiv}/scans:/app/scans
+    env_file:
+      - .env.docker
     environment:
-      FUSEKI_DATASET: rotary_archiv
-    command: ["--mem", "--update", "/fuseki/rotary_archiv"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3030/$/ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - POSTGRES_HOST=${POSTGRES_HOST:-sqlite}
+      - DOCUMENTS_PATH=${DOCUMENTS_PATH:-/app/data/documents}
+      - TRIPLESTORE_PATH=${TRIPLESTORE_PATH:-/app/data/triplestore.ttl}
+      - SQLITE_PATH=${SQLITE_PATH:-/app/data/rotary_archiv.db}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_VISION_MODEL=${OLLAMA_VISION_MODEL:-deepseek-ocr:latest}
+      - OLLAMA_GPT_MODEL=${OLLAMA_GPT_MODEL:-gpt-oss:20b}
+      - OLLAMA_TIMEOUT_SECONDS=${OLLAMA_TIMEOUT_SECONDS:-7200}
+      - API_HOST=${API_HOST:-0.0.0.0}
+      - API_PORT=${API_PORT:-8000}
+      - DEBUG=${DEBUG:-True}
+    restart: unless-stopped
 
-volumes:
-  postgres_data:
-  fuseki_data:
+  worker:
+    build: .
+    container_name: rotary_worker
+    command: ["python", "-m", "src.rotary_archiv.ocr.worker"]
+    volumes:
+      - ${DATA_DIR:-/Volume1/RotaryArchiv}/data:/app/data
+    env_file:
+      - .env.docker
+    environment:
+      - POSTGRES_HOST=${POSTGRES_HOST:-sqlite}
+      - DOCUMENTS_PATH=${DOCUMENTS_PATH:-/app/data/documents}
+      - SQLITE_PATH=${SQLITE_PATH:-/app/data/rotary_archiv.db}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_VISION_MODEL=${OLLAMA_VISION_MODEL:-deepseek-ocr:latest}
+      - OLLAMA_GPT_MODEL=${OLLAMA_GPT_MODEL:-gpt-oss:20b}
+      - OLLAMA_TIMEOUT_SECONDS=${OLLAMA_TIMEOUT_SECONDS:-7200}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: nginx-frontend/Dockerfile
+    container_name: rotary_frontend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    volumes:
+      - ${DATA_DIR:-/Volume1/RotaryArchiv}/scans:/var/www/rotary-scans:ro
+    depends_on:
+      - backend
+    restart: unless-stopped

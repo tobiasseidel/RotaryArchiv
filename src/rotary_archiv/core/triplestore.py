@@ -1,9 +1,9 @@
 """
 Triple Store Interface für RDF-Relationen.
 
-NOTE: Vorerst nicht verwendet - kann später wieder aktiviert werden.
+AKTIV: Wird in erschliessung.py und erschliessung_overview.py verwendet.
 
-Design-Vorgabe Erschließung: Die Quelle (Dokument, DocumentUnit) aus der
+Design-Empfehlung Erschließung: Die Quelle (Dokument, DocumentUnit) aus der
 relationalen DB wird nicht als Subjekt oder Objekt der Faktentriples verwendet,
 sondern nur als Referenz (Provenienz/Beleg). Empfohlenes Prädikat: rotary:belegtIn
 mit Objekt rotary:DocumentUnit_<id> bzw. rotary:Document_<id>. Siehe docs/erschliessung.md.
@@ -237,6 +237,9 @@ class TripleStore:
         main_image_url: str | None = None,
         lat: float | None = None,
         lon: float | None = None,
+        historical_address: str | None = None,
+        adressbuch_url: str | None = None,
+        adressbuch_page: str | None = None,
     ) -> None:
         """
         Ort (Place) im Store anlegen.
@@ -254,6 +257,27 @@ class TripleStore:
             self.add_triple(place_uri, str(ROTARY["lat"]), str(lat), "literal")
         if lon is not None:
             self.add_triple(place_uri, str(ROTARY["lon"]), str(lon), "literal")
+        if historical_address and historical_address.strip():
+            self.add_triple(
+                place_uri,
+                str(ROTARY["historicalAddress"]),
+                historical_address.strip(),
+                "literal",
+            )
+        if adressbuch_url and adressbuch_url.strip():
+            self.add_triple(
+                place_uri,
+                str(ROTARY["adressbuchUrl"]),
+                adressbuch_url.strip(),
+                "literal",
+            )
+        if adressbuch_page and adressbuch_page.strip():
+            self.add_triple(
+                place_uri,
+                str(ROTARY["adressbuchPage"]),
+                adressbuch_page.strip(),
+                "literal",
+            )
 
     def add_event(
         self,
@@ -274,19 +298,36 @@ class TripleStore:
                 event_uri, str(ROTARY["mainImage"]), main_image_url.strip(), "literal"
             )
 
+    def add_club(
+        self,
+        club_uri: str,
+        name: str,
+        *,
+        wikidata_id: str | None = None,
+    ) -> None:
+        """Club (z.B. Rotary Club Dresden) im Store anlegen."""
+        self.add_triple(club_uri, str(ROTARY["name"]), name, "literal")
+        if wikidata_id:
+            self.add_triple(
+                club_uri, str(ROTARY["sameAs"]), str(WIKIDATA[wikidata_id]), "uri"
+            )
+
     def get_place_details(self, place_uri: str) -> dict[str, Any] | None:
         """
-        Hole Orts-Daten aus dem Store (name, wikidata_id, main_image_url, lat, lon).
+        Hole Orts-Daten aus dem Store (name, wikidata_id, main_image_url, lat, lon, historical_address, adressbuch_url, adressbuch_page).
         place_uri: volle URI des Orts.
         """
         query_base = f"""
         PREFIX rotary: <{ROTARY}>
-        SELECT ?name ?wd ?img ?lat ?lon WHERE {{
+        SELECT ?name ?wd ?img ?lat ?lon ?histAddr ?abUrl ?abPage WHERE {{
             <{place_uri}> rotary:name ?name .
             OPTIONAL {{ <{place_uri}> rotary:sameAs ?wd }} .
             OPTIONAL {{ <{place_uri}> rotary:mainImage ?img }} .
             OPTIONAL {{ <{place_uri}> rotary:lat ?lat }} .
             OPTIONAL {{ <{place_uri}> rotary:lon ?lon }} .
+            OPTIONAL {{ <{place_uri}> rotary:historicalAddress ?histAddr }} .
+            OPTIONAL {{ <{place_uri}> rotary:adressbuchUrl ?abUrl }} .
+            OPTIONAL {{ <{place_uri}> rotary:adressbuchPage ?abPage }} .
         }}
         LIMIT 1
         """
@@ -303,12 +344,18 @@ class TripleStore:
         lat_val, lon_val = r.get("lat"), r.get("lon")
         lat = float(lat_val) if lat_val is not None and str(lat_val).strip() else None
         lon = float(lon_val) if lon_val is not None and str(lon_val).strip() else None
+        historical_address = (r.get("histAddr") or "").strip() or None
+        adressbuch_url = (r.get("abUrl") or "").strip() or None
+        adressbuch_page = (r.get("abPage") or "").strip() or None
         return {
             "name": name,
             "wikidata_id": wikidata_id,
             "main_image_url": main_image_url,
             "lat": lat,
             "lon": lon,
+            "historical_address": historical_address,
+            "adressbuch_url": adressbuch_url,
+            "adressbuch_page": adressbuch_page,
         }
 
     def update_place(
@@ -321,16 +368,29 @@ class TripleStore:
         update_main_image: bool = False,
         lat: float | None = None,
         lon: float | None = None,
+        historical_address: str | None = None,
+        adressbuch_url: str | None = None,
+        adressbuch_page: str | None = None,
     ) -> None:
         """
-        Ort im Store aktualisieren (name, optional sameAs, mainImage, lat, lon).
-        Entfernt bestehende rotary:name, sameAs, mainImage, lat, lon und setzt die übergebenen Werte.
+        Ort im Store aktualisieren (name, optional sameAs, mainImage, lat, lon, historicalAddress, adressbuchUrl, adressbuchPage).
+        Entfernt bestehende Properties und setzt die übergebenen Werte.
         mainImage wird nur geändert, wenn update_main_image=True; sonst beibehalten.
+        historicalAddress, adressbuchUrl, adressbuchPage werden nur gesetzt, wenn übergeben.
         """
         existing = self.get_place_details(place_uri)
         subj = URIRef(place_uri)
         rotary_ns = str(ROTARY)
-        for pred_name in ["name", "sameAs", "mainImage", "lat", "lon"]:
+        for pred_name in [
+            "name",
+            "sameAs",
+            "mainImage",
+            "lat",
+            "lon",
+            "historicalAddress",
+            "adressbuchUrl",
+            "adressbuchPage",
+        ]:
             pred_uri = URIRef(rotary_ns + pred_name)
             for obj in list(self.graph.objects(subj, pred_uri)):
                 self.graph.remove((subj, pred_uri, obj))
@@ -358,6 +418,27 @@ class TripleStore:
             self.add_triple(place_uri, str(ROTARY["lat"]), str(lat), "literal")
         if lon is not None:
             self.add_triple(place_uri, str(ROTARY["lon"]), str(lon), "literal")
+        if historical_address and historical_address.strip():
+            self.add_triple(
+                place_uri,
+                str(ROTARY["historicalAddress"]),
+                historical_address.strip(),
+                "literal",
+            )
+        if adressbuch_url and adressbuch_url.strip():
+            self.add_triple(
+                place_uri,
+                str(ROTARY["adressbuchUrl"]),
+                adressbuch_url.strip(),
+                "literal",
+            )
+        if adressbuch_page and adressbuch_page.strip():
+            self.add_triple(
+                place_uri,
+                str(ROTARY["adressbuchPage"]),
+                adressbuch_page.strip(),
+                "literal",
+            )
 
     def get_place_uri_by_name(self, name: str) -> str | None:
         """Finde einen Ort im Store anhand des Namens (exakter Literal-Match)."""

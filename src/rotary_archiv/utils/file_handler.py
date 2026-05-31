@@ -79,12 +79,14 @@ def get_file_path(relative_path: str) -> Path:
     Returns:
         Absoluter Path
     """
-    path = Path(relative_path)
+    # Normalize path: replace backslashes with forward slashes (Windows->Linux)
+    normalized_path = relative_path.replace("\\", "/")
+    path = Path(normalized_path)
     # Wenn bereits absolut, verwende direkt
     if path.is_absolute():
         return path
     # Sonst relativ zu cwd
-    return Path.cwd() / relative_path
+    return Path.cwd() / normalized_path
 
 
 def delete_file(relative_path: str) -> bool:

@@ -1,0 +1,76 @@
+[
+  {
+    "id": 101,
+    "title": "Sitzungsprotokoll vom 15. Mai 1929",
+    "date": "1929-05-15",
+    "epoch": "30er",
+    "is_public": true,
+    "type": "protocol",
+    "pages": [
+      {
+        "page_number": 1,
+        "image_url": "/scans/protokoll-1929-05-15-p1.svg",
+        "ocr_text": "Anwesend: Victor Klemperer von Klemenau (Vorsitz), Fritz Busch, Heinrich Arnhold, Erich Haenel, Julius Ferdinand Wollf. Der Vorsitzende eröffnet die Sitzung um 19 Uhr. Herr Klemperer berichtet über die Gründungsversammlung des Rotary Clubs Dresden."
+      }
+    ],
+    "bbox_data": [
+      {
+        "id": "bbox-101-001",
+        "page": 1,
+        "x1": 120,
+        "y1": 340,
+        "x2": 480,
+        "y2": 380,
+        "text": "Herr Klemperer wird einstimmig als Präsident bestätigt.",
+        "confidence": 0.94,
+        "entity_uri": "rotary:Mention_101_001",
+        "role": "mention"
+      },
+      {
+        "id": "bbox-101-002",
+        "page": 1,
+        "x1": 200,
+        "y1": 420,
+        "x2": 460,
+        "y2": 460,
+        "text": null,
+        "confidence": 0.12,
+        "entity_uri": null,
+        "role": "unreadable"
+      }
+    ],
+    "transcription": "Herr Klemperer wird einstimmig als Präsident bestätigt. Der Vorsitzende begrüßte ihn herzlich. Anschließend wurde die Mitgliederliste verlesen.",
+    "context_snippet": "Herr Klemperer wird einstimmig als Präsident bestätigt."
+  },
+  {
+    "id": 107,
+    "title": "Sitzungsprotokoll vom 9. März 1934",
+    "date": "1934-03-09",
+    "epoch": "30er",
+    "is_public": true,
+    "type": "protocol",
+    "pages": [
+      {
+        "page_number": 1,
+        "image_url": "/scans/protokoll-1934-03-09-p1.svg",
+        "ocr_text": "Protokoll der 47. Sitzung des Rotary Club Dresden. Vorsitz: Victor Klemperer von Klemenau. Anwesend: Fritz Busch, Heinrich Arnhold, Erich Haenel, Walter Bachmann, Hugo Grille."
+      }
+    ],
+    "bbox_data": [
+      {
+        "id": "bbox-107-001",
+        "page": 1,
+        "x1": 80,
+        "y1": 200,
+        "x2": 520,
+        "y2": 260,
+        "text": "Herr Arnhold tritt aus gesundheitlichen Gründen zurück.",
+        "confidence": 0.88,
+        "entity_uri": "rotary:Mention_107_001",
+        "role": "mention"
+      }
+    ],
+    "transcription": "Herr Arnhold tritt aus gesundheitlichen Gründen zurück. Der Club bedauert diesen Schritt und dankt ihm für seine Verdienste.",
+    "context_snippet": "Herr Arnhold tritt aus gesundheitlichen Gründen zurück."
+  }
+]

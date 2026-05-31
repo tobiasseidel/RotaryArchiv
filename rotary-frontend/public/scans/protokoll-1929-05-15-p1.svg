@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="850" viewBox="0 0 600 850">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&amp;family=Lora:ital,wght@0,400;0,700;1,400&amp;display=swap');
+      text { font-family: 'Courier New', 'Liberation Mono', monospace; }
+      .title { font-family: 'Lora', serif; font-weight: 700; }
+      .heading { font-family: 'Inter', sans-serif; font-weight: 600; }
+      .body { font-family: 'Courier New', monospace; }
+    </style>
+    <filter id="paper">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise"/>
+      <feColorMatrix type="saturate" values="0" in="noise" result="grayNoise"/>
+      <feBlend in="SourceGraphic" in2="grayNoise" mode="multiply"/>
+    </filter>
+  </defs>
+  <rect width="600" height="850" fill="#F5F0E8"/>
+  <rect x="40" y="40" width="520" height="770" fill="#FDFAF5" stroke="#D6CFC4" stroke-width="1"/>
+  <rect x="48" y="48" width="504" height="754" fill="none" stroke="#E8E4DB" stroke-width="0.5"/>
+  <circle cx="75" cy="75" r="3" fill="#D6CFC4"/>
+  <circle cx="525" cy="75" r="3" fill="#D6CFC4"/>
+  <text x="300" y="95" font-family="'Lora', serif" font-size="20" font-weight="700" text-anchor="middle" fill="#1C1917">Protokoll</text>
+  <text x="300" y="125" font-family="'Inter', sans-serif" font-size="13" font-weight="600" text-anchor="middle" fill="#57534E">Rotary Club Dresden</text>
+  <line x1="60" y1="145" x2="540" y2="145" stroke="#D6CFC4" stroke-width="0.5"/>
+  <text x="65" y="170" font-family="'Courier New', monospace" font-size="12" fill="#1C1917">No. 42</text>
+  <text x="65" y="190" font-family="'Courier New', monospace" font-size="12" fill="#1C1917">Datum: 15. Mai 1929</text>
+  <text x="65" y="210" font-family="'Courier New', monospace" font-size="12" fill="#1C1917">Ort: Dresden, Hotel Bellevue</text>
+  <line x1="60" y1="225" x2="540" y2="225" stroke="#D6CFC4" stroke-width="0.5"/>
+  <text x="65" y="250" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">Vorsitz: Victor Klemperer von Klemenau</text>
+  <text x="65" y="270" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">Anwesend: Fritz Busch, Heinrich Arnhold,</text>
+  <text x="65" y="288" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">          Erich Haenel, Julius Wollf</text>
+  <text x="65" y="308" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">Es fehlen: 3 Mitglieder (entschuldigt)</text>
+  <line x1="60" y1="325" x2="540" y2="325" stroke="#D6CFC4" stroke-width="0.5"/>
+  <text x="65" y="350" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">Der Vorsitzende eröffnet die Sitzung um 19 Uhr.</text>
+  <text x="65" y="370" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">TOP 1: Genehmigung des letzten Protokolls</text>
+  <text x="65" y="390" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">  Das Protokoll vom 8. April 1929 wird einstimmig</text>
+  <text x="65" y="408" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">  genehmigt.</text>
+  <text x="65" y="428" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">TOP 2: Neuwahl des Vorstands</text>
+  <text x="65" y="448" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">  Victor Klemperer von Klemenau wird einstimmig</text>
+  <text x="65" y="466" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">  als Pr&auml;sident best&auml;tigt.</text>
+  <text x="65" y="486" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">TOP 3: Mitgliederaufnahmen</text>
+  <text x="65" y="506" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">  Herr Klemperer schl&auml;gt zwei neue Mitglieder vor.</text>
+  <text x="65" y="526" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">  Die Abstimmung erfolgt in der n&auml;chsten Sitzung.</text>
+  <text x="65" y="546" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">TOP 4: Verschiedenes</text>
+  <text x="65" y="566" font-family="'Courier New', monospace" font-size="11" fill="#1C1917">  N&auml;chste Sitzung: 12. Juni 1929, 19 Uhr.</text>
+  <text x="65" y="596" font-family="'Courier New', monospace" font-size="11" fill="#57534E">Schluss der Sitzung: 21:15 Uhr.</text>
+  <text x="65" y="616" font-family="'Courier New', monospace" font-size="11" fill="#57534E">gez. Klemperer, Vorsitzender</text>
+  <text x="65" y="636" font-family="'Courier New', monospace" font-size="11" fill="#57534E">gez. Busch, Schriftf&uuml;hrer</text>
+  <line x1="60" y1="655" x2="540" y2="655" stroke="#D6CFC4" stroke-width="0.5"/>
+  <text x="300" y="680" font-family="'Inter', sans-serif" font-size="9" text-anchor="middle" fill="#A09890">— Digitalisiertes Archivdokument (Platzhalter) —</text>
+</svg>

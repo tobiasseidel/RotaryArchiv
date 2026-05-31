@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual environments
+venv/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Development
+*.db
+data/
+.env
+.env.local
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile*
+docker-compose*
+.docker/
+
+# Docs & Misc
+*.md
+!README.md
+docs/
+.aider.tags.cache.v4
+.aider.conf.yml
+.aider.input.history
+.cursorrules
+BACKLOG.md
+CHANGELOG*.md
+CONTRIBUTING.md
+WORKLOG.md
+TODO.md
+dev.ps1
+start-*.ps1
+stop-*.ps1
+run-tests.ps1
+.coveragerc
+.pre-commit-config.yaml
+.pre-commit-hooks.ps1
+Makefile
+pytest.ini
+ruff.toml
+test_image.png

@@ -3,6 +3,8 @@ API für Erschließungs-Boxen: Box auf der Seite ↔ Triple Store.
 CRUD für ErschliessungsBox; entity-suggestions, wikidata-matches, wikidata-preview, assign, beleg.
 """
 
+from datetime import datetime
+from enum import Enum
 import re
 from typing import Any
 from urllib.parse import urljoin
@@ -70,6 +72,9 @@ class ErschliessungsBoxUpdate(BaseModel):
     subject_uri: str | None = None
     predicate_uri: str | None = None
     object_uri: str | None = None
+    event_type: str | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
 
 
 class ErschliessungsBoxResponse(BaseModel):
@@ -79,13 +84,19 @@ class ErschliessungsBoxResponse(BaseModel):
     document_page_id: int
     bbox: list[float]
     box_type: str
-    entity_type: str | None
-    entity_uri: str | None
-    name: str | None
-    subject_uri: str | None
-    predicate_uri: str | None
-    object_uri: str | None
+    entity_type: str | None = None
+    entity_uri: str | None = None
+    name: str | None = None
+    event_type: str | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    subject_uri: str | None = None
+    predicate_uri: str | None = None
+    object_uri: str | None = None
     main_image_url: str | None = None
+    historical_address: str | None = None
+    adressbuch_url: str | None = None
+    adressbuch_page: str | None = None
 
     class Config:
         from_attributes = True
@@ -110,6 +121,27 @@ class BelegBody(BaseModel):
     subject_uri: str
     predicate_uri: str
     object_uri: str
+
+
+class MembershipEventType(str, Enum):
+    """Typ von Mitgliedschafts-Ereignis."""
+
+    MEMBERSHIP = "membership"
+    BOARD = "board"
+    PRESIDENT = "president"
+    VORTRAG = "vortrag"
+    DISKUSSION = "diskussion"
+    GAST = "gast"
+
+
+class MembershipBody(BaseModel):
+    """Body für Mitgliedschafts-Ereignis: erstellt Beleg-Box mit rotary:wirdTeilVon."""
+
+    event_type: MembershipEventType
+    target_uri: str = "rotary:Club_1"  # Standard: Rotary Club Dresden
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    notes: str | None = None
 
 
 class PlaceCoordinatesBody(BaseModel):
@@ -413,15 +445,25 @@ def list_erschliessungs_boxes(
             "entity_type": b.entity_type,
             "entity_uri": b.entity_uri,
             "name": b.name,
+            "event_type": b.event_type,
+            "start_date": b.start_date,
+            "end_date": b.end_date,
             "subject_uri": b.subject_uri,
             "predicate_uri": b.predicate_uri,
             "object_uri": b.object_uri,
         }
-        data["main_image_url"] = (
-            (ts.get_person_details(b.entity_uri) or {}).get("main_image_url")
-            if b.entity_uri
-            else None
-        )
+        if b.entity_uri and "Place_" in b.entity_uri:
+            place_details = ts.get_place_details(b.entity_uri) or {}
+            data["main_image_url"] = place_details.get("main_image_url")
+            data["historical_address"] = place_details.get("historical_address")
+            data["adressbuch_url"] = place_details.get("adressbuch_url")
+            data["adressbuch_page"] = place_details.get("adressbuch_page")
+        elif b.entity_uri:
+            data["main_image_url"] = (
+                (ts.get_person_details(b.entity_uri) or {}).get("main_image_url")
+                if b.entity_uri
+                else None
+            )
         result.append(ErschliessungsBoxResponse(**data))
     return result
 
@@ -878,6 +920,9 @@ def get_box_entity_details(
             "entity_type": None,
             "entity_uri": None,
             "name": None,
+            "event_type": box.event_type,
+            "start_date": box.start_date,
+            "end_date": box.end_date,
             "wikidata_id": None,
             "claim_values": {},
             "claim_value_labels": {},
@@ -894,15 +939,24 @@ def get_box_entity_details(
                 "entity_type": "place",
                 "entity_uri": box.entity_uri,
                 "name": box.name,
+                "event_type": box.event_type,
+                "start_date": box.start_date,
+                "end_date": box.end_date,
                 "wikidata_id": None,
                 "main_image_url": None,
                 "lat": None,
                 "lon": None,
+                "historical_address": None,
+                "adressbuch_url": None,
+                "adressbuch_page": None,
             }
         return {
             "entity_type": "place",
             "entity_uri": box.entity_uri,
             "name": details.get("name") or box.name,
+            "event_type": box.event_type,
+            "start_date": box.start_date,
+            "end_date": box.end_date,
             "wikidata_id": details.get("wikidata_id"),
             "claim_values": {},
             "claim_value_labels": {},
@@ -910,6 +964,9 @@ def get_box_entity_details(
             "main_image_url": details.get("main_image_url"),
             "lat": details.get("lat"),
             "lon": details.get("lon"),
+            "historical_address": details.get("historical_address"),
+            "adressbuch_url": details.get("adressbuch_url"),
+            "adressbuch_page": details.get("adressbuch_page"),
         }
     if "Event_" in box.entity_uri:
         preview = ts.get_entity_preview(box.entity_uri) or {}
@@ -931,6 +988,9 @@ def get_box_entity_details(
             "entity_type": "person",
             "entity_uri": box.entity_uri,
             "name": box.name,
+            "event_type": box.event_type,
+            "start_date": box.start_date,
+            "end_date": box.end_date,
             "wikidata_id": None,
             "claim_values": {},
             "claim_value_labels": {},
@@ -948,6 +1008,9 @@ def get_box_entity_details(
         "entity_type": "person",
         "entity_uri": box.entity_uri,
         "name": details.get("name") or box.name,
+        "event_type": box.event_type,
+        "start_date": box.start_date,
+        "end_date": box.end_date,
         "wikidata_id": details.get("wikidata_id"),
         "claim_values": claim_values,
         "claim_value_labels": claim_value_labels,
@@ -957,12 +1020,18 @@ def get_box_entity_details(
 
 
 class UpdateEntityDetailsBody(BaseModel):
-    """Body zum Aktualisieren der internen Entity-Daten (Name, Properties als Listen, Anzeigenamen pro Wert, optional Hauptbild)."""
+    """Body zum Aktualisieren der internen Entity-Daten (Name, Properties als Listen, Anzeigenamen pro Wert, optional Hauptbild, event_type, dates)."""
 
     name: str
     claim_values: dict[str, list[str]] | None = None
     claim_value_labels: dict[str, dict[str, str]] | None = None
     main_image_url: str | None = None
+    event_type: str | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    historical_address: str | None = None
+    adressbuch_url: str | None = None
+    adressbuch_page: str | None = None
 
 
 @router.patch("/boxes/{box_id}/entity-details")
@@ -994,6 +1063,9 @@ def update_box_entity_details(
             resolved_main_image_url = body.main_image_url
     if "Place_" in box.entity_uri:
         details = ts.get_place_details(box.entity_uri) or {}
+        current_hist_addr = details.get("historical_address")
+        current_ab_url = details.get("adressbuch_url")
+        current_ab_page = details.get("adressbuch_page")
         ts.update_place(
             box.entity_uri,
             body.name.strip(),
@@ -1002,6 +1074,15 @@ def update_box_entity_details(
             update_main_image=body.main_image_url is not None,
             lat=details.get("lat"),
             lon=details.get("lon"),
+            historical_address=body.historical_address
+            if body.historical_address is not None
+            else current_hist_addr,
+            adressbuch_url=body.adressbuch_url
+            if body.adressbuch_url is not None
+            else current_ab_url,
+            adressbuch_page=body.adressbuch_page
+            if body.adressbuch_page is not None
+            else current_ab_page,
         )
     else:
         ts.update_person(
@@ -1013,6 +1094,12 @@ def update_box_entity_details(
             update_main_image=body.main_image_url is not None,
         )
     box.name = body.name.strip()
+    if body.event_type is not None:
+        box.event_type = body.event_type if body.event_type else None
+    if hasattr(body, "start_date") and body.start_date:
+        box.start_date = body.start_date
+    if hasattr(body, "end_date") and body.end_date:
+        box.end_date = body.end_date
     db.commit()
     db.refresh(box)
     return {"ok": True, "box": box}
@@ -1409,3 +1496,100 @@ def set_beleg_for_box(
     db.commit()
     db.refresh(box)
     return box
+
+
+def _get_default_term_dates(
+    event_type: MembershipEventType,
+    start_date: datetime | None,
+    end_date: datetime | None,
+    page_date: datetime | None = None,
+) -> tuple[datetime | None, datetime | None]:
+    """Vorausfüllung für Vorstand/Präsident: 1.7. bis 30.6. des Folgejahres.
+    Für Vortrag/Diskussion/Gast: Seiten-Datum als Startdatum."""
+    if event_type in (MembershipEventType.BOARD, MembershipEventType.PRESIDENT):
+        if start_date is None:
+            current_year = datetime.now().year
+            start_date = datetime(current_year, 7, 1)
+        if end_date is None:
+            end_date = datetime(start_date.year + 1, 6, 30)
+    elif event_type in (
+        MembershipEventType.VORTRAG,
+        MembershipEventType.DISKUSSION,
+        MembershipEventType.GAST,
+    ):
+        if start_date is None and page_date:
+            start_date = page_date
+    return start_date, end_date
+
+
+@router.post(
+    "/boxes/{box_id}/membership",
+    response_model=ErschliessungsBoxResponse,
+)
+def create_membership_event(
+    page_id: int,
+    box_id: int,
+    body: MembershipBody,
+    db: Session = Depends(get_db),
+):
+    """Mitgliedschafts-Ereignis erstellen: erstellt Beleg-Box mit rotary:wirdTeilVon."""
+    entity_box = _get_box_or_404(db, page_id, box_id)
+
+    if entity_box.box_type != "entity":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nur Entity-Boxen (Person) können für Mitgliedschaft verwendet werden",
+        )
+
+    if not entity_box.entity_uri:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Entity-Box muss eine zugeordnete Entity haben (entity_uri)",
+        )
+
+    page = db.query(DocumentPage).filter(DocumentPage.id == page_id).first()
+
+    start_date, end_date = _get_default_term_dates(
+        body.event_type, body.start_date, body.end_date, page.date
+    )
+
+    ts = get_triplestore()
+    if body.event_type in (
+        MembershipEventType.MEMBERSHIP,
+        MembershipEventType.BOARD,
+        MembershipEventType.PRESIDENT,
+    ):
+        ts.add_club(body.target_uri, "Rotary Club Dresden")
+
+    beleg_box = ErschliessungsBox(
+        document_page_id=page.id,
+        bbox=entity_box.bbox,
+        box_type="beleg",
+        name=f"{body.event_type.value}: {body.target_uri}",
+    )
+    db.add(beleg_box)
+    db.commit()
+    db.refresh(beleg_box)
+
+    ts = get_triplestore()
+    beleg_uri = str(ROTARY[f"Beleg_{uuid.uuid4().hex}"])
+    box_uri = str(ROTARY[f"ErschliessungsBox_{beleg_box.id}"])
+    subject_uri = entity_box.entity_uri
+    predicate_uri = str(ROTARY["wirdTeilVon"])
+    object_uri = body.target_uri
+
+    ts.add_beleg(
+        beleg_uri,
+        box_uri,
+        subject_uri,
+        predicate_uri,
+        object_uri,
+    )
+
+    beleg_box.subject_uri = subject_uri
+    beleg_box.predicate_uri = predicate_uri
+    beleg_box.object_uri = object_uri
+    db.commit()
+    db.refresh(beleg_box)
+
+    return beleg_box

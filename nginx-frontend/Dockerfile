@@ -1,0 +1,29 @@
+FROM nginx:alpine
+
+RUN echo 'server { \
+    listen 80; \
+    server_name localhost; \
+    root /usr/share/nginx/html; \
+    index index.html; \
+    location /scans/ { \
+        alias /var/www/rotary-scans/; \
+        expires 30d; \
+        add_header Cache-Control "public, immutable"; \
+        access_log off; \
+        autoindex off; \
+        location ~* \.(png|jpg|jpeg)$ { \
+            try_files $uri =404; \
+        } \
+        return 404; \
+    } \
+    location / { \
+        try_files $$uri $$uri/ /index.html; \
+    } \
+    location /api { \
+        proxy_pass http://backend:8000; \
+        proxy_set_header Host $$host; \
+        proxy_set_header X-Real-IP $$remote_addr; \
+    } \
+}' > /etc/nginx/conf.d/default.conf
+
+COPY rotary-frontend/dist/ /usr/share/nginx/html/

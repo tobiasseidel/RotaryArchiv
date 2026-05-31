@@ -192,6 +192,9 @@ class DocumentPage(Base):
     # NULL = Rohbild (Legacy). Drehpunkt bei Transformation: obere linke Ecke (0,0).
     deskew_angle = Column(Float, nullable=True)
 
+    # Datum der Seite (manuell oder aus OCR extrahiert). Falls NULL, wird Document.date verwendet.
+    date = Column(DateTime, nullable=True, index=True)
+
     # OCR für einzelne Seite - Legacy (deprecated)
     ocr_text = Column(Text, nullable=True)  # Deprecated: Verwende OCRResult
     ocr_confidence = Column(String(50), nullable=True)  # Deprecated
@@ -239,6 +242,11 @@ class ErschliessungsBox(Base):
         String(512), nullable=True
     )  # rotary:Person_<uuid> nach Zuordnung
     name = Column(String(512), nullable=True)  # eingegebener Suchbegriff
+    event_type = Column(
+        String(50), nullable=True, index=True
+    )  # "membership" | "board" | "president" | "vortrag" | "diskussion" | "gast"
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
 
     # Für box_type = "beleg"
     subject_uri = Column(String(512), nullable=True)

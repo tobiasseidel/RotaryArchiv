@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     image_cache_path: str = "./data/image_cache"
     image_cache_sizes: str = "64,128,256,512"
     image_cache_max_source_bytes: int = 20 * 1024 * 1024
+    scans_path: str = (
+        "/app/scans"  # Pfad zu extrahierten Seiten-Bildern (Docker-Volume)
+    )
 
     # OCR
     tesseract_cmd: str = "tesseract"
@@ -93,13 +96,15 @@ class Settings(BaseSettings):
     # Korrekturfaktor X-Richtung: Ollama/Vision liefert oft zu schmale Boxen (z. B. 1/0.7 ≈ 1.43).
     re_recognize_bbox_x_stretch: float = 1.0 / 0.7
 
+    sqlite_path: str = "./rotary_archiv.db"  # Pfad zur SQLite-DB
+
     @property
     def database_url(self) -> str:
         """Database Connection URL (PostgreSQL oder SQLite)"""
         # Fallback zu SQLite wenn PostgreSQL nicht verfügbar
         use_sqlite = self.postgres_host == "sqlite" or not self.postgres_host
         if use_sqlite:
-            return "sqlite:///./rotary_archiv.db"
+            return f"sqlite:///{self.sqlite_path}"
         return (
             f"postgresql://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"

@@ -1,0 +1,105 @@
+@import '@fontsource/lora/400.css';
+@import '@fontsource/lora/700.css';
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/600.css';
+
+:root {
+  --color-bg: #F5F0E8;
+  --color-surface: #FDFAF5;
+  --color-text-primary: #1C1917;
+  --color-text-secondary: #57534E;
+  --color-border: #D6CFC4;
+  --color-stub: #A09890;
+
+  --color-success: #3B6E4A;
+  --color-warning: #92640A;
+  --color-error: #8B2E2E;
+
+  --font-serif: 'Lora', serif;
+  --font-sans: 'Inter', sans-serif;
+
+  --space-xs: 4px;
+  --space-s: 8px;
+  --space-m: 16px;
+  --space-l: 24px;
+  --space-xl: 40px;
+  --space-2xl: 64px;
+  --space-3xl: 96px;
+
+  --grid-max: 1200px;
+  --grid-gutter: 24px;
+
+  --transition-fast: 150ms ease-in-out;
+  --transition-page: 200ms ease-in;
+
+  --color-epoch-primary: #2C4A3E;
+  --color-epoch-accent: #8B7355;
+  --color-epoch-badge: #E8E0D4;
+}
+
+.epoch-30er {
+  --color-epoch-primary: #2C4A3E;
+  --color-epoch-accent:  #8B7355;
+  --color-epoch-badge:   #E8E0D4;
+  --epoch-radius:        4px;
+  --epoch-border-style:  solid;
+}
+
+.epoch-90er {
+  --color-epoch-primary: #1A3A5C;
+  --color-epoch-accent:  #7A6E8A;
+  --color-epoch-badge:   #E0E4EC;
+  --epoch-radius:        12px;
+  --epoch-border-style:  dashed;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: var(--color-epoch-primary);
+  text-decoration: underline;
+  transition: color var(--transition-fast);
+}
+
+a:hover {
+  color: var(--color-epoch-accent);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+h1 { font-size: 2rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.25rem; }
+
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-epoch-primary);
+  outline-offset: 3px;
+  border-radius: 2px;
+}

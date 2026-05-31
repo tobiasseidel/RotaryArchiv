@@ -41,11 +41,21 @@ def save_bboxes(
         bbox_list: Liste von BBox-Dicts
         db: Datenbank-Session
         update_bbox_data: Wenn True, auch bbox_data Column aktualisieren (für Kompatibilität)
-        image_width: Seitenbreite für Prozentberechnung
+        image_width: Seitenbreite für Prozentberechnung (wird bei None aus DB geholt)
 
     Returns:
         Liste der erstellten BBox Objekte
     """
+    # image_width aus DB holen falls nicht übergeben
+    if image_width is None:
+        ocr = (
+            db.query(OCRResult.image_width)
+            .filter(OCRResult.id == ocr_result_id)
+            .first()
+        )
+        if ocr:
+            image_width = ocr[0]
+
     # Alte Einträge löschen (mit fetch um StaleDataError bei gecachten Relationships zu vermeiden)
     db.query(BBox).filter(BBox.ocr_result_id == ocr_result_id).delete(
         synchronize_session="fetch"
@@ -62,7 +72,7 @@ def save_bboxes(
             bbox=item.get("bbox"),
             bbox_pixel=item.get("bbox_pixel"),
             text=item.get("text"),
-            review_status=item.get("review_status"),
+            review_status=item.get("review_status") or "pending",
             reviewed_at=_parse_datetime(item.get("reviewed_at")),
             reviewed_by=item.get("reviewed_by"),
             ocr_results_data=item.get("ocr_results"),

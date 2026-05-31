@@ -231,19 +231,9 @@ async def process_bbox_ocr(
                 "auto_confirmed": False,
             }
 
-        # Wende den gleichen X-Skalierungsfaktor an wie in der Leaflet-Anzeige (0.7)
-        # Dies korrigiert die X-Achsen-Ausrichtung für das Cropping
-        bbox_pixel_adjusted = [
-            int(bbox_pixel[0] * 0.7),  # x1
-            bbox_pixel[1],  # y1 (unverändert)
-            int(bbox_pixel[2] * 0.7),  # x2
-            bbox_pixel[3],  # y2 (unverändert)
-        ]
+        bbox_pixel_adjusted = bbox_pixel
 
-        logger.debug(
-            f"BBox-Koordinaten angepasst: Original={bbox_pixel}, "
-            f"Angepasst (X * 0.7)={bbox_pixel_adjusted}"
-        )
+        logger.debug(f"BBox-Koordinaten: bbox_pixel={bbox_pixel}")
 
         # Hole OCRResult um Bild-Dimensionen zu vergleichen (OLLAMA_VISION oder PDF_NATIVE)
         from src.rotary_archiv.utils.ocr_result_loading import (
@@ -370,9 +360,8 @@ async def process_bbox_ocr(
 
             logger.info(
                 f"BBox OCR: Seite aus PDF extrahiert: {extracted_width}x{extracted_height} (DPI: {dpi}), "
-                f"bbox_pixel (original)={bbox_pixel}, "
-                f"bbox_pixel (angepasst, X*0.7)={bbox_pixel_adjusted}, "
-                f"BBox-Bereich (angepasst): {abs(bbox_pixel_adjusted[2] - bbox_pixel_adjusted[0])}x{abs(bbox_pixel_adjusted[3] - bbox_pixel_adjusted[1])}, "
+                f"bbox_pixel={bbox_pixel}, "
+                f"BBox-Bereich: {abs(bbox_pixel[2] - bbox_pixel[0])}x{abs(bbox_pixel[3] - bbox_pixel[1])}, "
                 f"OCR-Bild-Dimensionen: {ocr_image_width}x{ocr_image_height}"
             )
             if page is not None and page.deskew_angle is not None:
