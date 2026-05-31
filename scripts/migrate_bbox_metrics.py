@@ -10,11 +10,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy.orm import Session  # noqa: E402
+from sqlalchemy.orm import Session
 
-from src.rotary_archiv.core.bbox import update_bbox_with_metrics  # noqa: E402
-from src.rotary_archiv.core.database import SessionLocal  # noqa: E402
-from src.rotary_archiv.core.models import BBox, OCRResult  # noqa: E402
+from src.rotary_archiv.core.bbox import update_bbox_with_metrics
+from src.rotary_archiv.core.database import SessionLocal
+from src.rotary_archiv.core.models import BBox, OCRResult
 
 
 def migrate_bbox_metrics():
@@ -68,6 +68,7 @@ def migrate_bbox_metrics():
                                     )
                                     break
 
+                    bbox.metrics_stale = False
                     migrated += 1
                 except Exception as e:
                     errors += 1
