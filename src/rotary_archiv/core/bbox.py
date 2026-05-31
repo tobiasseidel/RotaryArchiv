@@ -46,8 +46,10 @@ def save_bboxes(
     Returns:
         Liste der erstellten BBox Objekte
     """
-    # Alte Einträge löschen
-    db.query(BBox).filter(BBox.ocr_result_id == ocr_result_id).delete()
+    # Alte Einträge löschen (mit fetch um StaleDataError bei gecachten Relationships zu vermeiden)
+    db.query(BBox).filter(BBox.ocr_result_id == ocr_result_id).delete(
+        synchronize_session="fetch"
+    )
 
     bboxes = []
     for item in bbox_list:

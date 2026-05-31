@@ -542,7 +542,13 @@ async def process_bbox_review_job(job_id: int) -> None:
         ocr_result.bbox_data = updated_bboxes
         flag_modified(ocr_result, "bbox_data")
         # Parallel in neue bboxes Tabelle schreiben
-        save_bboxes(ocr_result.id, updated_bboxes, db, update_bbox_data=False)
+        save_bboxes(
+            ocr_result.id,
+            updated_bboxes,
+            db,
+            update_bbox_data=False,
+            image_width=ocr_result.image_width,
+        )
         logger.debug(
             f"Seite {job.document_page_id}: {len(updated_bboxes)} BBoxen, {multibox_new_boxes_count} aus Multibox"
         )
@@ -911,7 +917,13 @@ async def process_llm_sight_job(job_id: int) -> None:
         ocr_result.bbox_data = bbox_list
         flag_modified(ocr_result, "bbox_data")
         # Parallel in neue bboxes Tabelle schreiben
-        save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
+        save_bboxes(
+            ocr_result.id,
+            bbox_list,
+            db,
+            update_bbox_data=False,
+            image_width=ocr_result.image_width,
+        )
         job.progress = 100.0
         job.current_step = (
             f"Abgeschlossen - {processed} BBoxen, {auto_confirmed_count} auto-bestätigt"
@@ -2810,7 +2822,13 @@ async def process_persistent_region_re_recognize_job(job_id: int) -> None:
             ocr_result.bbox_data = bbox_list
             flag_modified(ocr_result, "bbox_data")
             # Parallel in neue bboxes Tabelle schreiben
-            save_bboxes(ocr_result.id, bbox_list, db, update_bbox_data=False)
+            save_bboxes(
+                ocr_result.id,
+                bbox_list,
+                db,
+                update_bbox_data=False,
+                image_width=ocr_result.image_width,
+            )
             db.commit()
 
             children_after = get_children()
