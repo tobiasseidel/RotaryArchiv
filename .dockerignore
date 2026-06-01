@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.egg-info/
 .eggs/
-dist/
 build/
 
 # Virtual environments
@@ -22,6 +21,10 @@ venv/
 .coverage
 htmlcov/
 .tox/
+
+# Node / Frontend
+node_modules/
+rotary-frontend/node_modules/
 
 # Development
 *.db
