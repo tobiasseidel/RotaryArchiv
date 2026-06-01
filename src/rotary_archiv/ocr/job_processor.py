@@ -2136,14 +2136,12 @@ async def process_quality_job(job_id: int) -> None:
             .order_by(BBox.id)
             .all()
         )
-        for bp_entry in bbox_black_per_char:
-            idx = bp_entry.get("index")
-            if idx is not None and idx < len(bbox_rows):
-                bbox_rows[idx].black_pixels = bp_entry.get("black_pixels")
-                bbox_rows[idx].black_pixels_per_char = bp_entry.get(
-                    "black_pixels_per_char"
-                )
-                bbox_rows[idx].metrics_stale = False
+        for idx, bbox in enumerate(bbox_rows):
+            bbox.metrics_stale = False
+            if idx < len(bbox_black_per_char):
+                bp_entry = bbox_black_per_char[idx]
+                bbox.black_pixels = bp_entry.get("black_pixels")
+                bbox.black_pixels_per_char = bp_entry.get("black_pixels_per_char")
 
         db.commit()
 
