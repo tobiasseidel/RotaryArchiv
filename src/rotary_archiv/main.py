@@ -18,6 +18,7 @@ from src.rotary_archiv.api import (
     pages,
     quality,
     review,
+    v1,
 )
 from src.rotary_archiv.api import settings as settings_api
 
@@ -95,6 +96,9 @@ app.include_router(
     tags=["erschliessung-overview"],
 )
 app.include_router(settings_api.router, tags=["settings"])
+
+# Public API v1 (unabhängig vom Admin-Backend)
+app.include_router(v1.router, tags=["public-api"])
 
 
 @app.get("/")
