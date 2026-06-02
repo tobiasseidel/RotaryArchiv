@@ -4,6 +4,12 @@
 > **Version:** 1.0 — 2026-05-02  
 > **Abhängigkeiten:** T3-docker-compose.md  
 > **Input für:** T6 Coding, laufender Betrieb
+>
+> **⚠️ Aktualisiert durch T9-dev-strategie.md:** Die Update/Rollback-Skripte
+> setzen `backend_a` und `backend_b` als separate Container voraus.
+> Laut T9 wird in Phase 1 nur **ein Backend-Container** deployed.
+> Diese Skripte werden erst beim Split in Produktion benötigt.
+> Siehe [T9-dev-strategie.md](T9-dev-strategie.md).
 
 ---
 

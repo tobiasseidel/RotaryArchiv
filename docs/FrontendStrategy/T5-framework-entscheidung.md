@@ -6,6 +6,13 @@
 > **Input aus:** T5-designsystem-v1.1.md, T5-komponenten-v1.3.md, T3-nginx-config.md,  
 >   T3-docker-compose.md, project-brief_v05.md, T2-migrations-plan.md  
 > **Status:** Entschieden
+>
+> **⚠️ Aktualisiert durch T9-dev-strategie.md:** Dieses Dokument referenziert
+> T3-nginx-config und T3-docker-compose (Split-Architektur) und erwähnt
+> Backend B als API-Quelle. Die Framework-Entscheidung (Vue 3 + Vite) ist
+> nicht betroffen. Der Deployment-Workflow (`rsync dist/ → frontend_b/`)
+> vereinfacht sich in Phase 1 auf Vite-Proxy → Single-Backend.
+> Siehe [T9-dev-strategie.md](T9-dev-strategie.md).
 
 ---
 

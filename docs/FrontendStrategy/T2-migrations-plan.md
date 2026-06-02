@@ -5,6 +5,13 @@
 > **Abhängigkeiten:** T2-datenmodell-audit.md, T3 (für E-Mail-Verschlüsselung)
 > **Änderungen v1.1:** P0 (Shared Package `rotary_core`) ergänzt; Architekturentscheidung
 > Zwei-Backend-Option dokumentiert; Triplestore-Status als aktiv bestätigt.
+>
+> **⚠️ Aktualisiert durch T9-dev-strategie.md:** Dieses Dokument definiert
+> `rotary_core` als P0 (kritisch, zuerst) und setzt den Zwei-Backend-Split
+> voraus. Laut T9 wird in Phase 1 mit **einem Single-Backend** ohne
+> `rotary_core`-Extraktion und ohne Fuseki entwickelt. Die Migrations-Schritte
+> bleiben als Zukunftsplan gültig, sind aber nicht mehr "kritisch".
+> Siehe [T9-dev-strategie.md](T9-dev-strategie.md).
 
 ---
 

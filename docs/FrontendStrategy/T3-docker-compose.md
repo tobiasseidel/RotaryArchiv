@@ -4,6 +4,13 @@
 > **Version:** 1.0 — 2026-05-02  
 > **Abhängigkeiten:** T3-nginx-config.md, T2-migrations-plan.md  
 > **Input für:** T6 Coding
+>
+> **⚠️ Aktualisiert durch T9-dev-strategie.md:** Dieses Dokument beschreibt
+> die vollständige Split-Infrastruktur (2 Backends, Fuseki, Certbot, rotary_core)
+> als Produktionsziel. Laut T9 wird in Phase 1 lokal mit **einem Single-Backend**
+> entwickelt — ohne Fuseki, ohne Certbot, ohne Backend-Split. Diese docker-compose.yml
+> bleibt als Ziel-Architektur gültig, ist aber nicht der aktuelle Entwicklungsstand.
+> Siehe [T9-dev-strategie.md](T9-dev-strategie.md).
 
 ---
 

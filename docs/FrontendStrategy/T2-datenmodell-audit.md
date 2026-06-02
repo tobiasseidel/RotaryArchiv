@@ -2,6 +2,12 @@
 > **Version:** 1.0 — 2026-05-02  |  **Thread:** T2 Datenmodell-Audit
 > **Input für:** T5 Frontend/Design, T6 Coding, T3 Auth & Deployment
 > **Basis:** models.py, triplestore.py, project-brief.md v0.2, T1-informationsarchitektur.md v1.1
+>
+> **⚠️ Aktualisiert durch T9-dev-strategie.md:** Dieses Dokument bewertet
+> "fehlende Schicht-B-Endpoints" als Defizit und setzt den Split voraus.
+> Laut T9 wird in Phase 1 mit **einem Single-Backend** entwickelt.
+> Fehlende "Schicht-B"-Endpoints sind kein Defizit, sondern werden im
+> Single-Backend unter `/api/v1/` realisiert. Siehe [T9-dev-strategie.md](T9-dev-strategie.md).
 
 ---
 

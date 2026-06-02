@@ -7,6 +7,11 @@
 >   Projektstrategie um Zwei-Phasen-Modell ergänzt (Demonstrator → Öffentliches Archiv);
 >   Zielgruppen-Tabelle aktualisiert; Emotionaler Kern um Vertrauensdimension erweitert;
 >   V12 als Vertrauensdokument für Vorstand markiert; Glossar erweitert.
+>
+> **⚠️ Aktualisiert durch T9-dev-strategie.md:** Dieses Dokument beschreibt die
+> Zwei-Backend-Architektur (Backend A + B, Fuseki, rotary_core) als entschiedenen
+> Ist-Zustand. Laut T9 wird in Phase 1 mit **einem Single-Backend** entwickelt.
+> Der Split erfolgt erst später bei Bedarf. Siehe [T9-dev-strategie.md](T9-dev-strategie.md).
 
 ---
 

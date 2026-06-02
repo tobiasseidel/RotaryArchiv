@@ -4,6 +4,12 @@
 > **Version:** 1.0 — 2026-05-02  
 > **Abhängigkeiten:** T3-nginx-config.md, T3-docker-compose.md  
 > **Input für:** T5 Frontend/Design, T6 Coding
+>
+> **⚠️ Aktualisiert durch T9-dev-strategie.md:** Dieses Dokument referenziert
+> T3-nginx-config und T3-docker-compose, die den Zwei-Backend-Split beschreiben.
+> Die Domain-Entscheidung selbst ist von der T9-Strategie nicht betroffen —
+> Certbot/TLS wird aber erst beim Produktions-Deployment relevant.
+> Siehe [T9-dev-strategie.md](T9-dev-strategie.md).
 
 ---
 

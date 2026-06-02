@@ -4,6 +4,12 @@
 > **Thread:** T6 Frontend-Entwickler
 > **Phase:** Planning Phase
 > **Input aus:** T2-migrations-plan.md, T5-komponenten-v1.3.md
+>
+> **⚠️ Aktualisiert durch T9-dev-strategie.md:** Dieses Dokument begründet
+> Mock-Daten mit "ohne laufendes Backend B". Laut T9 wird Phase 1 gegen
+> das **Single-Backend** entwickelt — Mocks sind weiterhin nützlich für
+> reine Frontend-Entwicklung, aber nicht mehr als Ersatz für ein fehlendes
+> Backend B nötig. Siehe [T9-dev-strategie.md](T9-dev-strategie.md).
 
 ---
 

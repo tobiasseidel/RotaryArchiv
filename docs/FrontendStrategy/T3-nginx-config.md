@@ -4,6 +4,12 @@
 > **Version:** 1.0 — 2026-05-02  
 > **Abhängigkeiten:** project-brief_v03.md, T2-migrations-plan.md  
 > **Input für:** T6 Coding, T5 Frontend/Design
+>
+> **⚠️ Aktualisiert durch T9-dev-strategie.md:** Diese Nginx-Konfiguration setzt
+> den Zwei-Backend-Split voraus (/api → backend_b, /admin → deny) inkl. Certbot/TLS.
+> Laut T9 wird in Phase 1 mit **Vite-Proxy auf ein Single-Backend** entwickelt.
+> Die Nginx-Config bleibt als Produktionsziel gültig.
+> Siehe [T9-dev-strategie.md](T9-dev-strategie.md).
 
 ---
 

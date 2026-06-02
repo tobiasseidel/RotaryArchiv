@@ -3,6 +3,12 @@
 > **Version:** 1.0 — 2026-05-03
 > **Thread:** T6 Frontend-Entwickler
 > **Phase:** Planning Phase
+>
+> **⚠️ Aktualisiert durch T9-dev-strategie.md:** Dieses Dokument nennt
+> "Gegen echtes Backend B" als Phase-2-Ziel. Laut T9 wird Phase 1 gegen
+> das **Single-Backend** entwickelt. Die Build-Reihenfolge bleibt gültig,
+> nur dass das API-Ziel nicht Backend B, sondern das Single-Backend unter
+> `/api/v1/` ist. Siehe [T9-dev-strategie.md](T9-dev-strategie.md).
 
 ---
 

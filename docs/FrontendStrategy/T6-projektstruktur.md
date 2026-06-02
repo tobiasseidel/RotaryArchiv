@@ -4,6 +4,12 @@
 > **Thread:** T6 Frontend-Entwickler
 > **Phase:** Planning Phase
 > **Input aus:** T5-framework-entscheidung.md, T5-designsystem-v1.1.md, T5-komponenten-v1.3.md
+>
+> **⚠️ Aktualisiert durch T9-dev-strategie.md:** Dieses Dokument referenziert
+> T3-nginx-config (Split-Architektur) als Basis für den History-Mode.
+> Die Projektstruktur selbst ist von T9 nicht betroffen — Frontend bleibt
+> gleich, nur das API-Backend ist aktuell ein Single-Service.
+> Siehe [T9-dev-strategie.md](T9-dev-strategie.md).
 
 ---
 

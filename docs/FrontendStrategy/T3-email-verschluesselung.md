@@ -4,6 +4,12 @@
 > **Version:** 1.0 — 2026-05-02  
 > **Abhängigkeiten:** T2-migrations-plan.md (P3: Story, Correction), T3-auth-konzept.md  
 > **Input für:** T6 Coding (P3), rotary_core
+>
+> **⚠️ Aktualisiert durch T9-dev-strategie.md:** Dieses Dokument setzt die
+> Implementierung in `rotary_core` voraus. Laut T9 wird in Phase 1 ohne
+> `rotary_core`-Package entwickelt — die Verschlüsselung wird direkt im
+> Single-Backend implementiert und später bei Bedarf extrahiert.
+> Siehe [T9-dev-strategie.md](T9-dev-strategie.md).
 
 ---
 

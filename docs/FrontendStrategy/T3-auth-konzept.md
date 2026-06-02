@@ -4,6 +4,12 @@
 > **Version:** 1.0 — 2026-05-02  
 > **Abhängigkeiten:** project-brief_v03.md, T2-migrations-plan.md  
 > **Input für:** T6 Coding (Backend B), T5 Frontend/Design
+>
+> **⚠️ Aktualisiert durch T9-dev-strategie.md:** Dieses Dokument platziert die
+> Auth-Implementierung in einem separaten `backend_b`-Service mit `rotary_core`-Dependency.
+> Laut T9 wird in Phase 1 mit **einem Single-Backend** entwickelt — Auth läuft
+> zunächst im selben Prozess. Die Backend-B-Struktur bleibt als Zukunftsplan gültig.
+> Siehe [T9-dev-strategie.md](T9-dev-strategie.md).
 
 ---
 
