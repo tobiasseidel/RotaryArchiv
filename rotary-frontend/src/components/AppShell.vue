@@ -19,12 +19,12 @@ const epochStore = useEpochStore()
         </nav>
 
         <div class="header-actions">
-          <button class="search-btn" type="button" aria-label="Suche">
+          <RouterLink to="/suche" class="search-btn" aria-label="Suche">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="11" cy="11" r="8"/>
               <path d="m21 21-4.3-4.3"/>
             </svg>
-          </button>
+          </RouterLink>
           <a href="#" class="login-link">Login</a>
 
           <details class="nav-mobile-toggle">
@@ -132,6 +132,7 @@ const epochStore = useEpochStore()
   display: flex;
   align-items: center;
   justify-content: center;
+  text-decoration: none;
 }
 
 .search-btn:hover {

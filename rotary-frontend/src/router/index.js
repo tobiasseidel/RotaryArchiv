@@ -16,9 +16,9 @@ const routes = [
     name: 'document',
     component: () => import('@/views/V04Document.vue')
   },
+  { path: '/suche', name: 'search', component: () => import('@/views/V05Search.vue') },
   // Phase 2 (auskommentierte Platzhalter)
   // { path: '/epochen', name: 'epochs', component: () => import('@/views/V02Epochs.vue') },
-  // { path: '/suche', name: 'search', component: () => import('@/views/V05Search.vue') },
   // { path: '/karte', name: 'map', component: () => import('@/views/V06Map.vue') },
   // { path: '/netzwerk', name: 'network', component: () => import('@/views/V07Network.vue') },
   // { path: '/geschichte/:slug', name: 'story', component: () => import('@/views/V08StoryDetail.vue') },

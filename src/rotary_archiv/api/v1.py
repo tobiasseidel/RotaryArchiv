@@ -12,7 +12,8 @@ from sqlalchemy import desc, nullslast
 from sqlalchemy.orm import Session
 
 from src.rotary_archiv.core.database import get_db
-from src.rotary_archiv.core.models import DocumentPage, DocumentUnit
+from src.rotary_archiv.core.models import DocumentPage, DocumentUnit, OCRResult
+from src.rotary_archiv.ocr.job_processor import get_unit_text_in_reading_order
 
 router = APIRouter(prefix="/api/v1", tags=["public-api"])
 
@@ -126,6 +127,7 @@ class DocumentDetail(BaseModel):
     document_type: str | None = None
     type: str | None = None
     summary: str | None = None
+    transcription: str | None = None
     pages: list[dict] = Field(default_factory=list)
     persons: list[dict] = Field(default_factory=list)
     topic: str | None = None
@@ -138,6 +140,135 @@ class FeaturedResponse(BaseModel):
     quote_source: str | None = None
     document_id: int | None = None
     person_slug: str | None = None
+
+
+# ─── Search ─────────────────────────────────────────────────────────────────
+
+
+class SearchResultItem(BaseModel):
+    type: str  # "person" | "document"
+    id: int
+    slug: str
+    display_name: str
+    epoch: str | None = None
+    snippet: str | None = None
+    document_id: int | None = None
+    portrait_url: str | None = None
+
+
+@router.get("/search", response_model=list[SearchResultItem])
+def search(
+    q: str = Query(..., min_length=1, description="Suchbegriff"),
+    epoch: str | None = Query(None, description="Filter: 30er | 90er"),
+    db: Session = Depends(get_db),
+):
+    """
+    Volltextsuche über Personen und Dokumente.
+    Durchsucht display_name, title, summary, topic, place.
+    """
+    term = q.strip().lower()
+    units = db.query(DocumentUnit).filter(DocumentUnit.is_public.is_(True)).all()
+
+    if epoch:
+        units = [u for u in units if _derive_epoch(u.date) == epoch]
+
+    results: list[SearchResultItem] = []
+    seen_persons: set[str] = set()
+    seen_docs: set[int] = set()
+
+    for unit in units:
+        unit_epoch = _derive_epoch(unit.date)
+
+        # Dokumente zuerst (vor Personen)
+        doc_match = False
+        doc_snippet = None
+        for field, label in [
+            (unit.title, "title"),
+            (unit.summary, "summary"),
+            (unit.topic, "topic"),
+            (unit.place, "place"),
+        ]:
+            if field and term in field.lower():
+                doc_match = True
+                doc_snippet = field if label != "title" else None
+                break
+
+        if not doc_match and unit.page_ids:
+            ocr_match = (
+                db.query(OCRResult.text)
+                .join(DocumentPage, OCRResult.document_page_id == DocumentPage.id)
+                .filter(
+                    DocumentPage.id.in_(unit.page_ids),
+                    OCRResult.text.ilike(f"%{term}%"),
+                )
+                .limit(1)
+                .first()
+            )
+            if ocr_match:
+                doc_match = True
+                full_text = get_unit_text_in_reading_order(
+                    db, unit.page_ids, page_separator="\n\n"
+                )
+                if full_text and term in full_text.lower():
+                    idx = full_text.lower().find(term)
+                    start = max(0, idx - 60)
+                    end = min(len(full_text), idx + len(term) + 60)
+                    doc_snippet = (
+                        ("…" if start > 0 else "")
+                        + full_text[start:end]
+                        + ("…" if end < len(full_text) else "")
+                    )
+
+        if doc_match and unit.id not in seen_docs:
+            seen_docs.add(unit.id)
+            results.append(
+                SearchResultItem(
+                    type="document",
+                    id=unit.id,
+                    slug=str(unit.id),
+                    display_name=unit.title or f"Dokument #{unit.document_id}",
+                    epoch=unit_epoch,
+                    snippet=doc_snippet or unit.summary,
+                    document_id=unit.document_id,
+                )
+            )
+
+        # Personen im Unit-JSON durchsuchen
+        for p in unit.persons or []:
+            name = p.get("name", "")
+            if not name:
+                continue
+            slug = _name_to_slug(name)
+            if term in name.lower():
+                if slug not in seen_persons:
+                    seen_persons.add(slug)
+                    results.append(
+                        SearchResultItem(
+                            type="person",
+                            id=len(seen_persons),
+                            slug=slug,
+                            display_name=name,
+                            epoch=unit_epoch,
+                            snippet=p.get("role"),
+                            portrait_url=None,
+                        )
+                    )
+            # Unit-intern auch nach Namen in summary/title matchen
+            elif term in (unit.summary or "").lower() and slug not in seen_persons:
+                seen_persons.add(slug)
+                results.append(
+                    SearchResultItem(
+                        type="person",
+                        id=len(seen_persons),
+                        slug=slug,
+                        display_name=name,
+                        epoch=unit_epoch,
+                        snippet=p.get("role"),
+                        portrait_url=None,
+                    )
+                )
+
+    return results
 
 
 # ─── Endpoints ─────────────────────────────────────────────────────────────
@@ -302,6 +433,13 @@ def get_document(
 
     pages = _build_page_list(unit, db)
     doc_type = unit.document_type.value if unit.document_type else None
+
+    transcription = (
+        get_unit_text_in_reading_order(db, unit.page_ids, page_separator="\n\n")
+        if unit.page_ids
+        else None
+    )
+
     return DocumentDetail(
         id=unit.id,
         document_id=unit.document_id,
@@ -311,6 +449,7 @@ def get_document(
         document_type=doc_type,
         type=doc_type,
         summary=unit.summary,
+        transcription=transcription,
         pages=pages,
         persons=unit.persons or [],
         topic=unit.topic,

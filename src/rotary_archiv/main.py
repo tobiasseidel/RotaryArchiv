@@ -21,6 +21,7 @@ from src.rotary_archiv.api import (
     v1,
 )
 from src.rotary_archiv.api import settings as settings_api
+from src.rotary_archiv.config import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,11 @@ app.add_middleware(
 static_dir = Path(__file__).parent.parent.parent / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+# Scan-Bilder (extrahierte Seiten-PNGs)
+scans_dir = Path(Settings().scans_path)
+if scans_dir.exists():
+    app.mount("/scans", StaticFiles(directory=str(scans_dir)), name="scans")
 
 
 # Routen

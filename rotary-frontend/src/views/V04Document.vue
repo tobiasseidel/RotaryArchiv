@@ -4,8 +4,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useApi } from '@/composables/useApi'
 import { useEpochStore } from '@/stores/epoch'
 import DocumentDualView from '@/components/DocumentDualView.vue'
-import ContributionModalMini from '@/components/ContributionModalMini.vue'
-import EpochBadge from '@/components/EpochBadge.vue'
 
 const route = useRoute()
 const { getDocument } = useApi()
@@ -30,36 +28,6 @@ onMounted(async () => {
     loading.value = false
   }
 })
-
-const selectedBbox = ref(null)
-const submittedBboxIds = ref([])
-const toastVisible = ref(false)
-const toastMessage = ref('')
-let toastTimer = null
-
-function handleGapClicked(bbox) {
-  selectedBbox.value = bbox
-}
-
-function handleModalSubmit(bboxId, text) {
-  console.log('Gap submitted:', { bboxId, text })
-  submittedBboxIds.value = [...submittedBboxIds.value, bboxId]
-  selectedBbox.value = null
-  showToast('Danke für Ihren Beitrag!')
-}
-
-function handleModalClose() {
-  selectedBbox.value = null
-}
-
-function showToast(message) {
-  toastMessage.value = message
-  toastVisible.value = true
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => {
-    toastVisible.value = false
-  }, 3000)
-}
 </script>
 
 <template>
@@ -78,42 +46,7 @@ function showToast(message) {
       <RouterLink to="/" class="back-link">← Zurück zur Startseite</RouterLink>
     </div>
 
-    <div v-else-if="document.stub" class="stub-state">
-      <div class="stub-content">
-        <EpochBadge :epoch="document.epoch || '90er'" />
-        <h1 class="stub-title">
-          {{ document.epoch === '30er' ? 'Protokoll der 30er' : 'Protokoll der 90er' }}
-        </h1>
-        <p class="stub-explanation">
-          Dieses Protokoll ist noch nicht öffentlich einsehbar.
-          Das RotaryArchiv befindet sich im Aufbau und sammelt Informationen über ehemalige Mitglieder.
-        </p>
-        <p class="stub-explanation">
-          Um vollständigen Zugang zu erhalten, melden Sie sich als Mitglied an.
-        </p>
-        <a href="#" class="login-cta">Jetzt einloggen</a>
-      </div>
-    </div>
-
-    <DocumentDualView
-      v-else
-      :document="document"
-      :submitted-bbox-ids="submittedBboxIds"
-      @gap-clicked="handleGapClicked"
-    />
-
-    <ContributionModalMini
-      v-if="selectedBbox"
-      :bbox="selectedBbox"
-      @submit="handleModalSubmit"
-      @close="handleModalClose"
-    />
-
-    <Teleport to="body">
-      <div v-if="toastVisible" class="toast" role="status" aria-live="polite">
-        {{ toastMessage }}
-      </div>
-    </Teleport>
+    <DocumentDualView v-else :document="document" />
   </div>
 </template>
 
@@ -184,78 +117,5 @@ function showToast(message) {
 
 .back-link:hover {
   text-decoration: underline;
-}
-
-.stub-state {
-  max-width: var(--grid-max);
-  margin: 0 auto;
-  padding: var(--space-xl) var(--space-l);
-}
-
-.stub-content {
-  max-width: 600px;
-  margin: 0 auto;
-  text-align: center;
-}
-
-.stub-title {
-  font-family: var(--font-serif);
-  font-size: 2rem;
-  margin: var(--space-m) 0;
-  color: var(--color-text-secondary);
-}
-
-.stub-explanation {
-  font-family: var(--font-sans);
-  font-size: 1rem;
-  color: var(--color-text-secondary);
-  line-height: 1.6;
-  margin-bottom: var(--space-m);
-}
-
-.login-cta {
-  display: inline-block;
-  background: var(--color-epoch-primary);
-  color: var(--color-surface);
-  padding: var(--space-m) var(--space-l);
-  border-radius: 8px;
-  text-decoration: none;
-  font-family: var(--font-sans);
-  font-weight: 600;
-  margin-top: var(--space-m);
-  transition: background var(--transition-fast);
-}
-
-.login-cta:hover {
-  background: var(--color-epoch-accent);
-}
-
-.toast {
-  position: fixed;
-  bottom: var(--space-xl);
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--color-epoch-primary);
-  color: var(--color-surface);
-  font-family: var(--font-sans);
-  font-size: 0.9375rem;
-  font-weight: 600;
-  padding: var(--space-m) var(--space-l);
-  border-radius: 8px;
-  z-index: 300;
-  box-shadow: 0 4px 24px rgba(28, 25, 23, 0.2);
-  animation: toast-in 300ms ease-out;
-  pointer-events: none;
-}
-
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
 }
 </style>

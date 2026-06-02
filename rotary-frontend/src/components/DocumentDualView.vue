@@ -1,74 +1,123 @@
 <script setup>
-import { ref, computed } from 'vue'
-import EpochBadge from '@/components/EpochBadge.vue'
-import GapInline from '@/components/GapInline.vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
-  document: {
-    type: Object,
-    required: true
-  },
-  submittedBboxIds: {
-    type: Array,
-    default: () => []
-  }
+  document: { type: Object, required: true }
 })
 
-const emit = defineEmits(['gap-clicked'])
+function nameToSlug(name) {
+  return name.toLowerCase().trim().replace(/[^a-z0-9\s-]/g, '').replace(/[\s-]+/g, '-').replace(/^-|-$/g, '')
+}
 
 const activeTab = ref('scan')
-const imageZoomed = ref(false)
+const currentPageIdx = ref(0)
+const scanEl = ref(null)
+const scale = ref(1)
+const panX = ref(0)
+const panY = ref(0)
+const isPanning = ref(false)
+const panStart = ref({ x: 0, y: 0 })
 
-const page = computed(() => {
-  return props.document.pages?.[0] || {}
-})
+const pages = computed(() => props.document.pages || [])
+const currentPage = computed(() => pages.value[currentPageIdx.value] || {})
 
 const formattedDate = computed(() => {
+  if (!props.document.date) return ''
   const d = new Date(props.document.date)
   return d.toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' })
 })
 
-function parseTranscription(ocrText, bboxData) {
-  if (!ocrText) return []
+const transformStyle = computed(() => ({
+  transform: `translate(${panX.value}px, ${panY.value}px) scale(${scale.value})`,
+  cursor: scale.value > 1 ? 'grab' : 'zoom-in',
+}))
 
-  const lowConfidenceGaps = (bboxData || []).filter(
-    b => b.role === 'unreadable' || b.text === null
-  )
+const zoomLevels = [0.5, 0.75, 1, 1.5, 2, 3, 4]
 
-  if (lowConfidenceGaps.length === 0) {
-    return [{ type: 'text', content: ocrText, bboxId: null }]
-  }
-
-  const firstGap = lowConfidenceGaps[0]
-  const segments = []
-  const insertPosition = Math.floor(ocrText.length * 0.4)
-
-  if (insertPosition > 0) {
-    segments.push({ type: 'text', content: ocrText.substring(0, insertPosition), bboxId: null })
-    segments.push({ type: 'gap', content: '░░░░░', bboxId: firstGap.id, bbox: firstGap })
-    segments.push({ type: 'text', content: ocrText.substring(insertPosition), bboxId: null })
-  } else {
-    segments.push({ type: 'text', content: ocrText, bboxId: null })
-  }
-
-  return segments
+function prevPage() {
+  resetView()
+  if (currentPageIdx.value > 0) currentPageIdx.value--
 }
 
-const transcriptionSegments = computed(() => {
-  return parseTranscription(page.value.ocr_text, props.document.bbox_data)
-})
+function nextPage() {
+  resetView()
+  if (currentPageIdx.value < pages.value.length - 1) currentPageIdx.value++
+}
 
 function handleImageError(e) {
   e.target.style.display = 'none'
   const placeholder = e.target.parentElement.querySelector('.scan-placeholder')
-  if (placeholder) {
-    placeholder.style.display = 'flex'
-  }
+  if (placeholder) placeholder.style.display = 'flex'
 }
 
-function toggleZoom() {
-  imageZoomed.value = !imageZoomed.value
+function zoomIn() {
+  const i = zoomLevels.findIndex(z => z > scale.value)
+  if (i !== -1) scale.value = zoomLevels[i]
 }
+
+function zoomOut() {
+  const i = zoomLevels.findIndex(z => z >= scale.value)
+  if (i > 0) scale.value = zoomLevels[i - 1]
+}
+
+function zoomToFit() {
+  scale.value = 1
+  panX.value = 0
+  panY.value = 0
+}
+
+function resetView() {
+  scale.value = 1
+  panX.value = 0
+  panY.value = 0
+}
+
+function onWheel(e) {
+  e.preventDefault()
+  const delta = -Math.sign(e.deltaY)
+  const rect = scanEl.value?.getBoundingClientRect()
+  if (!rect) return
+  const mx = e.clientX - rect.left
+  const my = e.clientY - rect.top
+  const oldScale = scale.value
+  const newScale = Math.min(4, Math.max(0.5, oldScale + delta * 0.25))
+  scale.value = newScale
+  panX.value = mx - (mx - panX.value) * (newScale / oldScale)
+  panY.value = my - (my - panY.value) * (newScale / oldScale)
+}
+
+function onMouseDown(e) {
+  if (scale.value <= 1) return
+  isPanning.value = true
+  panStart.value = { x: e.clientX - panX.value, y: e.clientY - panY.value }
+  if (scanEl.value) scanEl.value.style.cursor = 'grabbing'
+}
+
+function onMouseMove(e) {
+  if (!isPanning.value) return
+  panX.value = e.clientX - panStart.value.x
+  panY.value = e.clientY - panStart.value.y
+}
+
+function onMouseUp() {
+  isPanning.value = false
+  if (scanEl.value) scanEl.value.style.cursor = scale.value > 1 ? 'grab' : 'zoom-in'
+}
+
+function onClick(e) {
+  if (isPanning.value) return
+  onWheel({ ...e, deltaY: -150, preventDefault: () => {} })
+}
+
+onMounted(() => {
+  window.addEventListener('mouseup', onMouseUp)
+  window.addEventListener('mousemove', onMouseMove)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('mouseup', onMouseUp)
+  window.removeEventListener('mousemove', onMouseMove)
+})
 </script>
 
 <template>
@@ -78,140 +127,82 @@ function toggleZoom() {
         <EpochBadge :epoch="document.epoch" />
         <h1 class="document-title">{{ document.title }}</h1>
         <p class="document-date">{{ formattedDate }}</p>
-      </div>
-      <div class="document-actions">
-        <a href="#" class="action-link">BibTeX</a>
-        <a href="#" class="action-link">Zitieren</a>
+        <div class="document-tags">
+          <span v-if="document.document_type" class="tag">{{ document.document_type }}</span>
+          <span v-if="document.topic" class="tag">{{ document.topic }}</span>
+          <span v-if="document.place" class="tag">{{ document.place }}</span>
+        </div>
       </div>
     </header>
 
-    <nav class="document-nav">
-      <button class="nav-btn" disabled>&larr; Vorheriges</button>
-      <button class="nav-btn" disabled>N&auml;chstes &rarr;</button>
-    </nav>
+    <div v-if="document.summary" class="document-summary">
+      <p>{{ document.summary }}</p>
+    </div>
 
     <div class="dual-container">
       <div class="dual-tabs" role="tablist">
-        <button
-          role="tab"
-          id="tab-scan"
-          :aria-selected="activeTab === 'scan'"
-          :aria-controls="activeTab === 'scan' ? 'panel-scan' : undefined"
-          class="tab-btn"
-          :class="{ active: activeTab === 'scan' }"
-          @click="activeTab = 'scan'"
-        >
-          Scan
-        </button>
-        <button
-          role="tab"
-          id="tab-transcription"
-          :aria-selected="activeTab === 'transcription'"
-          :aria-controls="activeTab === 'transcription' ? 'panel-transcription' : undefined"
-          class="tab-btn"
-          :class="{ active: activeTab === 'transcription' }"
-          @click="activeTab = 'transcription'"
-        >
-          Transkription
-        </button>
+        <button role="tab" id="tab-scan" :aria-selected="activeTab === 'scan'"
+          class="tab-btn" :class="{ active: activeTab === 'scan' }"
+          @click="activeTab = 'scan'">Scan</button>
+        <button role="tab" id="tab-transcription" :aria-selected="activeTab === 'transcription'"
+          class="tab-btn" :class="{ active: activeTab === 'transcription' }"
+          @click="activeTab = 'transcription'">Transkription</button>
+        <button v-if="document.persons?.length" role="tab" id="tab-persons"
+          :aria-selected="activeTab === 'persons'"
+          class="tab-btn" :class="{ active: activeTab === 'persons' }"
+          @click="activeTab = 'persons'">Personen</button>
       </div>
 
-      <div class="dual-panels">
-        <div
-          class="panel panel-scan"
-          :class="{ hidden: activeTab !== 'scan' }"
-          role="tabpanel"
-          id="panel-scan"
-          aria-labelledby="tab-scan"
-        >
-          <div class="scan-container">
-            <img
-              v-if="page.image_url"
-              :src="page.image_url"
-              :alt="'Scan Seite ' + (page.page_number || 1) + ' — ' + document.title"
-              class="scan-image"
-              :class="{ zoomed: imageZoomed }"
-              @error="handleImageError"
-              @click="toggleZoom"
-            />
-            <div class="scan-placeholder" style="display: none;">
-              <div class="placeholder-inner">
-                <span class="placeholder-icon">📄</span>
-                <span class="placeholder-text">Scan nicht verf&uuml;gbar</span>
-                <div class="placeholder-meta">
-                  <p><strong>Titel:</strong> {{ document.title }}</p>
-                  <p><strong>Datum:</strong> {{ formattedDate }}</p>
-                  <p><strong>Typ:</strong> {{ document.type }}</p>
-                </div>
-              </div>
+      <div class="dual-columns">
+        <div class="column column-scan">
+          <div v-if="pages.length > 1" class="page-nav">
+            <button class="page-nav-btn" :disabled="currentPageIdx === 0" @click="prevPage">&larr; Vorherige</button>
+            <span class="page-nav-label">Seite {{ currentPageIdx + 1 }} / {{ pages.length }}</span>
+            <button class="page-nav-btn" :disabled="currentPageIdx >= pages.length - 1" @click="nextPage">Nächste &rarr;</button>
+          </div>
+          <div class="scan-toolbar">
+            <button class="toolbar-btn" title="Vergrößern" @click="zoomIn" :disabled="scale >= 4">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+            <span class="toolbar-label">{{ Math.round(scale * 100) }}%</span>
+            <button class="toolbar-btn" title="Verkleinern" @click="zoomOut" :disabled="scale <= 0.5">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>
+            </button>
+            <button class="toolbar-btn" title="An Fenster anpassen" @click="zoomToFit">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+            </button>
+          </div>
+          <div class="scan-wrapper" ref="scanEl" @wheel.prevent="onWheel" @mousedown.prevent="onMouseDown" @click="onClick">
+            <img v-if="currentPage.image_url" :src="currentPage.image_url"
+              :alt="'Scan Seite ' + (currentPage.page_number || currentPageIdx + 1)"
+              class="scan-image" :style="transformStyle"
+              @error="handleImageError" draggable="false" />
+            <div v-else class="scan-placeholder">
+              <p>Scan nicht verfügbar</p>
             </div>
           </div>
         </div>
 
-        <div
-          class="panel panel-transcription"
-          :class="{ hidden: activeTab !== 'transcription' }"
-          role="tabpanel"
-          id="panel-transcription"
-          aria-labelledby="tab-transcription"
-        >
-          <div class="transcription-container">
-            <p class="transcription-text">
-              <template v-for="(segment, index) in transcriptionSegments" :key="index">
-                <GapInline
-                  v-if="segment.type === 'gap'"
-                  :bbox-id="segment.bboxId"
-                  :is-submitted="submittedBboxIds.includes(segment.bboxId)"
-                  @gap-clicked="emit('gap-clicked', segment.bbox)"
-                />
-                <span v-else>{{ segment.content }}</span>
-              </template>
-            </p>
+        <div class="column column-transcription">
+          <div v-if="!document.transcription" class="transcription-empty">
+            <p>Keine Transkription verfügbar.</p>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="dual-columns">
-      <div class="column column-scan">
-        <div class="scan-wrapper">
-          <img
-            v-if="page.image_url"
-            :src="page.image_url"
-            :alt="'Scan von ' + document.title"
-            class="scan-image"
-            :class="{ zoomed: imageZoomed }"
-            @error="handleImageError"
-            @click="toggleZoom"
-          />
-          <div class="scan-placeholder" style="display: none;">
-            <div class="placeholder-inner">
-              <span class="placeholder-icon">📄</span>
-              <span class="placeholder-text">Scan nicht verf&uuml;gbar</span>
-              <div class="placeholder-meta">
-                <p><strong>Titel:</strong> {{ document.title }}</p>
-                <p><strong>Datum:</strong> {{ formattedDate }}</p>
-                <p><strong>Typ:</strong> {{ document.type }}</p>
-              </div>
-            </div>
+          <div v-else class="transcription-wrapper">
+            <p class="transcription-text">{{ document.transcription }}</p>
           </div>
         </div>
       </div>
 
-      <div class="column column-transcription">
-        <div class="transcription-wrapper">
-          <p class="transcription-text">
-            <template v-for="(segment, index) in transcriptionSegments" :key="index">
-              <GapInline
-                  v-if="segment.type === 'gap'"
-                  :bbox-id="segment.bboxId"
-                  :is-submitted="submittedBboxIds.includes(segment.bboxId)"
-                  @gap-clicked="emit('gap-clicked', segment.bbox)"
-                />
-                <span v-else>{{ segment.content }}</span>
-            </template>
-          </p>
-        </div>
+      <div v-if="document.persons?.length" class="column column-persons">
+        <h3 class="persons-title">Erwähnte Personen</h3>
+        <ul class="persons-list">
+          <li v-for="p in document.persons" :key="p.name" class="person-item">
+            <RouterLink :to="'/person/' + nameToSlug(p.name)" class="person-link">
+              {{ p.name }}
+            </RouterLink>
+            <span v-if="p.role" class="person-role">{{ p.role }}</span>
+          </li>
+        </ul>
       </div>
     </div>
   </div>
@@ -225,16 +216,7 @@ function toggleZoom() {
 }
 
 .document-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--space-m);
-  gap: var(--space-l);
-  flex-wrap: wrap;
-}
-
-.document-meta {
-  flex: 1;
+  margin-bottom: var(--space-l);
 }
 
 .document-title {
@@ -248,56 +230,34 @@ function toggleZoom() {
   font-family: var(--font-sans);
   font-size: 0.875rem;
   color: var(--color-text-secondary);
+  margin-bottom: var(--space-s);
 }
 
-.document-actions {
+.document-tags {
   display: flex;
-  gap: var(--space-m);
+  gap: var(--space-s);
+  flex-wrap: wrap;
 }
 
-.action-link {
+.tag {
   font-family: var(--font-sans);
-  font-size: 0.875rem;
-  color: var(--color-epoch-primary);
-  text-decoration: none;
-  padding: var(--space-s) var(--space-m);
-  border: 1px solid var(--color-border);
+  font-size: 0.75rem;
+  padding: 2px var(--space-s);
+  background: var(--color-epoch-badge);
   border-radius: 4px;
-  transition: all var(--transition-fast);
-}
-
-.action-link:hover {
-  background: var(--color-epoch-primary);
-  color: var(--color-surface);
-  border-color: var(--color-epoch-primary);
-}
-
-.document-nav {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: var(--space-l);
-  padding: var(--space-m) 0;
-  border-top: 1px solid var(--color-border);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.nav-btn {
-  font-family: var(--font-sans);
-  font-size: 0.875rem;
   color: var(--color-text-secondary);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: var(--space-s);
 }
 
-.nav-btn:hover:not(:disabled) {
-  color: var(--color-epoch-primary);
-}
-
-.nav-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.document-summary {
+  font-family: var(--font-serif);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  padding: var(--space-l);
+  background: var(--color-surface);
+  border-radius: 8px;
+  margin-bottom: var(--space-l);
+  border: 1px solid var(--color-border);
 }
 
 .dual-tabs {
@@ -312,17 +272,10 @@ function toggleZoom() {
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   cursor: pointer;
-  transition: all var(--transition-fast);
 }
 
-.tab-btn:first-child {
-  border-right: none;
-  border-radius: 4px 0 0 4px;
-}
-
-.tab-btn:last-child {
-  border-radius: 0 4px 4px 0;
-}
+.tab-btn:first-child { border-radius: 4px 0 0 4px; border-right: none; }
+.tab-btn:last-child { border-radius: 0 4px 4px 0; }
 
 .tab-btn.active {
   background: var(--color-epoch-primary);
@@ -343,6 +296,79 @@ function toggleZoom() {
   box-shadow: 0 4px 24px rgba(28, 25, 23, 0.08);
 }
 
+.page-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-m);
+}
+
+.page-nav-btn {
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  color: var(--color-epoch-primary);
+  background: none;
+  border: 1px solid var(--color-border);
+  padding: var(--space-xs) var(--space-s);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.page-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-nav-btn:hover:not(:disabled) {
+  background: var(--color-epoch-primary);
+  color: var(--color-surface);
+}
+
+.page-nav-label {
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.scan-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-s);
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+}
+
+.toolbar-btn:hover:not(:disabled) {
+  background: var(--color-epoch-primary);
+  color: var(--color-surface);
+  border-color: var(--color-epoch-primary);
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.toolbar-label {
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  min-width: 40px;
+  text-align: center;
+}
+
 .scan-wrapper {
   min-height: 400px;
   display: flex;
@@ -351,63 +377,30 @@ function toggleZoom() {
   background: #E8E4DB;
   border-radius: 4px;
   overflow: hidden;
+  position: relative;
+  user-select: none;
 }
 
 .scan-image {
   max-width: 100%;
   max-height: 600px;
-  cursor: zoom-in;
-  transition: transform var(--transition-fast);
   object-fit: contain;
-}
-
-.scan-image.zoomed {
-  transform: scale(1.5);
-  cursor: zoom-out;
+  transition: transform 100ms ease-out;
+  transform-origin: 0 0;
+  will-change: transform;
+  pointer-events: none;
 }
 
 .scan-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 400px;
-  padding: var(--space-l);
-}
-
-.placeholder-inner {
-  text-align: center;
-  color: var(--color-text-secondary);
-}
-
-.placeholder-icon {
-  font-size: 3rem;
-  display: block;
-  margin-bottom: var(--space-m);
-}
-
-.placeholder-text {
-  font-family: var(--font-serif);
-  font-size: 1.25rem;
-  display: block;
-  margin-bottom: var(--space-m);
-}
-
-.placeholder-meta {
   font-family: var(--font-sans);
-  font-size: 0.875rem;
-  text-align: left;
-  margin-top: var(--space-m);
-  padding: var(--space-m);
-  background: var(--color-surface);
-  border-radius: 4px;
-}
-
-.placeholder-meta p {
-  margin: var(--space-xs) 0;
+  color: var(--color-stub);
+  padding: var(--space-xl);
 }
 
 .transcription-wrapper {
   min-height: 400px;
+  max-height: 700px;
+  overflow-y: auto;
 }
 
 .transcription-text {
@@ -415,14 +408,61 @@ function toggleZoom() {
   font-size: 1rem;
   line-height: 1.75;
   color: var(--color-text-primary);
+  white-space: pre-wrap;
 }
 
-.panel {
-  display: none;
+.transcription-empty {
+  font-family: var(--font-sans);
+  color: var(--color-stub);
+  padding: var(--space-xl);
+  text-align: center;
 }
 
-.panel.hidden {
-  display: none;
+.column-persons {
+  margin-top: var(--space-l);
+}
+
+.persons-title {
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin-bottom: var(--space-m);
+}
+
+.persons-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-s);
+}
+
+.person-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-s);
+  background: var(--color-bg);
+  border-radius: 4px;
+}
+
+.person-link {
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  color: var(--color-epoch-primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.person-link:hover {
+  text-decoration: underline;
+}
+
+.person-role {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  color: var(--color-stub);
 }
 
 @media (max-width: 767px) {
@@ -434,41 +474,13 @@ function toggleZoom() {
     display: none;
   }
 
-  .panel {
-    display: block;
+  .dual-columns.dual-tabs-active {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
-  .panel.hidden {
+  .column-persons {
     display: none;
-  }
-
-  .panel-scan {
-    background: var(--color-surface);
-    border-radius: 8px;
-    padding: var(--space-m);
-  }
-
-  .panel-transcription {
-    background: var(--color-surface);
-    border-radius: 8px;
-    padding: var(--space-m);
-  }
-
-  .scan-container {
-    min-height: 300px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #E8E4DB;
-    border-radius: 4px;
-  }
-
-  .scan-container .scan-image {
-    max-height: 400px;
-  }
-
-  .transcription-container {
-    min-height: 200px;
   }
 }
 </style>
