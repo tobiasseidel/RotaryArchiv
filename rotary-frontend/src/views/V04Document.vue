@@ -10,6 +10,7 @@ const { getDocument } = useApi()
 const epochStore = useEpochStore()
 
 const id = computed(() => parseInt(route.params.id))
+const highlight = computed(() => route.query.highlight || null)
 const document = ref(null)
 const loading = ref(true)
 const error = ref(null)
@@ -46,7 +47,7 @@ onMounted(async () => {
       <RouterLink to="/" class="back-link">← Zurück zur Startseite</RouterLink>
     </div>
 
-    <DocumentDualView v-else :document="document" />
+    <DocumentDualView v-else :document="document" :highlight="highlight" />
   </div>
 </template>
 

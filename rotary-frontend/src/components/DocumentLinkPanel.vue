@@ -1,5 +1,7 @@
 <script setup>
-defineProps({
+import { computed } from 'vue'
+
+const props = defineProps({
   documentId: {
     type: [Number, String],
     required: true
@@ -7,12 +9,21 @@ defineProps({
   label: {
     type: String,
     required: true
+  },
+  highlight: {
+    type: String,
+    default: null
   }
 })
+
+const to = computed(() => ({
+  path: `/dokument/${props.documentId}`,
+  query: props.highlight ? { highlight: props.highlight } : undefined
+}))
 </script>
 
 <template>
-  <RouterLink :to="`/dokument/${documentId}`" class="document-link-panel">
+  <RouterLink :to="to" class="document-link-panel">
     <span class="arrow">→</span>
     <span class="label">{{ label }}</span>
   </RouterLink>

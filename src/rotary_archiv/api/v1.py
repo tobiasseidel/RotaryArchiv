@@ -26,6 +26,35 @@ _EPOCH_RANGES: dict[str, tuple[int, int]] = {
 }
 
 
+def _extract_snippet(
+    db: Session, unit: DocumentUnit, name: str, window: int = 120
+) -> str:
+    """Liest den Volltext der Unit und gibt einen Ausschnitt um die erste Nennung von `name` zurueck."""
+    if not unit.page_ids:
+        return unit.summary or ""
+    try:
+        text = get_unit_text_in_reading_order(db, unit.page_ids, page_separator="\n\n")
+    except Exception:
+        return unit.summary or ""
+    if not text:
+        return unit.summary or ""
+
+    idx = text.lower().find(name.lower())
+    if idx == -1:
+        return unit.summary or text[: window * 2]
+
+    start = max(0, idx - window)
+    end = min(len(text), idx + len(name) + window)
+
+    snippet = text[start:end]
+    if start > 0:
+        snippet = "…" + snippet
+    if end < len(text):
+        snippet = snippet + "…"
+
+    return snippet
+
+
 def _derive_epoch(dt: datetime | None) -> str | None:
     if dt is None:
         return None
@@ -341,17 +370,6 @@ def get_person(
     first_unit = matches[0][0]
     name = first_person.get("name", slug)
 
-    doc_links = []
-    for unit, p in matches:
-        doc_links.append(
-            {
-                "document_id": unit.document_id,
-                "unit_id": unit.id,
-                "title": unit.title or f"Dokument #{unit.document_id}",
-                "role": p.get("role"),
-            }
-        )
-
     return PersonDetail(
         id=hash(name) % 100000,
         slug=slug,
@@ -366,8 +384,9 @@ def get_person(
         timeline=[
             {
                 "date": str(unit.date.date()) if unit.date else None,
-                "snippet": unit.summary or "",
-                "document_id": unit.document_id,
+                "snippet": _extract_snippet(db, unit, name),
+                "document_id": unit.id,
+                "highlight": name,
             }
             for unit, _ in matches
             if unit.date or unit.summary

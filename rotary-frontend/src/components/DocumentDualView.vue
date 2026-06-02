@@ -2,7 +2,28 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
-  document: { type: Object, required: true }
+  document: { type: Object, required: true },
+  highlight: { type: String, default: null }
+})
+
+function escapeHtml(str) {
+  const div = document.createElement('div')
+  div.appendChild(document.createTextNode(str))
+  return div.innerHTML
+}
+
+const highlightedTranscription = computed(() => {
+  const text = props.document.transcription
+  if (!text) return ''
+  const escaped = escapeHtml(text)
+  if (!props.highlight) return escaped
+  const parts = props.highlight.split(' ')
+  let result = escaped
+  for (const part of parts) {
+    if (part.length < 2) continue
+    result = result.replace(new RegExp(`(${part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'), '<mark class="tx-highlight">$1</mark>')
+  }
+  return result
 })
 
 function nameToSlug(name) {
@@ -188,7 +209,7 @@ onUnmounted(() => {
             <p>Keine Transkription verfügbar.</p>
           </div>
           <div v-else class="transcription-wrapper">
-            <p class="transcription-text">{{ document.transcription }}</p>
+            <p class="transcription-text" v-html="highlightedTranscription"></p>
           </div>
         </div>
       </div>
@@ -482,5 +503,14 @@ onUnmounted(() => {
   .column-persons {
     display: none;
   }
+}
+</style>
+
+<style>
+.tx-highlight {
+  background: var(--color-epoch-accent);
+  color: var(--color-surface);
+  padding: 0 2px;
+  border-radius: 2px;
 }
 </style>

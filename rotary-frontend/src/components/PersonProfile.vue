@@ -6,6 +6,26 @@ const imageFailed = ref(false)
 function handleImageError() {
   imageFailed.value = true
 }
+
+function escapeHtml(str) {
+  const div = document.createElement('div')
+  div.appendChild(document.createTextNode(str))
+  return div.innerHTML
+}
+
+function highlightText(text, term) {
+  if (!text) return ''
+  const escaped = escapeHtml(text)
+  if (!term) return escaped
+  const parts = term.split(' ')
+  let result = escaped
+  for (const part of parts) {
+    if (part.length < 2) continue
+    result = result.replace(new RegExp(`(${part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'), '<mark class="tx-highlight">$1</mark>')
+  }
+  return result
+}
+
 import EpochBadge from './EpochBadge.vue'
 import DocumentLinkPanel from './DocumentLinkPanel.vue'
 import EntityCard from './EntityCard.vue'
@@ -73,6 +93,7 @@ const membershipStatus = computed(() => {
           v-if="person.membership.joined_document_id"
           :document-id="person.membership.joined_document_id"
           label="Aufnahme-Protokoll"
+          :highlight="person.display_name"
         />
       </div>
 
@@ -85,6 +106,7 @@ const membershipStatus = computed(() => {
           v-if="person.membership.left_document_id"
           :document-id="person.membership.left_document_id"
           label="Austritts-Protokoll"
+          :highlight="person.display_name"
         />
       </div>
 
@@ -119,11 +141,12 @@ const membershipStatus = computed(() => {
           class="timeline-item"
         >
           <span class="timeline-date">{{ item.date }}</span>
-          <p class="timeline-snippet">{{ item.snippet }}</p>
+          <p class="timeline-snippet" v-html="highlightText(item.snippet, item.highlight)"></p>
           <DocumentLinkPanel
             v-if="item.document_id"
             :document-id="item.document_id"
             label="Dokument"
+            :highlight="person.display_name"
           />
         </div>
       </div>
@@ -316,19 +339,6 @@ const membershipStatus = computed(() => {
   margin: 0;
 }
 
-.timeline-empty {
-  font-family: var(--font-sans);
-  font-size: 0.875rem;
-  color: var(--color-text-secondary);
-  font-style: italic;
-}
-
-.network-nodes {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--space-m);
-}
-
 @media (max-width: 768px) {
   .portrait-block {
     flex-direction: column;
@@ -339,5 +349,14 @@ const membershipStatus = computed(() => {
   .portrait-wrapper {
     width: 160px;
   }
+}
+</style>
+
+<style>
+.tx-highlight {
+  background: var(--color-epoch-accent);
+  color: var(--color-surface);
+  padding: 0 2px;
+  border-radius: 2px;
 }
 </style>
