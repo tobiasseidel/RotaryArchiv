@@ -259,6 +259,21 @@
             flex-wrap: wrap;
         }
 
+        .btn-sm {
+            padding: 2px 8px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.4;
+        }
+        .btn-sm:hover {
+            background: #8B4513;
+            color: #fff;
+            border-color: #8B4513;
+        }
         .btn {
             padding: 8px 16px;
             border: none;
@@ -961,6 +976,7 @@
             <li><a href="#" id="navContentAnalysis" onclick="showContentAnalysisSettingsView(); return false;">Content-Analyse</a></li>
             <li><a href="#" id="navComposedOverview" onclick="showComposedOverviewView(); return false;">Dokumenten-Übersicht</a></li>
             <li><a href="#" id="navErschliessungOverview" onclick="showErschliessungOverviewView(); return false;">Erschließungs-Daten</a></li>
+            <li><a href="#" id="navStories" onclick="showStoriesView(); return false;">Stories</a></li>
         </ul>
     </nav>
 
@@ -1104,6 +1120,16 @@
         </div>
         <div id="erschliessungOverviewContent" style="min-height:0; flex:1; overflow-y:auto;">
             <p style="color: #666;">Lade...</p>
+        </div>
+    </div>
+
+    <!-- Stories View -->
+    <div id="storiesView" class="container" style="display: none;">
+        <h1>Stories</h1>
+        <p class="subtitle">Curated Stories – redaktionelle Artikel mit verknüpften Quellen (Notizen)</p>
+        <div id="storiesMessages" style="margin-bottom: 12px;"></div>
+        <div id="storiesContent">
+            <p style="color: #666;">Lade Stories...</p>
         </div>
     </div>
 
@@ -2550,6 +2576,8 @@
                 showComposedOverviewView();
             } else if (hash === '#/erschliessung-overview') {
                 showErschliessungOverviewView();
+            } else if (hash === '#/stories') {
+                showStoriesView();
             } else {
                 showImportView(); // Diese Funktion startet das Polling automatisch
             }
@@ -2665,11 +2693,13 @@
             const persistentRegionsView = document.getElementById('persistentRegionsView');
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
             const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
+            const storiesView = document.getElementById('storiesView');
 
             if (importView) importView.style.display = 'block';
             if (reviewView) reviewView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
             if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'none';
+            if (storiesView) storiesView.style.display = 'none';
             if (pageInspectView) {
                 pageInspectView.style.display = 'none';
                 pageInspectView.classList.remove('active');
@@ -2689,6 +2719,7 @@
             const navPersistentRegions = document.getElementById('navPersistentRegions');
             const navOcrSight = document.getElementById('navOcrSight');
             const navComposedOverview = document.getElementById('navComposedOverview');
+            const navStories = document.getElementById('navStories');
             if (navImport) navImport.classList.add('active');
             if (navReview) navReview.classList.remove('active');
             if (navQuality) navQuality.classList.remove('active');
@@ -2698,6 +2729,7 @@
             if (navOcrSight) navOcrSight.classList.remove('active');
             if (navComposedOverview) navComposedOverview.classList.remove('active');
             if (document.getElementById('navErschliessungOverview')) document.getElementById('navErschliessungOverview').classList.remove('active');
+            if (navStories) navStories.classList.remove('active');
 
             // Starte Polling für Queue (falls noch nicht gestartet)
             if (!pollInterval) {
@@ -2719,9 +2751,11 @@
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
             const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
+            const storiesView = document.getElementById('storiesView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'block';
+            if (storiesView) storiesView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
             if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'none';
             if (pageInspectView) {
@@ -2843,6 +2877,7 @@
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
             const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
+            const storiesView = document.getElementById('storiesView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -2853,6 +2888,7 @@
             }
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'block';
+            if (storiesView) storiesView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'none';
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
@@ -2917,6 +2953,7 @@
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
             const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
+            const storiesView = document.getElementById('storiesView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -2928,6 +2965,7 @@
             if (qualityView) qualityView.style.display = 'none';
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'block';
+            if (storiesView) storiesView.style.display = 'none';
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
@@ -2976,6 +3014,7 @@
             const ocrSightSettingsView = document.getElementById('ocrSightSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
             const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
+            const storiesView = document.getElementById('storiesView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -2988,6 +3027,7 @@
             if (deskewView) deskewView.style.display = 'none';
             if (bboxListView) bboxListView.style.display = 'none';
             if (persistentRegionsView) persistentRegionsView.style.display = 'block';
+            if (storiesView) storiesView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
             if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'none';
@@ -3030,6 +3070,7 @@
             const contentAnalysisSettingsView = document.getElementById('contentAnalysisSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
             const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
+            const storiesView = document.getElementById('storiesView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -3043,6 +3084,7 @@
             if (bboxListView) bboxListView.style.display = 'none';
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'block';
+            if (storiesView) storiesView.style.display = 'none';
             if (contentAnalysisSettingsView) contentAnalysisSettingsView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
             if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'none';
@@ -3086,6 +3128,7 @@
             const contentAnalysisSettingsView = document.getElementById('contentAnalysisSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
             const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
+            const storiesView = document.getElementById('storiesView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -3100,6 +3143,7 @@
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
             if (contentAnalysisSettingsView) contentAnalysisSettingsView.style.display = 'block';
+            if (storiesView) storiesView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
             if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'none';
 
@@ -3144,6 +3188,7 @@
             const contentAnalysisSettingsView = document.getElementById('contentAnalysisSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
             const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
+            const storiesView = document.getElementById('storiesView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -3158,6 +3203,7 @@
             if (persistentRegionsView) persistentRegionsView.style.display = 'none';
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
             if (contentAnalysisSettingsView) contentAnalysisSettingsView.style.display = 'none';
+            if (storiesView) storiesView.style.display = 'none';
             if (erschliessungOverviewView) erschliessungOverviewView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'block';
 
@@ -3203,6 +3249,7 @@
             const contentAnalysisSettingsView = document.getElementById('contentAnalysisSettingsView');
             const composedOverviewView = document.getElementById('composedOverviewView');
             const erschliessungOverviewView = document.getElementById('erschliessungOverviewView');
+            const storiesView = document.getElementById('storiesView');
 
             if (importView) importView.style.display = 'none';
             if (reviewView) reviewView.style.display = 'none';
@@ -3218,6 +3265,7 @@
             if (ocrSightSettingsView) ocrSightSettingsView.style.display = 'none';
             if (contentAnalysisSettingsView) contentAnalysisSettingsView.style.display = 'none';
             if (composedOverviewView) composedOverviewView.style.display = 'none';
+            if (storiesView) storiesView.style.display = 'none';
             if (erschliessungOverviewView) {
                 erschliessungOverviewView.style.display = 'flex';
                 erschliessungOverviewView.style.flexDirection = 'column';
@@ -12592,6 +12640,201 @@
                 console.error('Error loading quality stats:', error);
             }
         }
+        // ─── Stories Admin ──────────────────────────────────────────────────
+
+        function showStoriesView() {
+            ['importView','reviewView','composedOverviewView','erschliessungOverviewView','qualityView','deskewView','bboxListView','persistentRegionsView','ocrSightSettingsView','contentAnalysisSettingsView'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+            var storiesView = document.getElementById('storiesView');
+            if (storiesView) storiesView.style.display = 'block';
+            document.querySelectorAll('.nav-menu a').forEach(function(a) { a.classList.remove('active'); });
+            var navStories = document.getElementById('navStories');
+            if (navStories) navStories.classList.add('active');
+            document.getElementById('appTitle').textContent = 'Stories';
+            window.location.hash = '#/stories';
+            loadStories();
+        }
+
+        function loadStories() {
+            var container = document.getElementById('storiesContent');
+            container.innerHTML = '<p style="color: #666;">Lade Stories...</p>';
+            fetch(API_BASE + '/api/stories')
+                .then(function(r) { return r.json(); })
+                .then(function(stories) {
+                    var html = '<div style="margin-bottom:16px;"><button class="btn btn-success" onclick="showStoryEditor(null)">Neue Story</button></div>';
+                    if (!stories.length) {
+                        html += '<p style="color: #666;">Keine Stories vorhanden.</p>';
+                    } else {
+                        html += '<table class="queue-table"><thead><tr><th>Titel</th><th>Slug</th><th>Epoche</th><th>Status</th><th>Featured</th><th>Notes</th><th>Aktionen</th></tr></thead><tbody>';
+                        stories.forEach(function(s) {
+                            var status = s.is_published ? '<span class="status-badge status-completed">Veröffentlicht</span>' : '<span class="status-badge status-pending">Entwurf</span>';
+                            var featured = s.is_featured ? '⭐' : '—';
+                            var noteCount = s.notes ? s.notes.length : (s._note_count || 0);
+                            html += '<tr>' +
+                                '<td><strong>' + escapeHtml(s.title) + '</strong></td>' +
+                                '<td>' + escapeHtml(s.slug) + '</td>' +
+                                '<td>' + (s.epoch || '—') + '</td>' +
+                                '<td>' + status + '</td>' +
+                                '<td>' + featured + '</td>' +
+                                '<td>' + noteCount + '</td>' +
+                                '<td>' +
+                                '<button class="btn btn-primary" style="padding:4px 8px;font-size:12px;margin-right:4px;" onclick="showStoryEditor(' + s.id + ')">Bearbeiten</button>' +
+                                '<button class="btn btn-danger" style="padding:4px 8px;font-size:12px;" onclick="deleteStory(' + s.id + ')">Löschen</button>' +
+                                '</td></tr>';
+                        });
+                        html += '</tbody></table>';
+                    }
+                    container.innerHTML = html;
+                })
+                .catch(function(e) { container.innerHTML = '<p style="color:red;">Fehler: ' + e.message + '</p>'; });
+        }
+
+        function showStoryEditor(storyId) {
+            var overlay = document.getElementById('storyEditorOverlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'storyEditorOverlay';
+                overlay.className = 'edit-dialog-overlay';
+                overlay.style.display = 'flex';
+                overlay.style.alignItems = 'center';
+                overlay.style.justifyContent = 'center';
+                overlay.innerHTML = '<div class="edit-dialog" style="max-width:720px;max-height:90vh;overflow-y:auto;" onclick="event.stopPropagation()">' +
+                    '<h2 id="storyEditorTitle">Story bearbeiten</h2>' +
+                    '<input type="hidden" id="storyEditorId">' +
+                    '<div style="margin-bottom:12px;"><label style="font-weight:600;display:block;margin-bottom:4px;">Titel</label><input type="text" id="storyEditorTitleInput" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;"></div>' +
+                    '<div style="margin-bottom:12px;"><label style="font-weight:600;display:block;margin-bottom:4px;">Slug</label><input type="text" id="storyEditorSlug" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;"></div>' +
+                    '<div style="margin-bottom:12px;"><label style="font-weight:600;display:block;margin-bottom:4px;">Teaser</label><textarea id="storyEditorTeaser" rows="2" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;"></textarea></div>' +
+                    '<div style="margin-bottom:12px;"><label style="font-weight:600;display:block;margin-bottom:4px;">Body (Markdown)</label><textarea id="storyEditorBody" rows="10" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;box-sizing:border-box;font-family:monospace;"></textarea></div>' +
+                    '<div style="margin-bottom:12px;"><label style="font-weight:600;display:block;margin-bottom:4px;">Epoche</label><select id="storyEditorEpoch" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;"><option value="">—</option><option value="30er">30er</option><option value="90er">90er</option></select></div>' +
+                    '<div style="margin-bottom:12px;display:flex;gap:16px;">' +
+                    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="storyEditorPublished"><span>Veröffentlicht</span></label>' +
+                    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="storyEditorFeatured"><span>⭐ Featured</span></label>' +
+                    '</div>' +
+                    '<div style="margin-bottom:12px;"><label style="font-weight:600;display:block;margin-bottom:4px;">Verknüpfte Notizen</label><div id="storyEditorNotes" style="max-height:200px;overflow-y:auto;border:1px solid #ddd;border-radius:4px;padding:8px;background:#fafafa;"><p style="color:#666;">Lade Notizen...</p></div></div>' +
+                    '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+                    '<button class="btn btn-secondary" onclick="closeStoryEditor()">Abbrechen</button>' +
+                    '<button class="btn btn-primary" onclick="saveStory()">Speichern</button>' +
+                    '</div></div>';
+                overlay.addEventListener('click', function(e) { if (e.target === overlay) closeStoryEditor(); });
+                document.body.appendChild(overlay);
+            }
+            overlay.style.display = 'flex';
+            document.getElementById('storyEditorId').value = storyId || '';
+            document.getElementById('storyEditorTitle').textContent = storyId ? 'Story bearbeiten' : 'Neue Story';
+            if (storyId) {
+                fetch(API_BASE + '/api/stories/' + storyId)
+                    .then(function(r) { return r.json(); })
+                    .then(function(s) {
+                        document.getElementById('storyEditorTitleInput').value = s.title || '';
+                        document.getElementById('storyEditorSlug').value = s.slug || '';
+                        document.getElementById('storyEditorTeaser').value = s.teaser || '';
+                        document.getElementById('storyEditorBody').value = s.body || '';
+                        document.getElementById('storyEditorEpoch').value = s.epoch || '';
+                        document.getElementById('storyEditorPublished').checked = s.is_published;
+                        document.getElementById('storyEditorFeatured').checked = s.is_featured;
+                        loadStoryEditorNotes(s.id, s.notes || []);
+                    });
+            } else {
+                document.getElementById('storyEditorTitleInput').value = '';
+                document.getElementById('storyEditorSlug').value = '';
+                document.getElementById('storyEditorTeaser').value = '';
+                document.getElementById('storyEditorBody').value = '';
+                document.getElementById('storyEditorEpoch').value = '';
+                document.getElementById('storyEditorPublished').checked = false;
+                document.getElementById('storyEditorFeatured').checked = false;
+                loadStoryEditorNotes(null, []);
+            }
+        }
+
+        function loadStoryEditorNotes(storyId, assignedNotes) {
+            var container = document.getElementById('storyEditorNotes');
+            var assignedIds = new Set();
+            assignedNotes.forEach(function(n) { assignedIds.add(n.id); });
+            fetch(API_BASE + '/api/erschliessung-overview/notes?limit=500')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var notes = data.notes || [];
+                    if (!notes.length) {
+                        container.innerHTML = '<p style="color:#888;">Keine Notizen vorhanden.</p>';
+                        return;
+                    }
+                    var html = '';
+                    notes.forEach(function(n) {
+                        var checked = assignedIds.has(n.id) ? 'checked' : '';
+                        var preview = (n.note_text || '').substring(0, 120);
+                        if ((n.note_text || '').length > 120) preview += '…';
+                        html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;border-bottom:1px solid #eee;">' +
+                            '<input type="checkbox" class="story-note-checkbox" value="' + n.id + '" ' + checked + ' style="margin-top:3px;">' +
+                            '<div style="flex:1;min-width:0;"><small style="color:#888;">Notiz #' + n.id + (n.note_author ? ' · ' + escapeHtml(n.note_author) : '') + '</small><br>' +
+                            '<span style="font-size:13px;">' + escapeHtml(preview) + '</span></div>' +
+                            '<button class="btn btn-sm" style="flex-shrink:0;padding:2px 6px;font-size:11px;" onclick="insertStoryCitation(' + n.id + ')">Zitat</button>' +
+                            '</div>';
+                    });
+                    container.innerHTML = html;
+                })
+                .catch(function(e) { container.innerHTML = '<p style="color:red;">Fehler: ' + e.message + '</p>'; });
+        }
+
+        function insertStoryCitation(noteId) {
+            var textarea = document.getElementById('storyEditorBody');
+            var marker = '[#' + noteId + ']';
+            var start = textarea.selectionStart;
+            var end = textarea.selectionEnd;
+            var before = textarea.value.substring(0, start);
+            var after = textarea.value.substring(end);
+            textarea.value = before + marker + after;
+            var pos = start + marker.length;
+            textarea.selectionStart = pos;
+            textarea.selectionEnd = pos;
+            textarea.focus();
+        }
+
+        function closeStoryEditor() {
+            var overlay = document.getElementById('storyEditorOverlay');
+            if (overlay) overlay.style.display = 'none';
+        }
+
+        function saveStory() {
+            var storyId = document.getElementById('storyEditorId').value;
+            var slug = document.getElementById('storyEditorSlug').value.trim();
+            if (!slug) { alert('Bitte einen Slug eingeben.'); return; }
+            var noteIds = [];
+            document.querySelectorAll('#storyEditorNotes .story-note-checkbox:checked').forEach(function(cb) {
+                noteIds.push(parseInt(cb.value));
+            });
+            var body = JSON.stringify({
+                slug: slug,
+                title: document.getElementById('storyEditorTitleInput').value,
+                teaser: document.getElementById('storyEditorTeaser').value,
+                body: document.getElementById('storyEditorBody').value,
+                epoch: document.getElementById('storyEditorEpoch').value,
+                is_published: document.getElementById('storyEditorPublished').checked,
+                is_featured: document.getElementById('storyEditorFeatured').checked,
+                note_ids: noteIds
+            });
+            var url = API_BASE + '/api/stories' + (storyId ? '/' + storyId : '');
+            var method = storyId ? 'PATCH' : 'POST';
+            fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: body })
+                .then(function(r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    closeStoryEditor();
+                    loadStories();
+                })
+                .catch(function(e) { alert('Fehler: ' + e.message); });
+        }
+
+        function deleteStory(storyId) {
+            if (!confirm('Story wirklich löschen? Notizen werden dabei nicht gelöscht (story_id wird auf NULL gesetzt).')) return;
+            fetch(API_BASE + '/api/stories/' + storyId, { method: 'DELETE' })
+                .then(function(r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    loadStories();
+                })
+                .catch(function(e) { alert('Fehler: ' + e.message); });
+        }
+
     </script>
 </body>
 </html>

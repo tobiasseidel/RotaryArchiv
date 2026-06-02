@@ -11,6 +11,7 @@
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
     "@fontsource/lora": "^5.2.8",
+    "marked": "^18.0.4",
     "pinia": "^3.0.4",
     "vue": "^3.5.32",
     "vue-router": "^5.0.6"

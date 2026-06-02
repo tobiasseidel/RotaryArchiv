@@ -1,20 +1,45 @@
 [
   {
     "id": 1,
-    "personSlug": "victor-klemperer-von-klemenau",
-    "title": "Erinnerung meines Großvaters",
-    "body": "Mein Großvater war lange Jahre als Jurist in Dresden tätig und begegnete Victor Klemperer mehrfach im Rahmen gesellschaftlicher Veranstaltungen. Er beschrieb ihn als einen äußerst gebildeten und zugänglichen Menschen, der stets ein offenes Ohr für die Belange junger Juristen hatte. Besonders in Erinnerung blieb ihm eine Begegnung im Jahr 1932, bei der Klemperer eindringlich vor den politischen Entwicklungen warnte.",
-    "authorName": "anonym",
-    "status": "approved",
-    "createdAt": "2026-03-15"
+    "slug": "gruendung-des-rotary-clubs-dresden",
+    "title": "Die Gründung des Rotary Clubs Dresden",
+    "teaser": "Im Jahr 1927 versammelten sich angesehene Dresdner Bürger, um den ersten Rotary Club der Stadt ins Leben zu rufen – der Beginn einer besonderen Gemeinschaft.",
+    "body": "## Ein neuer Geist in Dresden\n\nAm **12. Dezember 1927** trafen sich dreizehn Dresdner Persönlichkeiten im Hotel Bellevue, um den Rotary Club Dresden zu gründen. Unter ihnen waren Bankiers, Kaufleute, Juristen und Künstler – Männer, die in der Stadtgesellschaft eine führende Rolle spielten.\n\n### Die Gründungsmitglieder\n\nZu den Gründungsmitgliedern zählten:\n\n- **Victor Klemperer von Klemenau** – Bankdirektor\n- **Heinrich Arnhold** – Industrieller und Kunstmäzen\n- **Fritz Busch** – Generalmusikdirektor der Semperoper\n\n> „Es war ein Abend der Versprechen und der Hoffnung auf eine bessere Zukunft.“\n\n### Die ersten Jahre\n\nDer Club wuchs schnell. Bereits 1929 zählte man über 30 Mitglieder aus den unterschiedlichsten Berufen. Die wöchentlichen Treffen fanden im Hotel Bellevue statt und waren geprägt von Vorträgen und Diskussionen.\n\n### Das Ende einer Ära\n\nMit der Machtergreifung der Nationalsozialisten 1933 änderte sich alles. Der Club wurde gleichgeschaltet, jüdische Mitglieder wie Heinrich Arnhold und Victor Klemperer von Klemenau wurden ausgeschlossen. Der Rotariergedanke – „Service above Self“ – war in Dresden vorerst beendet.",
+    "epoch": "30er",
+    "image_url": null,
+    "is_published": true,
+    "is_featured": true,
+    "created_at": "2026-05-01T12:00:00Z",
+    "sources": [
+      {
+        "id": 101,
+        "note_text": "Im Protokoll der Gründungsversammlung vom 12. Dezember 1927 werden die dreizehn Gründungsmitglieder namentlich aufgeführt.",
+        "note_author": "Archivar"
+      },
+      {
+        "id": 102,
+        "note_text": "Die Mitgliederliste von 1929 zeigt einen Anstieg auf 32 Mitglieder, darunter Ärzte, Anwälte und Kaufleute.",
+        "note_author": "Archivar"
+      }
+    ]
   },
   {
     "id": 2,
-    "personSlug": "heinrich-arnhold",
-    "title": "Der Kaufmann und die Künste",
-    "body": "Heinrich Arnhold war nicht nur als Industrieller erfolgreich, sondern engagierte sich auch als Mäzen in der Dresdner Kunstszene. Die Sammlung Arnhold umfasste bedeutende Werke des Impressionismus. Mein Urgroßvater arbeitete in seiner Firma und berichtete, dass Arnhold großen Wert auf soziale Einrichtungen für seine Arbeiter legte – für die damalige Zeit bemerkenswert.",
-    "authorName": "anonym",
-    "status": "pending",
-    "createdAt": "2026-04-02"
+    "slug": "kunst-und-mazenatentum-heinrich-arnhold",
+    "title": "Kunst und Mäzenatentum: Heinrich Arnhold",
+    "teaser": "Der Industrielle Heinrich Arnhold war nicht nur ein erfolgreicher Geschäftsmann, sondern auch einer der bedeutendsten Kunstsammler und Mäzene Dresdens.",
+    "body": "## Ein Leben für die Kunst\n\nHeinrich Arnhold (1885–1935) entstammte einer angesehenen jüdischen Bankiersfamilie in Dresden. Gemeinsam mit seinem Bruder Kurt führte er das Bankhaus Arnhold, eines der führenden Privatbankhäuser Deutschlands.\n\n### Die Kunstsammlung Arnhold\n\nDie Sammlung umfasste Werke von:\n\n- **Max Liebermann**\n- **Lovis Corinth**\n- **Max Slevogt**\n- **Carl Gustav Carus**\n\n> „Die Kunst ist nicht Luxus, sondern Lebensnotwendigkeit.“ – Heinrich Arnhold\n\n### Mäzenatentum\n\nArnhold unterstützte zahlreiche kulturelle Einrichtungen:\n\n- Die **Gemäldegalerie Alte Meister**\n- Die **Staatsoper Dresden**\n- Das **Kunstgewerbemuseum**\n\n### Vertreibung und Verlust\n\nNach der Machtergreifung der Nationalsozialisten wurde Arnhold aufgrund seiner jüdischen Herkunft verfolgt. Die Bank musste „arisiert“ werden, die Kunstsammlung wurde zerstreut. Arnhold starb 1935 in Dresden.\n\n### Wiederentdeckung\n\nIn den letzten Jahren wurden große Teile der Sammlung wiederentdeckt und konnten von den Nachkommen zurückerworben werden.",
+    "epoch": "30er",
+    "image_url": null,
+    "is_published": true,
+    "is_featured": false,
+    "created_at": "2026-05-15T12:00:00Z",
+    "sources": [
+      {
+        "id": 103,
+        "note_text": "Das Bankhaus Arnhold war eines der bedeutendsten Privatbankhäuser in Dresden mit engen Verbindungen zur Industrie.",
+        "note_author": "Archivar"
+      }
+    ]
   }
 ]

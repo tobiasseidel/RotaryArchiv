@@ -52,8 +52,15 @@ if ($env:UVICORN_RELOAD -eq "true") {
     Write-Host "Hinweis: Auto-Reload ist aktiviert (langsamer, kann Probleme verursachen)" -ForegroundColor Yellow
 }
 
+$uvicorn = Join-Path $PSScriptRoot "venv\Scripts\uvicorn.exe"
+if (-not (Test-Path $uvicorn)) {
+    Write-Host "[FEHLER] uvicorn nicht gefunden unter $uvicorn" -ForegroundColor Red
+    Write-Host "Stelle sicher, dass das venv existiert (python -m venv venv)" -ForegroundColor Yellow
+    exit 1
+}
+
 if ($useReload) {
-    uvicorn src.rotary_archiv.main:app --reload --host 0.0.0.0 --port $Port
+    & $uvicorn src.rotary_archiv.main:app --reload --host 0.0.0.0 --port $Port
 } else {
-    uvicorn src.rotary_archiv.main:app --host 0.0.0.0 --port $Port
+    & $uvicorn src.rotary_archiv.main:app --host 0.0.0.0 --port $Port
 }

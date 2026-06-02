@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import personsJson from '@/mocks/persons.json'
 import documentsJson from '@/mocks/documents.json'
 import featuredJson from '@/mocks/featured.json'
+import storiesJson from '@/mocks/stories.json'
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 const API_BASE = '/api/v1'
@@ -97,6 +98,54 @@ export function useApi() {
     return await res.json()
   }
 
+  async function getFeaturedStory() {
+    if (USE_MOCK) {
+      const featured = storiesJson.find(s => s.is_featured && s.is_published)
+      return featured || null
+    }
+    const res = await fetch(`${API_BASE}/stories/featured`)
+    if (res.status === 204) return null
+    return await res.json()
+  }
+
+  async function getStories(params = {}) {
+    loading.value = true
+    try {
+      if (USE_MOCK) {
+        let data = [...storiesJson].filter(s => s.is_published)
+        if (params.epoch) data = data.filter(s => s.epoch === params.epoch)
+        return data
+      }
+      const query = new URLSearchParams(params).toString()
+      const res = await fetch(`${API_BASE}/stories?${query}`)
+      return await res.json()
+    } catch (e) {
+      error.value = e.message
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function getStory(slug) {
+    loading.value = true
+    try {
+      if (USE_MOCK) {
+        const story = storiesJson.find(s => s.slug === slug && s.is_published)
+        if (!story) throw new Error('Story not found')
+        return story
+      }
+      const res = await fetch(`${API_BASE}/stories/${slug}`)
+      if (res.status === 404) throw new Error('Story not found')
+      return await res.json()
+    } catch (e) {
+      error.value = e.message
+      throw e
+    } finally {
+      loading.value = false
+    }
+  }
+
   function isAuthenticated() {
     return !!localStorage.getItem('access_token')
   }
@@ -108,6 +157,9 @@ export function useApi() {
     getPerson,
     getDocuments,
     getDocument,
-    getFeatured
+    getFeatured,
+    getFeaturedStory,
+    getStories,
+    getStory
   }
 }

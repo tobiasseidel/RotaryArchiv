@@ -406,6 +406,74 @@ class PageInspectResponse(BaseModel):
         from_attributes = True
 
 
+# Story Schemas
+class NoteRef(BaseModel):
+    """Minimale Notiz-Referenz für Story-Detail."""
+
+    id: int
+    note_text: str | None = None
+    note_author: str | None = None
+    page_id: int | None = None
+    document_id: int | None = None
+
+
+class StoryResponse(BaseModel):
+    """Schema für Story in Listen (ohne Body und Notes)."""
+
+    id: int
+    slug: str
+    title: str
+    teaser: str | None = None
+    epoch: str | None = None
+    image_url: str | None = None
+    is_published: bool = False
+    is_featured: bool = False
+    created_by: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class StoryDetail(StoryResponse):
+    """Schema für Story-Detail mit Body und verknüpften Notes."""
+
+    body: str | None = None
+    notes: list[NoteRef] = []
+
+
+class StoryCreate(BaseModel):
+    """Schema für Story-Erstellung (Admin)."""
+
+    slug: str
+    title: str
+    teaser: str | None = None
+    body: str | None = None
+    epoch: str | None = None
+    image_url: str | None = None
+    is_published: bool = False
+    is_featured: bool = False
+    created_by: str | None = None
+    note_ids: list[int] = []  # BBox-IDs die dieser Story zugeordnet werden
+
+
+class StoryUpdate(BaseModel):
+    """Schema für Story-Update (Admin, alle Felder optional)."""
+
+    slug: str | None = None
+    title: str | None = None
+    teaser: str | None = None
+    body: str | None = None
+    epoch: str | None = None
+    image_url: str | None = None
+    is_published: bool | None = None
+    is_featured: bool | None = None
+    note_ids: list[
+        int
+    ] | None = None  # None = keine Änderung, [] = alle entfernen, [...] = setzen
+
+
 # NOTE: Folgende Schemas sind vorerst nicht verwendet (für später):
 # - Entity Schemas (Entity, EntityCreate, EntityResponse, etc.)
 # - Annotation Schemas (Annotation, AnnotationCreate, AnnotationResponse, etc.)

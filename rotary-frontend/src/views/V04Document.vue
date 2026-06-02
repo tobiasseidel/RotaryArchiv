@@ -11,9 +11,12 @@ const epochStore = useEpochStore()
 
 const id = computed(() => parseInt(route.params.id))
 const highlight = computed(() => route.query.highlight || null)
+const targetPage = computed(() => route.query.page ? parseInt(route.query.page) : null)
 const document = ref(null)
 const loading = ref(true)
 const error = ref(null)
+
+const pageNavIndex = ref(0)
 
 onMounted(async () => {
   try {
@@ -22,6 +25,10 @@ onMounted(async () => {
     document.value = data
     if (data.epoch) {
       epochStore.setEpoch(data.epoch)
+    }
+    if (targetPage.value && data.pages?.length) {
+      const idx = data.pages.findIndex(p => p.page_number === targetPage.value)
+      if (idx !== -1) pageNavIndex.value = idx
     }
   } catch (e) {
     error.value = e.message
@@ -47,7 +54,7 @@ onMounted(async () => {
       <RouterLink to="/" class="back-link">← Zurück zur Startseite</RouterLink>
     </div>
 
-    <DocumentDualView v-else :document="document" :highlight="highlight" />
+    <DocumentDualView v-else :document="document" :highlight="highlight" :start-page="pageNavIndex" />
   </div>
 </template>
 

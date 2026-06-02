@@ -352,6 +352,37 @@ class OCRResult(Base):
         return f"<OCRResult(id={self.id}, source='{self.source}', document_id={self.document_id})>"
 
 
+class Story(Base):
+    """Curated Story – redaktioneller Artikel mit verknüpften Quellen (Notes)."""
+
+    __tablename__ = "stories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(String(255), unique=True, nullable=False, index=True)
+    title = Column(String(512), nullable=False)
+    teaser = Column(Text, nullable=True)
+    body = Column(Text, nullable=True)  # Markdown
+    epoch = Column(String(50), nullable=True, index=True)
+    image_url = Column(String(1024), nullable=True)
+    is_published = Column(Boolean, default=False, nullable=False, server_default="0")
+    is_featured = Column(Boolean, default=False, nullable=False, server_default="0")
+    created_by = Column(String(255), nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    # Relationships
+    notes = relationship(
+        "BBox",
+        primaryjoin="BBox.story_id == Story.id",
+        back_populates="story",
+    )
+
+    def __repr__(self) -> str:
+        return f"<Story(id={self.id}, slug='{self.slug}', title='{self.title}')>"
+
+
 class BBox(Base):
     """Einzelne Bounding Box - normalisierte Tabelle statt JSON in bbox_data"""
 
@@ -409,11 +440,20 @@ class BBox(Base):
     # Staleness-Flag: True wenn black_pixels/black_pixels_per_char neu berechnet werden müssen
     metrics_stale = Column(Boolean, nullable=False, default=True, server_default="1")
 
+    # Story-Verknüpfung
+    story_id = Column(
+        Integer,
+        ForeignKey("stories.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # Timestamps
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
     # Relationship
     ocr_result = relationship("OCRResult", back_populates="bboxes")
+    story = relationship("Story", back_populates="notes")
 
     def __repr__(self) -> str:
         return f"<BBox(id={self.id}, ocr_result_id={self.ocr_result_id}, box_type='{self.box_type}')>"

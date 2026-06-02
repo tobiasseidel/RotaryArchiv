@@ -3,7 +3,16 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
   document: { type: Object, required: true },
-  highlight: { type: String, default: null }
+  highlight: { type: String, default: null },
+  startPage: { type: Number, default: 0 }
+})
+
+onMounted(() => {
+  window.addEventListener('mouseup', onMouseUp)
+  window.addEventListener('mousemove', onMouseMove)
+  if (props.startPage > 0 && props.startPage < pages.value.length) {
+    currentPageIdx.value = props.startPage
+  }
 })
 
 function escapeHtml(str) {
@@ -129,11 +138,6 @@ function onClick(e) {
   if (isPanning.value) return
   onWheel({ ...e, deltaY: -150, preventDefault: () => {} })
 }
-
-onMounted(() => {
-  window.addEventListener('mouseup', onMouseUp)
-  window.addEventListener('mousemove', onMouseMove)
-})
 
 onUnmounted(() => {
   window.removeEventListener('mouseup', onMouseUp)

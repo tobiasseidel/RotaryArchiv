@@ -12,7 +12,13 @@ from sqlalchemy import desc, nullslast
 from sqlalchemy.orm import Session
 
 from src.rotary_archiv.core.database import get_db
-from src.rotary_archiv.core.models import DocumentPage, DocumentUnit, OCRResult
+from src.rotary_archiv.core.models import (
+    BBox,
+    DocumentPage,
+    DocumentUnit,
+    OCRResult,
+    Story,
+)
 from src.rotary_archiv.ocr.job_processor import get_unit_text_in_reading_order
 
 router = APIRouter(prefix="/api/v1", tags=["public-api"])
@@ -169,6 +175,151 @@ class FeaturedResponse(BaseModel):
     quote_source: str | None = None
     document_id: int | None = None
     person_slug: str | None = None
+
+
+# ─── Stories ────────────────────────────────────────────────────────────────
+
+
+class StoryPublicSummary(BaseModel):
+    id: int
+    slug: str
+    title: str
+    teaser: str | None = None
+    epoch: str | None = None
+    image_url: str | None = None
+    created_at: datetime
+
+
+class SourceNote(BaseModel):
+    id: int
+    note_text: str | None = None
+    note_author: str | None = None
+    document_id: int | None = None
+    document_unit_id: int | None = None
+    page_number: int | None = None
+    bbox: list[float] | None = None  # [x1, y1, x2, y2] relativ
+
+
+class StoryPublicDetail(BaseModel):
+    id: int
+    slug: str
+    title: str
+    teaser: str | None = None
+    body: str | None = None
+    epoch: str | None = None
+    image_url: str | None = None
+    created_at: datetime
+    sources: list[SourceNote] = []
+
+
+@router.get("/stories/featured", response_model=StoryPublicSummary | None)
+def get_featured_story(db: Session = Depends(get_db)):
+    """Die eine gefeaturete Story für die Homepage."""
+    story = (
+        db.query(Story)
+        .filter(Story.is_published == True, Story.is_featured == True)
+        .order_by(Story.updated_at.desc())
+        .first()
+    )
+    if not story:
+        return None
+    return StoryPublicSummary(
+        id=story.id,
+        slug=story.slug,
+        title=story.title,
+        teaser=story.teaser,
+        epoch=story.epoch,
+        image_url=story.image_url,
+        created_at=story.created_at,
+    )
+
+
+@router.get("/stories", response_model=list[StoryPublicSummary])
+def list_public_stories(
+    epoch: str | None = Query(None, description="Filter: 30er | 90er"),
+    db: Session = Depends(get_db),
+):
+    """Publizierte Stories (Liste), sortiert nach updated_at."""
+    q = db.query(Story).filter(Story.is_published == True)
+    if epoch:
+        q = q.filter(Story.epoch == epoch)
+    stories = q.order_by(Story.updated_at.desc()).all()
+    return [
+        StoryPublicSummary(
+            id=s.id,
+            slug=s.slug,
+            title=s.title,
+            teaser=s.teaser,
+            epoch=s.epoch,
+            image_url=s.image_url,
+            created_at=s.created_at,
+        )
+        for s in stories
+    ]
+
+
+@router.get("/stories/{slug}", response_model=StoryPublicDetail)
+def get_public_story(slug: str, db: Session = Depends(get_db)):
+    """Story-Detail inkl. Quellen (verknüpfte Notes)."""
+    story = (
+        db.query(Story).filter(Story.slug == slug, Story.is_published == True).first()
+    )
+    if not story:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Story nicht gefunden"
+        )
+
+    def _resolve_note_source(bbox: BBox) -> dict:
+        """Ermittelt Document-/Page-Info für eine als Quelle verknüpfte BBox."""
+        info = {
+            "id": bbox.id,
+            "note_text": bbox.note_text,
+            "note_author": bbox.note_author,
+        }
+        ocr_result = (
+            db.query(OCRResult).filter(OCRResult.id == bbox.ocr_result_id).first()
+        )
+        if not ocr_result or not ocr_result.document_page_id:
+            return info
+        page = (
+            db.query(DocumentPage)
+            .filter(DocumentPage.id == ocr_result.document_page_id)
+            .first()
+        )
+        if not page:
+            return info
+        info["document_id"] = page.document_id
+        info["page_number"] = page.page_number
+        # Finde die erste passende DocumentUnit (auch nicht-öffentliche, der Link wird sonst nirgends angezeigt)
+        unit = (
+            db.query(DocumentUnit)
+            .filter(DocumentUnit.document_id == page.document_id)
+            .first()
+        )
+        if unit:
+            info["document_unit_id"] = unit.id
+        # BBox-Koordinaten (relativ)
+        if bbox.bbox:
+            info["bbox"] = bbox.bbox
+        return info
+
+    sources = [
+        SourceNote(**_resolve_note_source(bbox))
+        for bbox in (story.notes or [])
+        if bbox.note_text
+    ]
+
+    return StoryPublicDetail(
+        id=story.id,
+        slug=story.slug,
+        title=story.title,
+        teaser=story.teaser,
+        body=story.body,
+        epoch=story.epoch,
+        image_url=story.image_url,
+        created_at=story.created_at,
+        sources=sources,
+    )
 
 
 # ─── Search ─────────────────────────────────────────────────────────────────

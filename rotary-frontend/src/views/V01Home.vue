@@ -6,7 +6,7 @@ import HeroBlock from '@/components/HeroBlock.vue'
 import EntityCard from '@/components/EntityCard.vue'
 import EpochBadge from '@/components/EpochBadge.vue'
 
-const { getFeatured, getPersons } = useApi()
+const { getFeaturedStory, getPersons } = useApi()
 const epochStore = useEpochStore()
 
 const featured = ref(null)
@@ -16,7 +16,7 @@ const loading = ref(true)
 onMounted(async () => {
   try {
     const [featuredData, personsData] = await Promise.all([
-      getFeatured(),
+      getFeaturedStory(),
       getPersons({ epoch: '30er' })
     ])
     featured.value = featuredData
@@ -75,7 +75,7 @@ onMounted(async () => {
         <p class="stats-line">
           {{ persons.length }} Personen erschlossen &middot;
           2 Dokumente &middot;
-          0 Stories
+          2 Stories
         </p>
       </footer>
     </div>

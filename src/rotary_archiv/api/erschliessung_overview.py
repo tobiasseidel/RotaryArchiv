@@ -483,6 +483,9 @@ def list_notes(
     document_id: int | None = Query(
         None, description="Nur Notizen aus diesem Dokument"
     ),
+    unassigned: bool | None = Query(
+        None, description="True = nur Notizen ohne Story, False = nur mit Story"
+    ),
     limit: int = Query(100, ge=1, le=1000, description="Maximale Anzahl Notizen"),
     db: Session = Depends(get_db),
 ):
@@ -494,7 +497,14 @@ def list_notes(
 
     # BBox → OCRResult → DocumentPage für richtige page_id
     q = (
-        db.query(BBox.note_text, OCRResult.document_page_id, DocumentPage.document_id)
+        db.query(
+            BBox.id,
+            BBox.note_text,
+            BBox.note_author,
+            BBox.story_id,
+            OCRResult.document_page_id,
+            DocumentPage.document_id,
+        )
         .join(OCRResult, BBox.ocr_result_id == OCRResult.id)
         .join(DocumentPage, OCRResult.document_page_id == DocumentPage.id)
         .filter(BBox.box_type == "note")
@@ -507,14 +517,22 @@ def list_notes(
         search_term = f"%{search.strip()}%"
         q = q.filter(BBox.note_text.ilike(search_term))
 
+    if unassigned is True:
+        q = q.filter(BBox.story_id.is_(None))
+    elif unassigned is False:
+        q = q.filter(BBox.story_id.isnot(None))
+
     results = q.limit(limit).all()
 
     notes = []
-    for note_text, page_id, doc_id in results:
+    for bbox_id, note_text, note_author, story_id, page_id, doc_id in results:
         notes.append(
             {
+                "id": bbox_id,
                 "note_text": note_text,
-                "page_id": page_id,  # Jetzt korrekt: DocumentPage.id
+                "note_author": note_author,
+                "story_id": story_id,
+                "page_id": page_id,
                 "document_id": doc_id,
             }
         )

@@ -17,11 +17,11 @@ const routes = [
     component: () => import('@/views/V04Document.vue')
   },
   { path: '/suche', name: 'search', component: () => import('@/views/V05Search.vue') },
+  { path: '/geschichte/:slug', name: 'story', component: () => import('@/views/V02Story.vue') },
   // Phase 2 (auskommentierte Platzhalter)
   // { path: '/epochen', name: 'epochs', component: () => import('@/views/V02Epochs.vue') },
   // { path: '/karte', name: 'map', component: () => import('@/views/V06Map.vue') },
   // { path: '/netzwerk', name: 'network', component: () => import('@/views/V07Network.vue') },
-  // { path: '/geschichte/:slug', name: 'story', component: () => import('@/views/V08StoryDetail.vue') },
   // { path: '/geschichte-einreichen', name: 'story-submit', component: () => import('@/views/V09StorySubmit.vue') },
   // { path: '/korrektur-einreichen', name: 'correction-submit', component: () => import('@/views/V10CorrectionSubmit.vue') },
   // { path: '/profil', name: 'profile', component: () => import('@/views/V11Profile.vue') },
