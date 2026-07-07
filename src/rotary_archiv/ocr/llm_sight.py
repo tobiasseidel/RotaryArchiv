@@ -279,7 +279,6 @@ def call_ollama_sight(
         - error: str (falls Fehler/Timeout)
         - raw_content: str (Antwort des Modells)
     """
-    base_url = app_config.ollama_base_url
     model = app_config.ollama_gpt_model
     timeout_sec = getattr(app_config, "ollama_timeout_seconds", 300)
 
@@ -316,19 +315,18 @@ def call_ollama_sight(
         start = time.time()
         with httpx.Client(timeout=timeout, headers=app_config.ollama_headers) as client:
             response = client.post(
-                f"{base_url}/api/chat",
+                app_config.ollama_chat_endpoint,
                 json={
                     "model": model,
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
                     ],
-                    "stream": False,
                 },
             )
         response.raise_for_status()
         data = response.json()
-        content = (data.get("message") or {}).get("content") or ""
+        content = app_config.extract_chat_content(data)
         result["raw_content"] = content
 
         parsed = parse_sight_response(content)

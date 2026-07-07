@@ -123,6 +123,42 @@ class Settings(BaseSettings):
         return headers
 
     @property
+    def ollama_chat_endpoint(self) -> str:
+        """Gibt den vollständigen Chat-Endpoint zurück.
+
+        Erkennt automatisch OpenAI-kompatible Proxies (LiteLLM etc.)
+        anhand der base_url:
+        - Ends mit /v1 → OpenAI-Format (/chat/completions)
+        - Sonst → Ollama-Format (/api/chat)
+        """
+        base = self.ollama_base_url.rstrip("/")
+        if base.endswith("/v1"):
+            return f"{base}/chat/completions"
+        return f"{base}/api/chat"
+
+    @property
+    def is_openai_compatible(self) -> bool:
+        """Prüft ob die base_url auf einen OpenAI-kompatiblen Proxy zeigt."""
+        return self.ollama_base_url.rstrip("/").endswith("/v1")
+
+    @staticmethod
+    def extract_chat_content(data: dict) -> str:
+        """Extrahiert die Content-Antwort aus einem Chat-Response.
+
+        Unterstützt sowohl OpenAI-Format (choices[0].message.content)
+        als auch Ollama-Format (message.content).
+        """
+        # OpenAI-Format: choices[0].message.content
+        if "choices" in data and data["choices"]:
+            choice = data["choices"][0]
+            message = choice.get("message") or choice.get("delta") or {}
+            return message.get("content") or ""
+        # Ollama-Format: message.content
+        if "message" in data:
+            return (data.get("message") or {}).get("content") or ""
+        return ""
+
+    @property
     def fuseki_url(self) -> str:
         """Fuseki SPARQL Endpoint URL"""
         return f"http://{self.fuseki_host}:{self.fuseki_port}/{self.fuseki_dataset}"

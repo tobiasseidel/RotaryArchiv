@@ -136,7 +136,6 @@ def call_ollama_boundary_only(
     Ruft Ollama nur für Grenzerkennung (belongs_with_next) auf.
     Returns: success, belongs_with_next, error, raw_content
     """
-    base_url = app_config.ollama_base_url
     model = app_config.ollama_gpt_model
     timeout_sec = getattr(app_config, "ollama_timeout_seconds", 300)
     system_prompt, user_prompt = build_boundary_only_prompt(page_a_text, page_b_text)
@@ -153,18 +152,17 @@ def call_ollama_boundary_only(
         start = time.time()
         with httpx.Client(timeout=timeout, headers=app_config.ollama_headers) as client:
             response = client.post(
-                f"{base_url}/api/chat",
+                app_config.ollama_chat_endpoint,
                 json={
                     "model": model,
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
                     ],
-                    "stream": False,
                 },
             )
         response.raise_for_status()
-        content = (response.json().get("message") or {}).get("content") or ""
+        content = app_config.extract_chat_content(response.json())
         result["raw_content"] = content
         parsed = parse_boundary_response(content)
         if parsed is not None:
@@ -276,7 +274,6 @@ def call_ollama_content_only(unit_full_text: str) -> dict[str, Any]:
     Returns: success, summary, persons, topic, place, event_date,
     extracted_phrases, extracted_names, error, raw_content.
     """
-    base_url = app_config.ollama_base_url
     model = app_config.ollama_gpt_model
     timeout_sec = getattr(app_config, "ollama_timeout_seconds", 300)
     system_prompt, user_prompt = build_content_only_prompt(unit_full_text)
@@ -299,18 +296,17 @@ def call_ollama_content_only(unit_full_text: str) -> dict[str, Any]:
         start = time.time()
         with httpx.Client(timeout=timeout, headers=app_config.ollama_headers) as client:
             response = client.post(
-                f"{base_url}/api/chat",
+                app_config.ollama_chat_endpoint,
                 json={
                     "model": model,
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
                     ],
-                    "stream": False,
                 },
             )
         response.raise_for_status()
-        content = (response.json().get("message") or {}).get("content") or ""
+        content = app_config.extract_chat_content(response.json())
         result["raw_content"] = content
         parsed = parse_content_only_response(content)
         if parsed:
@@ -434,7 +430,6 @@ def call_ollama_content_analysis(
         - error: str (bei Fehler)
         - raw_content: str
     """
-    base_url = app_config.ollama_base_url
     model = app_config.ollama_gpt_model
     timeout_sec = getattr(app_config, "ollama_timeout_seconds", 300)
 
@@ -467,19 +462,18 @@ def call_ollama_content_analysis(
         start = time.time()
         with httpx.Client(timeout=timeout, headers=app_config.ollama_headers) as client:
             response = client.post(
-                f"{base_url}/api/chat",
+                app_config.ollama_chat_endpoint,
                 json={
                     "model": model,
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
                     ],
-                    "stream": False,
                 },
             )
         response.raise_for_status()
         data = response.json()
-        content = (data.get("message") or {}).get("content") or ""
+        content = app_config.extract_chat_content(data)
         result["raw_content"] = content
 
         parsed = parse_content_analysis_response(content)

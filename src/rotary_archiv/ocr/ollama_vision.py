@@ -23,7 +23,6 @@ class OllamaVisionOCR:
 
     def __init__(self):
         """Initialisiere Ollama Vision OCR"""
-        self.base_url = settings.ollama_base_url
         self.model = settings.ollama_vision_model
 
     def _image_to_base64(self, image_path: Path) -> str | None:
@@ -180,20 +179,38 @@ class OllamaVisionOCR:
             with httpx.Client(
                 timeout=timeout, headers=settings.ollama_headers
             ) as client:
-                # Verwende /api/chat für Vision-Modelle (z.B. deepseek-ocr)
-                # Laut Dokumentation: images Array gehört INSIDE das message-Objekt
+                # Request-Format je nach Backend (Ollama vs. OpenAI-kompatibel)
+                if settings.is_openai_compatible:
+                    # OpenAI-Format: images als image_url mit data-URI
+                    messages = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{image_b64_clean}"
+                                    },
+                                },
+                            ],
+                        }
+                    ]
+                else:
+                    # Ollama-Format: images als Array im message-Objekt
+                    messages = [
+                        {
+                            "role": "user",
+                            "content": prompt,
+                            "images": [image_b64_clean],
+                        }
+                    ]
+
                 response = client.post(
-                    f"{self.base_url}/api/chat",
+                    settings.ollama_chat_endpoint,
                     json={
                         "model": self.model,
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": prompt,
-                                "images": [image_b64_clean],
-                            }
-                        ],
-                        "stream": False,
+                        "messages": messages,
                     },
                 )
 
@@ -207,9 +224,7 @@ class OllamaVisionOCR:
                 # Versuche JSON zu parsen
                 try:
                     data = response.json()
-                    # Chat-API gibt Antwort in message.content zurück
-                    message = data.get("message", {})
-                    content = message.get("content", "")
+                    content = settings.extract_chat_content(data)
 
                     return {
                         "content": content,
