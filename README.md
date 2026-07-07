@@ -260,6 +260,7 @@ Folgende Variablen müssen für das Deployment gesetzt werden:
 | `FRONTEND_PORT` | Externer Port für das Frontend (nginx) | `8080` |
 | `POSTGRES_HOST` | Datenbanktyp (`sqlite` oder Hostname) | `sqlite` |
 | `OLLAMA_BASE_URL` | Ollama API URL (Host-Maschine) | `http://host.docker.internal:11434` |
+| `OLLAMA_API_TOKEN` | Bearer-Token für Ollama-API (leer = kein Auth) | `` |
 | `OLLAMA_VISION_MODEL` | Vision-Modell für OCR | `deepseek-ocr:latest` |
 | `OLLAMA_GPT_MODEL` | GPT-Modell für Analyse | `gpt-oss:20b` |
 | `OLLAMA_TIMEOUT_SECONDS` | Timeout für OCR-Anfragen | `7200` |

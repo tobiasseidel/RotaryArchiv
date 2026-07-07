@@ -177,7 +177,9 @@ class OllamaVisionOCR:
             )
             request_start_time = time.time()
 
-            with httpx.Client(timeout=timeout) as client:
+            with httpx.Client(
+                timeout=timeout, headers=settings.ollama_headers
+            ) as client:
                 # Verwende /api/chat für Vision-Modelle (z.B. deepseek-ocr)
                 # Laut Dokumentation: images Array gehört INSIDE das message-Objekt
                 response = client.post(

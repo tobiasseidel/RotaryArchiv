@@ -49,6 +49,10 @@ class Settings(BaseSettings):
         default="http://localhost:11434",
         validation_alias=AliasChoices("ollama_base_url", "ollama_api_base"),
     )
+    ollama_api_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("ollama_api_token", "ollama_token"),
+    )
     ollama_vision_model: str = "deepseek-ocr:latest"  # Standard: deepseek-ocr:latest, kann über .env überschrieben werden
     ollama_gpt_model: str = (
         "gpt-oss:20b"  # Standard: gpt-oss:20b, kann über .env überschrieben werden
@@ -109,6 +113,14 @@ class Settings(BaseSettings):
             f"postgresql://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+
+    @property
+    def ollama_headers(self) -> dict[str, str]:
+        """HTTP-Header für Ollama-API-Anfragen (inkl. Bearer-Token wenn gesetzt)."""
+        headers: dict[str, str] = {}
+        if self.ollama_api_token:
+            headers["Authorization"] = f"Bearer {self.ollama_api_token}"
+        return headers
 
     @property
     def fuseki_url(self) -> str:

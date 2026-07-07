@@ -314,7 +314,7 @@ def call_ollama_sight(
 
     try:
         start = time.time()
-        with httpx.Client(timeout=timeout) as client:
+        with httpx.Client(timeout=timeout, headers=app_config.ollama_headers) as client:
             response = client.post(
                 f"{base_url}/api/chat",
                 json={

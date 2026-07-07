@@ -46,8 +46,9 @@ logs/
 # Testing
 .pytest_cache/
 .coverage
-htmlcov/
 .coverage.*
+htmlcov/
+coverage.xml
 
 # Ruff
 .ruff_cache/

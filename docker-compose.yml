@@ -17,6 +17,7 @@ services:
       - TRIPLESTORE_PATH=${TRIPLESTORE_PATH:-/app/data/triplestore.ttl}
       - SQLITE_PATH=${SQLITE_PATH:-/app/data/rotary_archiv.db}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_API_TOKEN=${OLLAMA_API_TOKEN:-}
       - OLLAMA_VISION_MODEL=${OLLAMA_VISION_MODEL:-deepseek-ocr:latest}
       - OLLAMA_GPT_MODEL=${OLLAMA_GPT_MODEL:-gpt-oss:20b}
       - OLLAMA_TIMEOUT_SECONDS=${OLLAMA_TIMEOUT_SECONDS:-7200}
@@ -38,6 +39,7 @@ services:
       - DOCUMENTS_PATH=${DOCUMENTS_PATH:-/app/data/documents}
       - SQLITE_PATH=${SQLITE_PATH:-/app/data/rotary_archiv.db}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_API_TOKEN=${OLLAMA_API_TOKEN:-}
       - OLLAMA_VISION_MODEL=${OLLAMA_VISION_MODEL:-deepseek-ocr:latest}
       - OLLAMA_GPT_MODEL=${OLLAMA_GPT_MODEL:-gpt-oss:20b}
       - OLLAMA_TIMEOUT_SECONDS=${OLLAMA_TIMEOUT_SECONDS:-7200}
