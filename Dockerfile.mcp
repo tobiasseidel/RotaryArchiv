@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY src/rotary_archiv/mcp/ /app/src/rotary_archiv/mcp/
+COPY src/rotary_archiv/services/ /app/src/rotary_archiv/services/
+COPY src/rotary_archiv/core/ /app/src/rotary_archiv/core/
+COPY src/rotary_archiv/__init__.py /app/src/rotary_archiv/__init__.py
+
+RUN mkdir -p /app/data
+
+EXPOSE 8001
+
+CMD ["uvicorn", "src.rotary_archiv.mcp.sse_server:app", "--host", "0.0.0.0", "--port", "8001"]
