@@ -5,10 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/rotary_archiv/mcp/ /app/src/rotary_archiv/mcp/
-COPY src/rotary_archiv/services/ /app/src/rotary_archiv/services/
-COPY src/rotary_archiv/core/ /app/src/rotary_archiv/core/
-COPY src/rotary_archiv/__init__.py /app/src/rotary_archiv/__init__.py
+COPY src/ /app/src/
 
 RUN mkdir -p /app/data
 
