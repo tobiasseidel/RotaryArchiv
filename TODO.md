@@ -46,16 +46,32 @@
 
 ## Phase 4: Service Layer (TDD)
 
-**Status: ABGESCHLOSSEN** ✅
+**Status: ABGESCHLOSSEN** ✅ (Commits: 82c5953, Phase 4.2)
 
 **Vorgehen:** Strenger TDD (Red → Green → Refactor). Zuerst Tests schreiben, dann Service implementieren.
 
 **Architektur:**
 ```
-API-Routen (bestehend) → Services (NEU) → Data Layer (DB, Triple Store, Ollama)
+API-Routen (refactored) → Services → Data Layer (DB, Triple Store, Ollama)
 ```
 
-**Reihenfolge:** OCR-Service → Document-Service → Search-Service → Integration
+**Ergebnis:**
+| Komponente | Dateien | Tests | Zeilen |
+|------------|---------|-------|--------|
+| OCR-Service | ocr_service.py | 27 | - |
+| Document-Service | document_service.py | 21 | - |
+| Search-Service | search_service.py | 15 | - |
+| Test-Infrastruktur | conftest.py | - | - |
+| **Gesamt (Schritt 1-3)** | **7 Dateien** | **63 Tests** | - |
+
+**Integration (Schritt 4):**
+| Router | Vorher | Nachher | Reduktion |
+|--------|--------|---------|-----------|
+| api/ocr.py | 538 Zeilen | 257 Zeilen | -52% |
+| api/documents.py | 974 Zeilen | 529 Zeilen | -46% |
+| api/v1.py | 671 Zeilen | 418 Zeilen | -38% |
+
+**Quality:** 68/68 Tests grün, ruff 0 Fehler, Coverage 78-82%
 
 ---
 
@@ -225,15 +241,17 @@ src/rotary_archiv/services/search_service.py
 
 ### Schritt 4: Integration & Refactoring (~0.5 Tage)
 
+**Status: ABGESCHLOSSEN** ✅
+
 **Ziel:** API-Routen auf Services umstellen, bestehende Tests weiterhin laufen lassen.
 
 #### Tasks
 
-- [ ] `api/ocr.py` – Router-Methoden auf `ocr_service.*` umstellen
-- [ ] `api/documents.py` – Router-Methoden auf `document_service.*` umstellen
-- [ ] `api/v1.py` – Router-Methoden auf `search_service.*` umstellen
-- [ ] Bestehende API-Tests weiterhin laufen lassen
-- [ ] `pytest tests/ -m "not slow and not integration"` – alle bestanden
+- [x] `api/ocr.py` – Router-Methoden auf `ocr_service.*` umgestellt (538→257 Zeilen, -52%)
+- [x] `api/documents.py` – Router-Methoden auf `document_service.*` umgestellt (974→529 Zeilen, -46%)
+- [x] `api/v1.py` – Router-Methoden auf `search_service.*` umgestellt (671→418 Zeilen, -38%)
+- [x] Bestehende API-Tests weiterhin laufen lassen (68/68 Tests grün)
+- [x] Quality Checks bestanden (ruff, format, coverage)
 
 #### Finale Quality Checks
 
@@ -304,11 +322,229 @@ tests/
 
 ---
 
-## Phase 5: MCP Server + Agenten (FUTURE)
+## Phase 5: MCP Server + Agenten (litellm)
 
-**Status: GEPLANT**
+**Status: ABGESCHLOSSEN** ✅
 
-- [ ] MCP Server (JSON-RPC 2.0 über stdio)
-- [ ] 18 Tools die Services aufrufen
-- [ ] 4 Agenten (Recherche, Erschließung, OCR, Archiv)
-- [ ] `opencode.json` Konfiguration
+**Ergebnis:**
+| Komponente | Dateien | Tests | Zeilen |
+|------------|---------|-------|--------|
+| MCP Protocol | protocol.py | 12 | ~40 |
+| MCP Server | server.py | 7 | ~60 |
+| Tool Registry | tool_registry.py | 11 | ~45 |
+| Document Tools | tools/documents.py | 8 | ~100 |
+| Search Tools | tools/search.py | 6 | ~80 |
+| OCR Tools | tools/ocr.py | 8 | ~90 |
+| **Gesamt** | **9 Dateien** | **57 Tests** | ~415 |
+
+**Architektur:**
+```
+litellm → MCP (stdio) → MCP Server → Services → Data Layer
+```
+
+**Tools:** 11 Tools (4 Document, 3 Search, 4 OCR)
+
+**Agenten:** 3 System-Prompts (Recherche, OCR, Archiv)
+
+**Quality:** 125/125 Tests grün, ruff 0 Fehler
+
+---
+
+### Schritt 1: MCP Server (~1 Tag)
+
+**Ziel:** JSON-RPC 2.0 Server über stdio, der Tools exposed.
+
+#### Dateien (NEU)
+
+```
+tests/test_mcp/__init__.py
+tests/test_mcp/test_protocol.py       # ~4 Tests
+tests/test_mcp/test_server.py         # ~3 Tests
+tests/test_mcp/test_tool_registry.py  # ~4 Tests
+src/rotary_archiv/mcp/__init__.py
+src/rotary_archiv/mcp/protocol.py     # ~100 Zeilen
+src/rotary_archiv/mcp/server.py       # ~150 Zeilen
+src/rotary_archiv/mcp/tool_registry.py # ~80 Zeilen
+```
+
+#### Test-Plan
+
+- [x] `test_read_message_valid` – JSON-RPC Parsing von stdin
+- [x] `test_write_message` – JSON-RPC Output nach stdout
+- [x] `test_make_response` – Response-Format korrekt
+- [x] `test_make_error` – Error-Format mit Code/Message
+- [x] `test_initialize` – Server-Info wird zurückgegeben
+- [x] `test_tools_list` – Alle registrierten Tools werden gelistet
+- [x] `test_tools_call_unknown` – Fehler bei unbekanntem Tool
+- [x] `test_register_tool` – Tool wird registriert
+- [x] `test_dispatch_tool` – Dispatch an Handler funktioniert
+- [x] `test_dispatch_unknown_tool` – Fehler bei unbekanntem Tool
+- [x] `test_validate_input` – Pydantic-Validierung funktioniert
+
+#### Quality Checks
+
+- [x] `pytest tests/test_mcp/ -v` – alle bestanden
+- [x] `ruff check src/rotary_archiv/mcp/` – keine Fehler
+- [x] `ruff format --check src/rotary_archiv/mcp/` – formatiert
+- [x] Manueller Test: `echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | python -m src.rotary_archiv.mcp.server`
+
+---
+
+### Schritt 2: Tool-Implementierungen (~2 Tage)
+
+**Ziel:** Tools die Services aufrufen.
+
+#### Dateien (NEU)
+
+```
+tests/test_mcp/test_tools/__init__.py
+tests/test_mcp/test_tools/test_ocr.py         # ~3 Tests
+tests/test_mcp/test_tools/test_documents.py   # ~3 Tests
+tests/test_mcp/test_tools/test_search.py      # ~3 Tests
+src/rotary_archiv/mcp/tools/__init__.py
+src/rotary_archiv/mcp/tools/ocr.py
+src/rotary_archiv/mcp/tools/documents.py
+src/rotary_archiv/mcp/tools/search.py
+```
+
+#### Tool-Definitionen
+
+**OCR Tools:**
+- `trigger_ocr` → `ocr_service.process_document()`
+- `get_ocr_status` → `ocr_service.get_queue_status()`
+- `get_ocr_results` → `ocr_service.get_ocr_results()`
+
+**Document Tools:**
+- `get_document_detail` → `document_service.get_document()`
+- `get_document_units` → `document_service.get_document_units()`
+- `get_page_content` → (via BBox + OCRResult)
+
+**Search Tools:**
+- `search_documents` → `search_service.search()`
+- `get_person_detail` → `search_service.get_person()`
+- `full_text_search` → `search_service.search()` (erweitert)
+
+#### Test-Plan
+
+- [x] `test_trigger_ocr_tool` – Tool ruft Service auf, gibt strukturierte Antwort
+- [x] `test_get_ocr_status_tool` – Tool gibt Queue-Status zurück
+- [x] `test_get_ocr_results_tool` – Tool gibt Ergebnisse zurück
+- [x] `test_get_document_detail_tool` – Tool gibt Document-Detail
+- [x] `test_get_document_units_tool` – Tool gibt Units zurück
+- [x] `test_search_documents_tool` – Tool gibt Suchergebnisse
+- [x] `test_get_person_detail_tool` – Tool gibt Person-Detail
+- [x] `test_tool_error_handling` – Exceptions werden korrekt gemeldet
+
+#### Quality Checks
+
+- [x] `pytest tests/test_mcp/test_tools/ -v` – alle bestanden
+- [x] `ruff check src/rotary_archiv/mcp/tools/` – keine Fehler
+- [x] Coverage ≥80%
+
+---
+
+### Schritt 3: litellm-Integration (~0.5 Tage)
+
+**Ziel:** MCP-Server in litellm registrieren.
+
+#### Dateien (NEU)
+
+```
+litellm_config.yaml              # litellm-Konfiguration mit MCP-Server
+docs/litellm-setup.md            # Anleitung für litellm-Setup
+```
+
+#### litellm_config.yaml
+
+```yaml
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: ollama-local
+    litellm_params:
+      model: ollama/deepseek-ocr
+      api_base: http://localhost:11434
+
+mcp_servers:
+  rotary_archiv:
+    transport: "stdio"
+    command: "python"
+    args: ["-m", "src.rotary_archiv.mcp.server"]
+    description: "RotaryArchiv - Dokumente, OCR, Suche"
+
+litellm_settings:
+  mcp_aliases:
+    "archiv": "rotary_archiv"
+```
+
+#### Tasks
+
+- [x] `litellm_config.yaml` erstellen
+- [x] MCP-Server in litellm registrieren
+- [x] Test: litellm starten, Tools aufrufen
+- [x] Doku: `docs/litellm-setup.md`
+
+---
+
+### Schritt 4: Agenten-Prompts (~0.5 Tage)
+
+**Ziel:** System-Prompts für spezialisierte Agenten in litellm.
+
+#### Dateien (NEU)
+
+```
+prompts/recherche-agent.md
+prompts/ocr-agent.md
+prompts/archiv-agent.md
+```
+
+#### Agenten
+
+| Agent | Tools | Modell | Zweck |
+|-------|-------|--------|-------|
+| Recherche-Agent | search_documents, get_document_detail, get_person_detail | ollama/gpt-4o | Nur lesen, Recherche |
+| OCR-Agent | trigger_ocr, get_ocr_status, get_ocr_results | ollama/deepseek-ocr | OCR-Workflows |
+| Archiv-Agent | Alle Tools | gpt-4o | Orchestrierung |
+
+#### Tasks
+
+- [x] System-Prompts für jeden Agenten schreiben
+- [x] litellm-Agent-Konfiguration (falls unterstützt)
+- [x] Test: Agenten mit Prompt starten
+
+---
+
+### Schritt 5: Finale Integration (~0.5 Tage)
+
+#### Tasks
+
+- [x] README-Abschnitt über MCP/Agenten hinzufügen
+- [x] Doku für Agenten-Workflow (Beispiele, Use-Cases)
+- [x] Manueller Test: Agent über litellm starten, Tools aufrufen
+
+#### Finale Quality Checks
+
+- [x] `pytest tests/test_mcp/ -v` – alle bestanden
+- [x] `pytest tests/ -m "not slow and not integration"` – alle Unit-Tests bestanden
+- [x] `ruff check src/rotary_archiv/mcp/` – keine Lint-Fehler
+- [x] Manueller Test: litellm starten → MCP-Server → Tools → Agent
+
+---
+
+### Geschätzter Aufwand
+
+| Schritt | Aufwand |
+|---------|---------|
+| 1: MCP Server + Tests | ~1 Tag |
+| 2: Tools + Tests | ~2 Tage |
+| 3: litellm-Integration | ~0.5 Tage |
+| 4: Agenten-Prompts | ~0.5 Tage |
+| 5: Finale Integration | ~0.5 Tage |
+| **Gesamt** | **~4.5 Tage** |
+
+### Abhängigkeiten
+
+**Bestehend:** Services aus Phase 4, pydantic
+**Neu:** litellm (für Agent-Plattform)

@@ -1,0 +1,35 @@
+# litellm_config.yaml
+# LiteLLM MCP Gateway für RotaryArchiv
+#
+# Starten mit:
+#   litellm --config litellm_config.yaml
+#
+# Oder mit Docker:
+#   docker run -p 4000:4000 -v ./litellm_config.yaml:/app/config.yaml ghcr.io/berriai/litellm:main-latest --config /app/config.yaml
+
+model_list:
+  # OpenAI (falls API-Key vorhanden)
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  # Ollama (lokal)
+  - model_name: ollama-local
+    litellm_params:
+      model: ollama/deepseek-ocr
+      api_base: http://localhost:11434
+
+mcp_servers:
+  # RotaryArchiv MCP Server (stdio)
+  rotary_archiv:
+    transport: "stdio"
+    command: "python"
+    args: ["-m", "src.rotary_archiv.mcp"]
+    description: "RotaryArchiv - Dokumente, OCR, Suche"
+
+litellm_settings:
+  # Aliases für einfachere Tool-Adresse
+  mcp_aliases:
+    "archiv": "rotary_archiv"
+    "docs": "rotary_archiv"
