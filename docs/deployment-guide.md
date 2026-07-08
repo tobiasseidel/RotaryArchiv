@@ -1,8 +1,8 @@
-# Deployment Guide: RotaryArchiv + litellm
+# Deployment Guide: RotaryArchiv MCP Server + litellm
 
 ## Überblick
 
-Diese Anleitung beschreibt die Installation des RotaryArchiv mit MCP Server und litellm Gateway auf einer NAS (Synology/QNAP) mit Portainer.
+Diese Anleitung beschreibt die Integration des RotaryArchiv MCP Servers in eine **bestehende litellm Instanz** auf einer NAS.
 
 ## Architektur
 
@@ -23,9 +23,119 @@ Diese Anleitung beschreibt die Installation des RotaryArchiv mit MCP Server und 
 │                          │                                   │
 │  ┌──────────┐  ┌─────────┴────────┐                         │
 │  │ litellm  │←→│    mcp-server    │                         │
-│  │ (Gateway)│  │ (RotaryArchiv)   │                         │
+│  │(bestehend│  │ (RotaryArchiv)   │                         │
+│  │  port    │  │  port 8001       │                         │
+│  │  4000)   │  │                  │                         │
 │  └──────────┘  └──────────────────┘                         │
 └─────────────────────────────────────────────────────────────┘
+```
+
+## Voraussetzungen
+
+- Docker + Docker Compose auf der NAS
+- **litellm läuft bereits** (Port 4000)
+- litellm und RotaryArchiv teilen sich ein Docker-Network
+- Ollama läuft auf der NAS (Port 11434)
+
+## Installation
+
+### 1. Repository klonen
+
+```bash
+ssh nas-user@nas-ip
+cd /Volume1
+git clone <repo-url> RotaryArchiv
+cd RotaryArchiv
+```
+
+### 2. Environment-Dateien erstellen
+
+```bash
+cat > .env.docker << 'EOF'
+# Database
+SQLITE_PATH=/app/data/rotary_archiv.db
+
+# Pfade
+DATA_DIR=/Volume1/RotaryArchiv
+DOCUMENTS_PATH=/app/data/documents
+TRIPLESTORE_PATH=/app/data/triplestore.ttl
+
+# Ollama
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_VISION_MODEL=deepseek-ocr:latest
+OLLAMA_GPT_MODEL=gpt-oss:20b
+OLLAMA_TIMEOUT_SECONDS=7200
+
+# Ports
+BACKEND_PORT=8085
+FRONTEND_PORT=8080
+MCP_PORT=8001
+
+# Debug
+DEBUG=True
+EOF
+```
+
+### 3. Docker Network prüfen
+
+litellm und RotaryArchiv müssen im selben Network laufen:
+
+```bash
+# Network deiner litellm Instanz finden
+docker network ls
+docker inspect <litellm-container> | grep NetworkID
+
+# Falls nötig: Network beitreten
+docker network connect <network-name> rotary_mcp
+```
+
+### 4. MCP Server starten
+
+```bash
+# Nur MCP Server starten (nicht litellm!)
+docker compose up -d mcp-server
+
+# Logs prüfen
+docker compose logs -f mcp-server
+```
+
+### 5. litellm Config anpassen
+
+Füge folgendes in deine bestehende `litellm_config.yaml` ein:
+
+```yaml
+mcp_servers:
+  rotary_archiv:
+    transport: "sse"
+    url: "http://rotary_mcp:8001/sse"
+    description: "RotaryArchiv - Dokumente, OCR, Suche"
+
+litellm_settings:
+  mcp_aliases:
+    "archiv": "rotary_archiv"
+    "docs": "rotary_archiv"
+```
+
+**Wichtig:** Der Container-Name `rotary_mcp` muss über das Network erreichbar sein. Falls litellm in einem anderen Network läuft, nutze stattdessen die IP:
+
+```bash
+# IP des MCP Servers finden
+docker inspect rotary_mcp | grep IPAddress
+```
+
+Dann:
+```yaml
+mcp_servers:
+  rotary_archiv:
+    transport: "sse"
+    url: "http://<IP-ADDRESS>:8001/sse"
+```
+
+### 6. litellm neustarten
+
+```bash
+# litellm neustarten (mit neuer Config)
+docker restart <litellm-container>
 ```
 
 ## Voraussetzungen

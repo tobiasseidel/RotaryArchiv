@@ -59,6 +59,7 @@ services:
     restart: unless-stopped
 
   # MCP Server für litellm Integration
+  # Läuft im selben Network wie die bestehende litellm Instanz
   mcp-server:
     build:
       context: .
@@ -73,19 +74,4 @@ services:
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     depends_on:
       - backend
-    restart: unless-stopped
-
-  # LiteLLM Gateway
-  litellm:
-    image: ghcr.io/berriai/litellm:main-latest
-    container_name: rotary_litellm
-    ports:
-      - "${LITELLM_PORT:-4000}:4000"
-    volumes:
-      - ./litellm_config.yaml:/app/config.yaml
-    command: ["--config", "/app/config.yaml"]
-    environment:
-      - OLLAMA_API_BASE=http://host.docker.internal:11434
-    depends_on:
-      - mcp-server
     restart: unless-stopped
