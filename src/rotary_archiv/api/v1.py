@@ -4,7 +4,6 @@ Zugriff auf dieselbe DB wie das Admin-Backend, aber eigene Logik + eigenes Routi
 """
 
 from datetime import datetime
-import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -19,46 +18,21 @@ from src.rotary_archiv.core.models import (
     OCRResult,
     Story,
 )
-from src.rotary_archiv.ocr.job_processor import get_unit_text_in_reading_order
+from src.rotary_archiv.services import search_service
+from src.rotary_archiv.services.search_service import (
+    DocumentNotFoundError,
+    PersonNotFoundError,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["public-api"])
 
 
-# ─── Helper ────────────────────────────────────────────────────────────────
+# ─── Helpers (used by stories + featured) ───────────────────────────────────
 
 _EPOCH_RANGES: dict[str, tuple[int, int]] = {
     "30er": (1927, 1937),
     "90er": (1990, 2008),
 }
-
-
-def _extract_snippet(
-    db: Session, unit: DocumentUnit, name: str, window: int = 120
-) -> str:
-    """Liest den Volltext der Unit und gibt einen Ausschnitt um die erste Nennung von `name` zurueck."""
-    if not unit.page_ids:
-        return unit.summary or ""
-    try:
-        text = get_unit_text_in_reading_order(db, unit.page_ids, page_separator="\n\n")
-    except Exception:
-        return unit.summary or ""
-    if not text:
-        return unit.summary or ""
-
-    idx = text.lower().find(name.lower())
-    if idx == -1:
-        return unit.summary or text[: window * 2]
-
-    start = max(0, idx - window)
-    end = min(len(text), idx + len(name) + window)
-
-    snippet = text[start:end]
-    if start > 0:
-        snippet = "…" + snippet
-    if end < len(text):
-        snippet = snippet + "…"
-
-    return snippet
 
 
 def _derive_epoch(dt: datetime | None) -> str | None:
@@ -71,29 +45,12 @@ def _derive_epoch(dt: datetime | None) -> str | None:
 
 
 def _name_to_slug(name: str) -> str:
+    import re
+
     s = name.lower().strip()
     s = re.sub(r"[^a-z0-9\s-]", "", s)
     s = re.sub(r"[\s-]+", "-", s)
     return s.strip("-")
-
-
-def _build_page_list(unit: DocumentUnit, db: Session) -> list[dict]:
-    pages: list[dict] = []
-    if not unit.page_ids:
-        return pages
-    db_pages = db.query(DocumentPage).filter(DocumentPage.id.in_(unit.page_ids)).all()
-    by_id = {p.id: p for p in db_pages}
-    for pid in unit.page_ids:
-        page = by_id.get(pid)
-        if page is None:
-            continue
-        image_url = None
-        if page.file_path and page.is_extracted:
-            image_url = f"/scans/{page.document_id}/{page.page_number}.png"
-        pages.append(
-            {"id": page.id, "page_number": page.page_number, "image_url": image_url}
-        )
-    return pages
 
 
 # ─── Schemas ───────────────────────────────────────────────────────────────
@@ -197,7 +154,7 @@ class SourceNote(BaseModel):
     document_id: int | None = None
     document_unit_id: int | None = None
     page_number: int | None = None
-    bbox: list[float] | None = None  # [x1, y1, x2, y2] relativ
+    bbox: list[float] | None = None
 
 
 class StoryPublicDetail(BaseModel):
@@ -217,7 +174,7 @@ def get_featured_story(db: Session = Depends(get_db)):
     """Die eine gefeaturete Story für die Homepage."""
     story = (
         db.query(Story)
-        .filter(Story.is_published == True, Story.is_featured == True)
+        .filter(Story.is_published == True, Story.is_featured == True)  # noqa: E712
         .order_by(Story.updated_at.desc())
         .first()
     )
@@ -240,7 +197,7 @@ def list_public_stories(
     db: Session = Depends(get_db),
 ):
     """Publizierte Stories (Liste), sortiert nach updated_at."""
-    q = db.query(Story).filter(Story.is_published == True)
+    q = db.query(Story).filter(Story.is_published == True)  # noqa: E712
     if epoch:
         q = q.filter(Story.epoch == epoch)
     stories = q.order_by(Story.updated_at.desc()).all()
@@ -262,7 +219,7 @@ def list_public_stories(
 def get_public_story(slug: str, db: Session = Depends(get_db)):
     """Story-Detail inkl. Quellen (verknüpfte Notes)."""
     story = (
-        db.query(Story).filter(Story.slug == slug, Story.is_published == True).first()
+        db.query(Story).filter(Story.slug == slug, Story.is_published == True).first()  # noqa: E712
     )
     if not story:
         raise HTTPException(
@@ -290,7 +247,6 @@ def get_public_story(slug: str, db: Session = Depends(get_db)):
             return info
         info["document_id"] = page.document_id
         info["page_number"] = page.page_number
-        # Finde die erste passende DocumentUnit (auch nicht-öffentliche, der Link wird sonst nirgends angezeigt)
         unit = (
             db.query(DocumentUnit)
             .filter(DocumentUnit.document_id == page.document_id)
@@ -298,7 +254,6 @@ def get_public_story(slug: str, db: Session = Depends(get_db)):
         )
         if unit:
             info["document_unit_id"] = unit.id
-        # BBox-Koordinaten (relativ)
         if bbox.bbox:
             info["bbox"] = bbox.bbox
         return info
@@ -326,7 +281,7 @@ def get_public_story(slug: str, db: Session = Depends(get_db)):
 
 
 class SearchResultItem(BaseModel):
-    type: str  # "person" | "document"
+    type: str
     id: int
     slug: str
     display_name: str
@@ -346,109 +301,8 @@ def search(
     Volltextsuche über Personen und Dokumente.
     Durchsucht display_name, title, summary, topic, place.
     """
-    term = q.strip().lower()
-    units = db.query(DocumentUnit).filter(DocumentUnit.is_public.is_(True)).all()
-
-    if epoch:
-        units = [u for u in units if _derive_epoch(u.date) == epoch]
-
-    results: list[SearchResultItem] = []
-    seen_persons: set[str] = set()
-    seen_docs: set[int] = set()
-
-    for unit in units:
-        unit_epoch = _derive_epoch(unit.date)
-
-        # Dokumente zuerst (vor Personen)
-        doc_match = False
-        doc_snippet = None
-        for field, label in [
-            (unit.title, "title"),
-            (unit.summary, "summary"),
-            (unit.topic, "topic"),
-            (unit.place, "place"),
-        ]:
-            if field and term in field.lower():
-                doc_match = True
-                doc_snippet = field if label != "title" else None
-                break
-
-        if not doc_match and unit.page_ids:
-            ocr_match = (
-                db.query(OCRResult.text)
-                .join(DocumentPage, OCRResult.document_page_id == DocumentPage.id)
-                .filter(
-                    DocumentPage.id.in_(unit.page_ids),
-                    OCRResult.text.ilike(f"%{term}%"),
-                )
-                .limit(1)
-                .first()
-            )
-            if ocr_match:
-                doc_match = True
-                full_text = get_unit_text_in_reading_order(
-                    db, unit.page_ids, page_separator="\n\n"
-                )
-                if full_text and term in full_text.lower():
-                    idx = full_text.lower().find(term)
-                    start = max(0, idx - 60)
-                    end = min(len(full_text), idx + len(term) + 60)
-                    doc_snippet = (
-                        ("…" if start > 0 else "")
-                        + full_text[start:end]
-                        + ("…" if end < len(full_text) else "")
-                    )
-
-        if doc_match and unit.id not in seen_docs:
-            seen_docs.add(unit.id)
-            results.append(
-                SearchResultItem(
-                    type="document",
-                    id=unit.id,
-                    slug=str(unit.id),
-                    display_name=unit.title or f"Dokument #{unit.document_id}",
-                    epoch=unit_epoch,
-                    snippet=doc_snippet or unit.summary,
-                    document_id=unit.document_id,
-                )
-            )
-
-        # Personen im Unit-JSON durchsuchen
-        for p in unit.persons or []:
-            name = p.get("name", "")
-            if not name:
-                continue
-            slug = _name_to_slug(name)
-            if term in name.lower():
-                if slug not in seen_persons:
-                    seen_persons.add(slug)
-                    results.append(
-                        SearchResultItem(
-                            type="person",
-                            id=len(seen_persons),
-                            slug=slug,
-                            display_name=name,
-                            epoch=unit_epoch,
-                            snippet=p.get("role"),
-                            portrait_url=None,
-                        )
-                    )
-            # Unit-intern auch nach Namen in summary/title matchen
-            elif term in (unit.summary or "").lower() and slug not in seen_persons:
-                seen_persons.add(slug)
-                results.append(
-                    SearchResultItem(
-                        type="person",
-                        id=len(seen_persons),
-                        slug=slug,
-                        display_name=name,
-                        epoch=unit_epoch,
-                        snippet=p.get("role"),
-                        portrait_url=None,
-                    )
-                )
-
-    return results
+    raw = search_service.search(db, query=q, epoch=epoch)
+    return [SearchResultItem(**item) for item in raw]
 
 
 # ─── Endpoints ─────────────────────────────────────────────────────────────
@@ -464,34 +318,8 @@ def list_persons(
     Aggregierte Personenliste aus öffentlichen DocumentUnits.
     Jede Person ist ein Eintrag aus dem `persons`-JSON einer public Unit.
     """
-    units = db.query(DocumentUnit).filter(DocumentUnit.is_public.is_(True)).all()
-
-    seen: dict[str, dict] = {}
-    for unit in units:
-        unit_epoch = _derive_epoch(unit.date)
-        if epoch and unit_epoch != epoch:
-            continue
-        for p in unit.persons or []:
-            name = p.get("name", "")
-            if not name:
-                continue
-            if q and q.lower() not in name.lower():
-                continue
-            if name not in seen:
-                seen[name] = {
-                    "id": len(seen) + 1,
-                    "slug": _name_to_slug(name),
-                    "display_name": name,
-                    "epoch": unit_epoch,
-                    "is_public": True,
-                    "notes": p.get("role"),
-                    "portrait_url": None,
-                    "born_year": None,
-                    "died_year": None,
-                }
-            if seen[name]["epoch"] is None:
-                seen[name]["epoch"] = unit_epoch
-    return list(seen.values())
+    raw = search_service.list_persons(db, epoch=epoch, query=q)
+    return [PersonSummary(**p) for p in raw]
 
 
 @router.get("/persons/{slug}", response_model=PersonDetail)
@@ -502,49 +330,27 @@ def get_person(
     """
     Personendetail - aggregiert aus DocumentUnits + Wikidata.
     """
-    units = db.query(DocumentUnit).filter(DocumentUnit.is_public == True).all()  # noqa: E712
-    matches = []
-    for unit in units:
-        for p in unit.persons or []:
-            name = p.get("name", "")
-            if not name:
-                continue
-            if _name_to_slug(name) == slug or name == slug:
-                matches.append((unit, p))
-
-    if not matches:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Person nicht gefunden"
+    try:
+        raw = search_service.get_person(db, slug)
+        return PersonDetail(
+            id=raw["id"],
+            slug=raw["slug"],
+            display_name=raw["display_name"],
+            epoch=raw.get("epoch"),
+            is_public=raw.get("is_public", True),
+            notes=raw.get("notes"),
+            portrait_url=raw.get("portrait_url"),
+            born_year=raw.get("born_year"),
+            died_year=raw.get("died_year"),
+            membership=MembershipInfo(**raw["membership"])
+            if raw.get("membership")
+            else None,
+            timeline=raw.get("timeline", []),
+            attendance=None,
+            network=raw.get("network", {"nodes": [], "edges": []}),
         )
-
-    first_person = matches[0][1]
-    first_unit = matches[0][0]
-    name = first_person.get("name", slug)
-
-    return PersonDetail(
-        id=hash(name) % 100000,
-        slug=slug,
-        display_name=name,
-        epoch=_derive_epoch(first_unit.date),
-        is_public=True,
-        notes=first_person.get("role"),
-        portrait_url=None,
-        born_year=None,
-        died_year=None,
-        membership=MembershipInfo(role=first_person.get("role")),
-        timeline=[
-            {
-                "date": str(unit.date.date()) if unit.date else None,
-                "snippet": _extract_snippet(db, unit, name),
-                "document_id": unit.id,
-                "highlight": name,
-            }
-            for unit, _ in matches
-            if unit.date or unit.summary
-        ],
-        attendance=None,
-        network={"nodes": [], "edges": []},
-    )
+    except PersonNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.get("/documents", response_model=list[DocumentSummary])
@@ -555,29 +361,8 @@ def list_documents(
     db: Session = Depends(get_db),
 ):
     """Öffentliche DocumentUnits, sortiert nach Datum absteigend."""
-    query = db.query(DocumentUnit).filter(DocumentUnit.is_public == True)  # noqa: E712
-    query = query.order_by(nullslast(desc(DocumentUnit.date)))
-    units = query.all()
-
-    if epoch:
-        units = [u for u in units if _derive_epoch(u.date) == epoch]
-
-    units = units[offset : offset + limit]
-
-    result = []
-    for u in units:
-        result.append(
-            DocumentSummary(
-                id=u.id,
-                document_id=u.document_id,
-                title=u.title,
-                date=u.date,
-                epoch=_derive_epoch(u.date),
-                document_type=u.document_type.value if u.document_type else None,
-                summary=u.summary,
-            )
-        )
-    return result
+    raw = search_service.list_documents(db, epoch=epoch, limit=limit, offset=offset)
+    return [DocumentSummary(**d) for d in raw]
 
 
 @router.get("/documents/{unit_id}", response_model=DocumentDetail)
@@ -588,43 +373,11 @@ def get_document(
     """
     Einzelne öffentliche DocumentUnit inkl. Seiten und Bilder.
     """
-    unit = (
-        db.query(DocumentUnit)
-        .filter(
-            DocumentUnit.id == unit_id,
-            DocumentUnit.is_public.is_(True),
-        )
-        .first()
-    )
-    if not unit:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Dokument nicht gefunden"
-        )
-
-    pages = _build_page_list(unit, db)
-    doc_type = unit.document_type.value if unit.document_type else None
-
-    transcription = (
-        get_unit_text_in_reading_order(db, unit.page_ids, page_separator="\n\n")
-        if unit.page_ids
-        else None
-    )
-
-    return DocumentDetail(
-        id=unit.id,
-        document_id=unit.document_id,
-        title=unit.title,
-        date=unit.date,
-        epoch=_derive_epoch(unit.date),
-        document_type=doc_type,
-        type=doc_type,
-        summary=unit.summary,
-        transcription=transcription,
-        pages=pages,
-        persons=unit.persons or [],
-        topic=unit.topic,
-        place=unit.place,
-    )
+    try:
+        raw = search_service.get_document(db, unit_id)
+        return DocumentDetail(**raw)
+    except DocumentNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
 
 @router.get("/featured", response_model=FeaturedResponse)
