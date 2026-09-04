@@ -353,7 +353,7 @@ class OCRResult(Base):
 
 
 class Story(Base):
-    """Curated Story – redaktioneller Artikel mit verknüpften Quellen (Notes)."""
+    """Curated Story - redaktioneller Artikel mit verknuepften Quellen (Notes)."""
 
     __tablename__ = "stories"
 
@@ -601,6 +601,35 @@ class DocumentUnitSuggestion(Base):
 
     def __repr__(self) -> str:
         return f"<DocumentUnitSuggestion(id={self.id}, document_id={self.document_id}, page_ids={self.page_ids})>"
+
+
+class UserRole(str, Enum):
+    """Rollen für Benutzer"""
+
+    ADMIN = "admin"  # Vollzugriff
+    EDITOR = "editor"  # Darf bearbeiten
+    VIEWER = "viewer"  # Nur lesen
+
+
+class User(Base):
+    """Benutzer-Model für Authentifizierung"""
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(100), nullable=False, unique=True, index=True)
+    display_name = Column(String(255), nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    role = Column(SQLEnum(UserRole), nullable=False, default=UserRole.VIEWER)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<User(id={self.id}, username='{self.username}', role='{self.role}')>"
 
 
 class AppSetting(Base):

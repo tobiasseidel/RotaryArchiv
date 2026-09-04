@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.rotary_archiv.api import (
+    auth,
     documents,
     erschliessung,
     erschliessung_overview,
@@ -57,6 +58,20 @@ async def run_pending_migrations():
 
         logger.warning(f"Alembic-Fehler Details: {traceback.format_exc()}")
 
+    # Admin-Benutzer erstellen falls nicht vorhanden
+    try:
+        from src.rotary_archiv.core.database import SessionLocal
+        from src.rotary_archiv.services.auth_service import ensure_admin_exists
+
+        db = SessionLocal()
+        try:
+            admin = ensure_admin_exists(db)
+            logger.info(f"Admin-Benutzer bereit: {admin.username}")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"Admin-Erstellung übersprungen: {e}")
+
 
 # Request Logging Middleware
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
@@ -74,7 +89,12 @@ app.add_middleware(RequestLoggingMiddleware)
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In Produktion einschränken
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:8080",
+        "http://localhost:8085",
+        "*",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -92,6 +112,7 @@ if scans_dir.exists():
 
 
 # Routen
+app.include_router(auth.router, tags=["auth"])
 app.include_router(documents.router, tags=["documents"])
 app.include_router(pages.router, tags=["pages"])
 app.include_router(ocr.router, tags=["ocr"])

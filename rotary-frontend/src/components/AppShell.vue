@@ -1,7 +1,16 @@
 <script setup>
 import { useEpochStore } from '@/stores/epoch'
+import { useAuthStore } from '@/stores/auth'
+import { useRouter } from 'vue-router'
 
 const epochStore = useEpochStore()
+const authStore = useAuthStore()
+const router = useRouter()
+
+async function handleLogout() {
+  await authStore.logout()
+  router.push('/')
+}
 </script>
 
 <template>
@@ -25,7 +34,11 @@ const epochStore = useEpochStore()
               <path d="m21 21-4.3-4.3"/>
             </svg>
           </RouterLink>
-          <a href="#" class="login-link">Login</a>
+          <template v-if="authStore.isAuthenticated">
+            <RouterLink to="/admin" class="login-link">Admin</RouterLink>
+            <button @click="handleLogout" class="login-link logout-btn">Abmelden</button>
+          </template>
+          <RouterLink v-else to="/login" class="login-link">Login</RouterLink>
 
           <details class="nav-mobile-toggle">
             <summary class="hamburger" aria-label="Menü">
@@ -34,12 +47,16 @@ const epochStore = useEpochStore()
               <span></span>
             </summary>
             <nav class="nav-mobile" aria-label="Hauptnavigation">
-<RouterLink to="/" class="nav-link" aria-current="page">Startseite</RouterLink>
+              <RouterLink to="/" class="nav-link" aria-current="page">Startseite</RouterLink>
               <span class="nav-link" aria-disabled="true">Epochen</span>
               <span class="nav-link" aria-disabled="true">Karte</span>
               <span class="nav-link" aria-disabled="true">Netzwerk</span>
               <span class="nav-link" aria-disabled="true">Über das Projekt</span>
-              <span class="nav-link" aria-disabled="true">Login</span>
+              <template v-if="authStore.isAuthenticated">
+                <RouterLink to="/admin" class="nav-link">Admin</RouterLink>
+                <button @click="handleLogout" class="nav-link">Abmelden</button>
+              </template>
+              <RouterLink v-else to="/login" class="nav-link">Login</RouterLink>
             </nav>
           </details>
         </div>
@@ -148,6 +165,13 @@ const epochStore = useEpochStore()
 
 .login-link:hover {
   color: var(--color-epoch-primary);
+}
+
+.logout-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-sans);
 }
 
 .nav-mobile-toggle {

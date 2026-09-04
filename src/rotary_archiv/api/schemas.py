@@ -440,7 +440,7 @@ class StoryDetail(StoryResponse):
     """Schema für Story-Detail mit Body und verknüpften Notes."""
 
     body: str | None = None
-    notes: list[NoteRef] = []
+    notes: list[NoteRef] = Field(default_factory=list)
 
 
 class StoryCreate(BaseModel):
@@ -472,6 +472,56 @@ class StoryUpdate(BaseModel):
     note_ids: list[
         int
     ] | None = None  # None = keine Änderung, [] = alle entfernen, [...] = setzen
+
+
+# ─── Auth Schemas ─────────────────────────────────────────────────────────────
+
+
+class UserResponse(BaseModel):
+    """Benutzer-Response (ohne Passwort)"""
+
+    id: int
+    username: str
+    display_name: str
+    role: str
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class LoginRequest(BaseModel):
+    """Login-Request"""
+
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    """Login-Response"""
+
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+
+
+class UserCreate(BaseModel):
+    """Neuen Benutzer erstellen"""
+
+    username: str = Field(..., min_length=3, max_length=100)
+    display_name: str = Field(..., min_length=1, max_length=255)
+    password: str = Field(..., min_length=6)
+    role: str = Field(default="viewer", pattern="^(admin|editor|viewer)$")
+
+
+class UserUpdate(BaseModel):
+    """Benutzer aktualisieren"""
+
+    display_name: str | None = Field(default=None, min_length=1, max_length=255)
+    role: str | None = Field(default=None, pattern="^(admin|editor|viewer)$")
+    is_active: bool | None = None
+    password: str | None = Field(default=None, min_length=6)
 
 
 # NOTE: Folgende Schemas sind vorerst nicht verwendet (für später):

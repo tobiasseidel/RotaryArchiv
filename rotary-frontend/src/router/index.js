@@ -1,10 +1,23 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 const routes = [
   {
     path: '/',
     name: 'home',
     component: () => import('@/views/V01Home.vue')
+  },
+  {
+    path: '/login',
+    name: 'login',
+    component: () => import('@/views/V00Login.vue'),
+    meta: { guest: true }
+  },
+  {
+    path: '/admin',
+    name: 'admin',
+    component: () => import('@/views/V10Admin.vue'),
+    meta: { requiresAuth: true }
   },
   {
     path: '/person/:slug',
@@ -31,4 +44,26 @@ const routes = [
 export const router = createRouter({
   history: createWebHistory(),
   routes
+})
+
+// Route Guards
+router.beforeEach(async (to, from, next) => {
+  const authStore = useAuthStore()
+
+  // Beim ersten Laden: User-Daten laden wenn Token vorhanden
+  if (authStore.token && !authStore.user) {
+    await authStore.fetchMe()
+  }
+
+  // Geschützte Routes
+  if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+    return next({ name: 'login', query: { redirect: to.fullPath } })
+  }
+
+  // Gast-Routes (z.B. Login) - wenn bereits angemeldet, weiterleiten
+  if (to.meta.guest && authStore.isAuthenticated) {
+    return next({ name: 'admin' })
+  }
+
+  next()
 })
