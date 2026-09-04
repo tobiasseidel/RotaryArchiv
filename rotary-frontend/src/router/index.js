@@ -16,7 +16,19 @@ const routes = [
   {
     path: '/admin',
     name: 'admin',
-    component: () => import('@/views/V10Admin.vue'),
+    component: () => import('@/views/V11Upload.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/admin/upload',
+    name: 'upload',
+    component: () => import('@/views/V11Upload.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/admin/queue',
+    name: 'queue',
+    component: () => import('@/views/V12Queue.vue'),
     meta: { requiresAuth: true }
   },
   {
